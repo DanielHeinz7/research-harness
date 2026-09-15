@@ -102,7 +102,7 @@ authorization axis.
 |---|---|
 | Marketplace repo | `research-harness` |
 | Plugin | `research-harness` (slash prefix `/research-harness:`) |
-| Skills | `canvas`, `canvas-review` |
+| Skills | `canvas`, `canvas-review`, `accept` |
 | State location | `<paper-repo>/research/` — **visible, in Git**, not a dot directory |
 | Files | `research/canvas.md`, `research/decisions.md` |
 | State override | `RESEARCH_HARNESS_DIR` |

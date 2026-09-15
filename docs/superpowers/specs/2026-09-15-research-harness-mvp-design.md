@@ -108,6 +108,8 @@ authorization axis.
 | State override | `RESEARCH_HARNESS_DIR` |
 | Library override | `RESEARCH_HARNESS_LIBRARY` |
 | Marker vocabulary | `[proposed]` `[tentative]` `[stated]` `[accepted]` |
+| Evidence tags | `src:` `unverified` `mail` `cal` |
+| Default profile id | `is-qualitative` |
 
 **Why visible and in Git, against Toolshed's own practice:** Sidequest keeps
 board state deliberately outside any repo, not in Git, without history — argued
@@ -151,7 +153,7 @@ question set in `references/canvas-elements.md`.
 ---
 project: junior-gap
 outlet: MIS Quarterly
-genre: qualitative / interpretive
+profile: is-qualitative
 created: 2026-09-15
 mode: import
 canvas-schema: 2
@@ -174,10 +176,11 @@ Three interviews describe the same reversal ... [proposed, src: int-04 §2]
 _(empty)_
 ```
 
-`outlet` and `genre` are frontmatter, not a tenth element: the canvas has nine
+`outlet` and `profile` are frontmatter, not a tenth element: the canvas has nine
 elements by its source, but almost every question in the set is answered
 differently for a qualitative MISQ paper than for an experimental one, and the
-harness must know which before it asks.
+harness must know which before it asks. `profile` selects the genre profile
+(§4.5); `outlet` carries the target venue and its format constraints.
 
 **Rules:**
 
@@ -278,50 +281,87 @@ check of this kind works.
 **An element carrying open proposals is reported, not flagged as broken:**
 "element 3 is accepted and carries two open proposals" is information.
 
-### 4.5 Dependencies instead of a stage gate
+### 4.5 Genre profiles
 
-The canvas is **not a sequence.** Dorobantu et al. write that it is *"arranged as
-a puzzle because each element must 'fit' with related elements,"* and explicitly
-that their aim is *"not … to impose a universal template for doing research or
-writing papers."* The MIS Quarterly editorial warns against *"script-following or
+The canvas has nine elements for every project, but not the same nine. Its
+authors say so three times over: the theoretical framework is *"either driving
+the research (in quantitative studies) or emerging from it (in qualitative
+ones)"*; *"different ontological and epistemological assumptions (and related
+methodological preferences) will influence how different scholarly communities
+approach the elements included in the canvas and, indeed, what elements are
+considered relatively more important"*; and *"while we discuss the nine elements
+of the canvas in sequential order, the process of thinking through a research
+project does not always proceed in a linear fashion."*
+
+So the genre-dependent parts live in a **profile**, named in the canvas
+frontmatter and resolved from `references/profiles/<id>.md`. A profile owns
+three things and nothing else:
+
+1. which question set each element gets, and which elements carry weight,
+2. the dependency graph (§4.6),
+3. which additional modules attach to which element.
+
+**The MVP ships exactly one profile: `is-qualitative`** — information systems,
+qualitative and interpretive work. Others are patches, and the plugin is public,
+so a method expert who disagrees changes a Markdown file and opens a pull
+request rather than arguing with the tool. That is the intended route for
+`is-quantitative`, `management-qualitative`, `design-science` and whatever else
+people need.
+
+A profile states its commitments in prose a researcher can dispute. It is not a
+scoring rubric and produces no number.
+
+### 4.6 The dependency graph — owned by the profile
+
+**The rule, in every profile:** an element may not carry `[accepted]` while an
+element it depends on does not. `canvas-review` reports every violation. It
+blocks nothing.
+
+**No gate against skipping**, in any profile. Dorobantu et al. call the canvas a
+puzzle whose pieces must fit and explicitly aim *"not … to impose a universal
+template."* The MIS Quarterly editorial warns against *"script-following or
 check-box behavior … that runs counter to the spirit of qualitative inquiry."*
-Colquitt and George note that the topic decision is made *"years earlier"* than
-submission — the order of writing is not the order of working. And the project's
-own discussion paper says: *"It should not become a rigid research lifecycle."*
+Colquitt and George note the topic decision is made *"years earlier"* than
+submission. The project's own discussion paper says *"It should not become a
+rigid research lifecycle."*
 
-So: **no gate against skipping.** A graph instead:
+The graph does more than a gate would anyway: setting element 1 back to
+`[tentative]` makes everything downstream inconsistent, and therefore visible,
+at once. With a stage gate, going back is an administrative act; here it shows
+immediately what now rests on sand.
+
+**Profile `is-qualitative`:**
 
 ```
-1 Puzzle          ←  —
-2 Prior Research  ←  1
-3 Research Q.     ←  1, 2
-4 Constructs      ←  3
-5 Setting         ←  3, 4
-6 Design          ←  4, 5
+1 Puzzle          ←  —          phenomenon first, not a literature gap
+3 Research Q.     ←  1          the question comes from the phenomenon
+9 Boundaries      ←  1, 3       scope is declared before sampling, not after
+5 Setting         ←  3, 9       sampling follows the scope of the claim
+2 Prior Research  ←  1, 3       theory is engaged after framing, and as data
+6 Design          ←  5
 7 Findings        ←  6
-8 Contributions   ←  2, 3, 7
-9 Boundaries      ←  5, 6, 7
+4 Constructs      ←  2, 7       the framework emerges from the material
+8 Contributions   ←  2, 4, 7
 ```
 
-**The rule:** an element may not carry `[accepted]` while an element it depends
-on does not. `canvas-review` reports every violation. It blocks nothing.
+Three edges differ from the order in which the canvas presents its elements, and
+each has a reason on the record. `9 → 5` because the boundary condition drives
+the sampling in qualitative work rather than following from it. `2 ← 3` because
+prior theory enters late and as material to be problematized, not as the gap that
+produced the question — the stance of the MIS Quarterly editorial that supplies
+this profile's problematization module. `4 ← 7` because the canvas's own authors
+say the framework emerges from the research in qualitative studies.
 
-This does more than a gate would: setting element 1 back to `[tentative]` makes
-3, 8 and everything downstream inconsistent, and therefore visible, at once. With
-a stage gate, going back is an administrative act; here it immediately shows what
-now rests on sand.
+**These three edges are a design proposal, not settled method.** They were
+raised by the survey of the author's existing writing guidance (SQ-6), which
+cites `positioning-method-saturation.md` for the first and `structure-and-framing.md`
+for the second. A profile is exactly the cheap place to be wrong: changing an
+edge is editing one line of Markdown, and the file is public.
 
-The graph is derived from the worksheet itself, which asks under Research
-Question: *"How does answering your research question advance prior research and
-our understanding of the puzzle?"* (→ 3 depends on 1 and 2).
+A hypothetico-deductive profile would restore the canvas's presentation order —
+`2 → 3`, `3 → 4 → 5`, `9` last. That profile is not built here.
 
-**Two edges are disputed and not yet settled.** SQ-6 argues that `9 ← 5,6,7` runs
-backwards for qualitative work, where the boundary condition drives the sampling
-rather than following from it, and that `3 ← 2` runs backwards where prior theory
-enters late and as data. Both claims cite the author's own MISQ writing guidance.
-Neither has been adjudicated; see §11.
-
-### 4.6 `research/decisions.md`
+### 4.7 `research/decisions.md`
 
 Append-only. History is never edited; a correction appends a new entry and names
 the one it supersedes.
@@ -364,6 +404,7 @@ research-harness/                          ← marketplace repo
       canvas-elements.md
       amj-map.md
       problematization.md
+      profiles/is-qualitative.md
     skills/
       canvas/SKILL.md
       canvas-review/SKILL.md
@@ -465,7 +506,7 @@ surface, which is why the guard does not deny it. This is exactly how Toolshed's
 own `board` skill reaches its store.
 
 It promotes one statement to `[accepted]`, appends the `DECISION` entry with the
-text hash (§4.6), and refuses if a dependency is unmet, printing which one.
+text hash (§4.7), and refuses if a dependency is unmet, printing which one.
 
 Stage 1 shipping without any approval path was a mistake in the first draft, and
 the corpus contains the warning: the one logged run of the design-mining artifact
@@ -476,7 +517,7 @@ stages could run at all. A gate with no usable path is a gate that gets removed.
 manuscript, and reports seven things:
 
 1. empty elements,
-2. violations of the dependency rule (§4.5),
+2. violations of the dependency rule (§4.6),
 3. elements that do not fit each other (contributions that do not answer the
    research question; boundary conditions that contradict the setting),
 4. statements marked `[stated]`/`[accepted]` that the manuscript no longer
@@ -670,25 +711,20 @@ evidence machinery is built, but it no longer holds up the MVP.
 
 <!-- /private -->
 
-**Left open by SQ-6, needing the author's judgment — these are the findings this
-draft did not adjudicate:**
+**Raised by SQ-6 and now decided:**
 
-- **Two edges of the dependency graph may run backwards** (§4.5). SQ-6 argues
-  from `positioning-method-saturation.md` that for qualitative work the boundary
-  condition drives the sampling, so `9 ← 5,6,7` is inverted; and from
-  `structure-and-framing.md` that prior theory enters late and as data, so
-  `3 ← 2` is inverted. Both are claims about the author's own methodological
-  commitments and cannot be settled from the plugin side.
-- **The seam between the oracle gate and the acceptance axis.** The prototype's
-  oracle gate accepts *work packages* and leaves conversation free; this design's
-  axis gates *file writes* and is strictest in conversation. SQ-6 calls these two
-  acceptance books without a seam, and notes that a verdict already recorded on
-  the board cannot be transcribed into the canvas under the current rules. Whether
-  the two should be joined, or the canvas should simply not know about the board,
-  is undecided.
-- **No discipline anchor.** The canvas is AMJ-shaped. `outlet` and `genre` in the
-  frontmatter (§4.2) are a first answer, but SQ-6 argues the question set itself
-  differs by discipline, not only by outlet.
+- **The disputed edges, and the discipline anchor, are the same question** — and
+  the answer is the genre profile (§4.5). The canvas's own authors say the
+  direction of one element depends on the genre and that communities weight the
+  elements differently, so a single universal graph was the error. The MVP ships
+  `is-qualitative` with the corrected edges; anything else is a Markdown patch
+  against a public repository.
+- **The canvas does not know about the board.** The prototype's oracle gate
+  accepts *work packages*; this design's axis accepts *claims*. They are
+  different objects, and joining them would make the canvas mirror board state —
+  a second truth, which §7 forbids for the same reason. A recorded verdict is
+  *evidence* for a canvas statement and enters as an `src:` tag; accepting the
+  statement remains a separate human act.
 
 Full report: `sources/report-sq6-schreibanleitungen-gegentest-2026-09-15.md` in
 the author's notes.
@@ -720,6 +756,16 @@ the author's notes.
   ("but I like to write") with versioning in the decision log.
 
 Neither requires a change to the data model.
+
+**Profiles are where other people's work arrives.** A genre profile is one
+Markdown file declaring a question emphasis, a dependency graph, and which
+modules attach where — no code. That makes it the natural unit of contribution:
+a method expert who thinks the qualitative graph is wrong, or who needs
+`design-science` or `is-quantitative`, edits one file and opens a pull request.
+The discussion paper asks for exactly this — profiles that *"declare their
+commitments and checks in language a researcher can question"* and are *"owned by
+method experts"* — and it warns against the alternative, a generic rigor score
+that would *"conceal consequential disagreements behind a number."*
 
 ---
 

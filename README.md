@@ -38,6 +38,10 @@ inspectable:
 - an append-only decision log in `research/decisions.md`
 - a dependency check across the nine elements, reported rather than enforced —
   the canvas is a puzzle whose pieces must fit, not a sequence of stages
+- a genre profile that owns the question emphasis and the dependency graph,
+  because the canvas's own authors say both depend on the kind of research being
+  done. One profile ships: `is-qualitative`. Further profiles are Markdown
+  patches, and contributions are welcome.
 - an enforced separation between what an agent proposed and what a human
   accepted, backed by a hook that denies the model the ability to declare a
   commitment or to alter what the researcher said
@@ -62,3 +66,6 @@ on them and citing them, and points at a local full-text collection through
 |---|---|---|
 | `RESEARCH_HARNESS_DIR` | state directory inside the paper repo | `research/` |
 | `RESEARCH_HARNESS_LIBRARY` | local full-text collection of the cited works | unset |
+
+The genre profile is not an environment variable — it is named in the canvas
+frontmatter (`profile: is-qualitative`) so it travels with the project.

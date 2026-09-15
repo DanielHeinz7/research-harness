@@ -1,130 +1,131 @@
-# Research Harness — MVP-Entwurf
+# Research Harness — MVP Design
 
-**Stand:** 2026-09-15 · Entwurf zur Freigabe · noch nicht implementiert
+**Status:** 2026-09-15 · Draft for approval · not yet implemented
 
-Dieses Dokument beschreibt den Zuschnitt des ersten auslieferbaren Stücks des
-Claude-Code-Plugins `research-harness`. Es ist die Grundlage für den
-Implementierungsplan, nicht der Plan selbst.
-
----
-
-## 1 · Zweck
-
-Der Harness soll Paper-Projekte AI-first führen, ohne dass der Forschende die
-Entscheidungsgewalt abgibt. Der MVP leistet davon genau eines: **er macht den
-Zustand eines Paper-Vorhabens dauerhaft, prüfbar und mit Evidenzstatus versehen
-sichtbar** — und trennt dabei erzwungenermaßen, was ein Agent vorschlägt, von
-dem, was ein Mensch angenommen hat.
-
-Alles andere — Schreiben, Belegmaschinerie, Board, Stage-Gates — kommt später
-und dockt an dieser Aufzeichnung an.
-
-### Warum dieser Zuschnitt
-
-Drei unabhängige Linien zeigen auf dieselbe Sache:
-
-1. **Toolsheds Wachstumsgeschichte.** Der erste Commit (`88007652`, 2026-06-13)
-   war 12 Dateien / 1.148 Zeilen, davon 8 Dateien / 942 Zeilen das eigentliche
-   Plugin — und davon 802 Zeilen Prosa gegen 140 Zeilen Maschinerie. Ein
-   Hook-Event, zwei Skills, `references/`. Es blieb acht Tage allein. Sidequest
-   startete ohne MCP, ohne Dispatch, ohne Gates; die Reihenfolge war **erfassen
-   und sichtbar machen → übergeben → prüfen und verriegeln.**
-2. **Daniels eigenes Vault-Format.** Die Areas unter `~/dh-hq/vault/areas/`
-   tragen bereits `## Status`, `## Kontext`, `## Entscheidungen` (mit
-   *Entschieden / Warum / Verworfen / Offen*) und `## Offene Fragen` — und die
-   Marker `[stated]` / `[tentative]` (dokumentiert in `CONVENTIONS.md:239-242`).
-   Das ist die Unterscheidung zwischen Vorschlag und angenommener Behauptung,
-   erprobt im Alltag. Der Harness erfindet sie nicht, er verlegt sie ins
-   Paper-Repo und zwingt den Agenten hinein.
-3. **Der Ursprung von `junior-gap`.** Ein reales Problem, keine Literaturlücke —
-   phänomenfokussierte Problematisierung im Sinne der MISQ-Editorial. Genau die
-   Stelle, an der ungezügelte AI ein Paper zuverlässig mittelmäßig macht: sie
-   produziert unbegrenzt plausible Lücken und nie eine angegriffene Annahme.
+This document defines the scope of the first shippable piece of the Claude Code
+plugin `research-harness`. It is the basis for an implementation plan, not the
+plan itself.
 
 ---
 
-## 2 · Was der MVP ist — und was nicht
+## 1 · Purpose
 
-**Ist:** der Canvas eines Paper-Vorhabens als dauerhafter, versionierter
-Projektzustand im Paper-Repo, mit Evidenzmarkern, Abhängigkeitsprüfung,
-append-only Entscheidungslog, Kontextinjektion bei Sitzungsbeginn, einem
-erzwungenen Freigabekanal und einer klickbaren Sitzungsansicht.
+The harness is meant to run paper projects AI-first without the researcher
+surrendering decision rights. The MVP delivers exactly one part of that: **it
+makes the state of a paper project durable, inspectable, and marked with
+evidential status** — and it enforces the distinction between what an agent
+proposed and what a human accepted.
 
-**Ist nicht:** kein Board, keine Tickets, kein Dispatch, keine Stage-Gates über
-die Abhängigkeitsprüfung hinaus. Kein Schreiben (`/abstract`,
-`/significance-statement`, Absatz-Review). Keine Belegmaschinerie (Zitat gegen
-Transkript, erzwungene Provenienz, gehashte Prompt-Versionen). Kein MCP-Server,
-kein SQLite, kein Mehrautoren-Modell, keine Journal-Recherche.
+Everything else — writing, evidence machinery, board, stage gates — comes later
+and attaches to this record.
 
-### Der Vertrag
+### Why this cut
 
-Der Vertrag des Plugins ist **„ein Paper-Projekt-Repo"**. Wo dieses liegt, ist
-Konfiguration. `~/dh-research/` ist die lokale Konvention des Autors und darf
-nirgends im Plugin vorkommen. Die einzige Wurzel, die ein Hook kennt, ist
-`${CLAUDE_PLUGIN_ROOT}`; das Projektverzeichnis kommt über die Kette
+Three independent lines point at the same thing:
+
+1. **How Toolshed actually grew.** Its first commit (`88007652`, 2026-06-13) was
+   12 files / 1,148 lines, of which 8 files / 942 lines were the plugin proper —
+   and of those, 802 lines were prose against 140 lines of machinery. One hook
+   event, two skills, a `references/` directory. It stayed alone for eight days.
+   Sidequest itself started with no MCP, no dispatch, no gates; the order was
+   **capture and surface → hand off → verify and lock.**
+2. **The author's own vault format.** The area notes under `~/dh-hq/vault/areas/`
+   already carry `## Status`, `## Kontext`, `## Entscheidungen` (with
+   *decided / why / rejected / open*) and `## Offene Fragen` — plus the markers
+   `[stated]` and `[tentative]`, documented in `CONVENTIONS.md:239-242`. That is
+   the distinction between a proposal and an accepted claim, proven in daily use.
+   The harness does not invent it; it moves it into the paper repo and forces the
+   agent to write into it.
+3. **Where `junior-gap` came from.** A real problem, not a literature gap —
+   phenomenon-focused problematization in the sense of the MIS Quarterly
+   editorial. That is precisely the point where unharnessed AI reliably makes a
+   paper mediocre: it produces an unlimited supply of plausible gaps and never a
+   challenged assumption.
+
+---
+
+## 2 · What the MVP is — and is not
+
+**It is:** the canvas of a paper project as durable, version-controlled project
+state inside the paper repo, with evidence markers, a dependency check, an
+append-only decision log, context injection at session start, an enforced
+approval channel, and a clickable session view.
+
+**It is not:** no board, no tickets, no dispatch, no stage gates beyond the
+dependency check. No writing (`/abstract`, `/significance-statement`,
+paragraph-level review). No evidence machinery (quote-to-transcript verification,
+enforced provenance, hashed prompt versions). No MCP server, no SQLite, no
+multi-author model, no journal search.
+
+### The contract
+
+The plugin's contract is **"a paper project repo."** Where that repo lives is
+configuration. `~/dh-research/` is the author's local convention and must appear
+nowhere in the plugin. The only root a hook knows is `${CLAUDE_PLUGIN_ROOT}`; the
+project directory comes from the chain
 `process.env.CLAUDE_PROJECT_DIR || data.cwd || process.cwd()`.
 
-**Erkennung eines Paper-Projekts:** die Existenz von `research/canvas.md`. Keine
-Pfadliste, kein Frontmatter, keine Konfigurationsdatei. In jedem anderen Repo
-schweigt das Plugin vollständig. Damit ist die offene Frage aus der Area-Notiz
-(„Marker-Datei, Konfigurationsliste oder Vault-Frontmatter?") beantwortet.
+**Detecting a paper project:** the presence of `research/canvas.md`. No path
+list, no frontmatter, no config file. In any other repo the plugin stays
+completely silent. This answers the open question from the project notes —
+"marker file, configuration list, or vault frontmatter?"
 
 ---
 
-## 3 · Vorab festgelegt, weil später teuer
+## 3 · Fixed up front, because it is expensive later
 
-Toolsheds Geschichte weist als **billig änderbar** aus: Speicherformat (JSON →
-SQLite nach elf Tagen), Zugangsweg (CLI → MCP nach sechs Tagen), Sprache (JS →
-TS nach siebzehn Tagen), Plugin-Grenze (neun von fünfzehn Plugins wurden
-umbenannt, aufgeteilt, absorbiert oder zurückgezogen). Diese vier werden hier
-**nicht** entschieden.
+Toolshed's history shows what is **cheap to change**: storage format (JSON →
+SQLite after eleven days), access path (CLI → MCP after six days), language
+(JS → TS after seventeen days), plugin boundaries (nine of fifteen plugins were
+renamed, split, absorbed, or withdrawn). None of those are decided here.
 
-Teuer sind nur Bezeichner, die Nutzerspuren hinterlassen, und die
-Autorisierungsachse.
+Expensive are only the identifiers that leave traces on users' machines, and the
+authorization axis.
 
-| Festlegung | Wert |
+| Decision | Value |
 |---|---|
-| Marketplace-Repo | `research-harness` |
-| Plugin | `research-harness` (Slash-Präfix `/research-harness:`) |
+| Marketplace repo | `research-harness` |
+| Plugin | `research-harness` (slash prefix `/research-harness:`) |
 | Skills | `canvas`, `canvas-review` |
-| Zustandsort | `<paper-repo>/research/` — **sichtbar, in Git**, kein Punkt-Ordner |
-| Dateien | `research/canvas.md`, `research/decisions.md` |
-| Override Zustandsort | `RESEARCH_HARNESS_DIR` |
-| Override Bibliothek | `RESEARCH_HARNESS_LIBRARY` |
-| Marker-Vokabular | `[proposed]` `[tentative]` `[stated]` `[accepted]` |
+| State location | `<paper-repo>/research/` — **visible, in Git**, not a dot directory |
+| Files | `research/canvas.md`, `research/decisions.md` |
+| State override | `RESEARCH_HARNESS_DIR` |
+| Library override | `RESEARCH_HARNESS_LIBRARY` |
+| Marker vocabulary | `[proposed]` `[tentative]` `[stated]` `[accepted]` |
 
-**Warum sichtbar und in Git, entgegen Toolshed:** Sidequest legt den
-Board-Zustand bewusst außerhalb jedes Repos ab, nicht in Git, ohne Historie —
-begründet mit projektübergreifender Aufmerksamkeit. Für ein Paper ist das falsch
-herum: der Entscheidungsverlauf ist selbst ein Ergebnis, muss archivierbar sein,
-mit dem Repo umziehen und bei einer Einreichung als Supplement mitgehen können.
-Toolshed löst das an anderer Stelle bereits so — `.gitignore:17-20` checkt
-`.claude/live-rules/**` und `.claude/.codebase-info/**` per Negation bewusst ein.
+**Why visible and in Git, against Toolshed's own practice:** Sidequest keeps
+board state deliberately outside any repo, not in Git, without history — argued
+from attention that moves across projects. For a paper that is backwards: the
+trail of decisions is itself a result, it must be archivable, it must travel with
+the repo, and it must be able to accompany a submission as supplementary
+material. Toolshed already does it this way elsewhere — `.gitignore:17-20`
+deliberately checks in `.claude/live-rules/**` and `.claude/.codebase-info/**`
+through negation.
 
 ---
 
-## 4 · Datenmodell
+## 4 · Data model
 
-### 4.1 Die neun Elemente
+### 4.1 The nine elements
 
-Aus Dorobantu, Gruber, Ravasi & Wellman (2024), AMJ 67(5):1163–1174. Vier
-Bereiche, neun Elemente, durchnummeriert — die Nummern sind die Sprache im
-Meeting („gehen wir auf 2.3").
+From Dorobantu, Gruber, Ravasi & Wellman (2024), *AMJ* 67(5):1163–1174. Four
+areas, nine elements, numbered — the numbers are the language in a meeting
+("let's go to 2.3").
 
-| Nr. | Element | Bereich |
+| No. | Element | Area |
 |---|---|---|
 | 1 | Puzzle | Framing |
 | 2 | Audience and Prior Research | Framing |
 | 3 | Research Question | Framing |
-| 4 | Theoretical Constructs and Relationships | Theoretischer Rahmen |
-| 5 | Research Setting | Empirische Methodik |
-| 6 | Research Design and Analysis | Empirische Methodik |
-| 7 | Findings | Schlussfolgerungen |
-| 8 | Contributions | Schlussfolgerungen |
-| 9 | Boundary Conditions and Limitations | Schlussfolgerungen |
+| 4 | Theoretical Constructs and Relationships | Theoretical framework |
+| 5 | Research Setting | Empirical methodology |
+| 6 | Research Design and Analysis | Empirical methodology |
+| 7 | Findings | Conclusions |
+| 8 | Contributions | Conclusions |
+| 9 | Boundary Conditions and Limitations | Conclusions |
 
-Jedes Element enthält nummerierte Teilfragen (`1.1`, `1.2`, …) aus dem
-Fragenwerk in `references/canvas-elements.md`.
+Each element holds numbered sub-questions (`1.1`, `1.2`, …) drawn from the
+question set in `references/canvas-elements.md`.
 
 ### 4.2 `research/canvas.md`
 
@@ -138,82 +139,72 @@ canvas-schema: 1
 
 # 1 · Puzzle
 
-## 1.1 Welche breite Managementfrage adressiert dieses Vorhaben?
+## 1.1 What broad management question does this project address?
 
-Wie Berufseinsteigende ... [accepted]
+How early-career professionals ... [accepted]
 
-## 1.2 Was soll erklärt oder besser verstanden werden?
+## 1.2 What are you trying to explain or understand better?
 
-Der Bruch zwischen ... [stated]
-Eine zweite Lesart wäre ... [proposed]
+The break between ... [stated]
+A second reading would be ... [proposed]
 
-## 1.3 Warum ist dieses Puzzle wichtig?
+## 1.3 Why is this puzzle important?
 
-_(leer)_
+_(empty)_
 ```
 
-**Regeln:**
+**Rules:**
 
-- Marker stehen **am Ende einer Aussage**, wie in Daniels Vault. Eine Aussage ist
-  ein Absatz.
-- Rangfolge: `[proposed]` < `[tentative]` < `[stated]` < `[accepted]`.
-- Ein Element hat den Status seiner **schwächsten** Aussage. Ein Element ohne
-  Aussage ist leer. „Element 3 ist `[accepted]`" heißt also: *jede* Aussage in
-  Element 3 trägt `[accepted]`.
-- **Ein leeres Element ist ein zulässiger, ausdrücklich erwünschter Zustand.**
-  Es ist besser als plausible Füllung. Das ist die Anti-Fabrikations-Regel auf
-  Canvas-Ebene.
+- Markers sit **at the end of a statement**, as in the author's vault. A
+  statement is a paragraph.
+- Ordering: `[proposed]` < `[tentative]` < `[stated]` < `[accepted]`.
+- An element carries the status of its **weakest** statement. An element with no
+  statement is empty. So "element 3 is `[accepted]`" means *every* statement in
+  element 3 carries `[accepted]`.
+- **An empty element is a legal and explicitly desirable state.** It is better
+  than plausible filler. This is the anti-fabrication rule at canvas level.
 
-### 4.3 Marker und die zwei Autorisierungsklassen
+### 4.3 Markers and the two authorization classes
 
-| Marker | Bedeutung | Modell darf anlegen | Modell darf ändern/entfernen |
+| Marker | Meaning | Model may create | Model may alter/remove |
 |---|---|---|---|
-| `[proposed]` | vom Agenten vorgeschlagen, ungeprüft | ja | ja |
-| `[tentative]` | Fund, noch nicht bestätigt | ja | ja |
-| `[stated]` | der Forschende hat es gesagt oder geschrieben | ja — als Mitschrift | **nein** |
-| `[accepted]` | Festlegung des Vorhabens | **nein** | **nein** |
+| `[proposed]` | suggested by the agent, unchecked | yes | yes |
+| `[tentative]` | found, not yet confirmed | yes | yes |
+| `[stated]` | the researcher said or wrote it | yes — as transcription | **no** |
+| `[accepted]` | a commitment of the project | **no** | **no** |
 
-`[stated]` und `[tentative]` sind Daniels bestehende Vault-Marker, unverändert
-übernommen.
+`[stated]` and `[tentative]` are the author's existing vault markers, carried
+over unchanged.
 
-**Warum `[stated]` angelegt werden darf und `[accepted]` nicht.** `[stated]` ist
-eine *Mitschrift*: der Forschende sagt etwas im Gespräch, der Agent hält es fest.
-Kein Hook kann prüfen, ob eine Mitschrift stimmt — und sie zu verbieten würde den
-Dialog unbrauchbar machen, weil der Agent nicht notieren dürfte, was gerade gesagt
-wurde. Erzwingbar und bedeutsam ist etwas anderes, und darauf sitzt das Gate:
+**Why `[stated]` may be created but `[accepted]` may not.** `[stated]` is a
+*transcription*: the researcher says something in conversation and the agent
+records it. No hook can verify whether a transcription is faithful — and
+forbidding it would make the dialogue unusable, because the agent could not write
+down what was just said. Something else is both enforceable and meaningful, and
+that is where the gate sits:
 
-- Das Modell darf **nie ändern oder löschen, was der Mensch gesagt hat.**
-- Das Modell darf **nie eine Festlegung erklären.**
+- The model may **never alter or delete what the human said.**
+- The model may **never declare a commitment.**
 
-Damit haben die beiden Marker unterschiedliche Erzwingung und sind beide nötig.
-Die Restfläche bleibt: ein Agent kann `[stated]` für etwas vergeben, das so nicht
-gesagt wurde. Das ist nicht maschinell prüfbar; `canvas-review` listet deshalb
-alle `[stated]`-Aussagen zur periodischen Durchsicht auf, und die Ansicht hebt sie
-hervor. Der Harness soll das über sich selbst aussagen können, statt es zu
-verschweigen.
+The two markers therefore have different enforcement, and both are needed. One
+residual surface remains: an agent can mark something `[stated]` that was not in
+fact said. This is not machine-checkable, so `canvas-review` lists every
+`[stated]` statement for periodic human review and the session view highlights
+them. The harness should be able to report its own holes rather than conceal
+them.
 
-**Diese Achse ist der Kern des Vorhabens.** Sidequest hat sie nicht: sein
-`verdict`-Tool nimmt `outcome: accepted|rejected|inconclusive` entgegen und prüft
-an keiner Stelle die Herkunft (`src/lib/mcp-lifecycle.ts:651-675`) — das Modell
-kann sein eigenes Urteil sprechen. Der einzige echte Kanalschutz in Toolshed ist
-ein Modul-Symbol (`store.ts:507`), und das schützt die Integration gegen
-Executoren, nicht die Entscheidung gegen das Modell.
+### 4.4 Dependencies instead of a stage gate
 
-Die Achse muss von Anfang an im Datenmodell liegen, weil jede Gate-Stelle, jeder
-Refusal-Text und jede Skill-Anweisung daran hängt. Nachrüsten ist teuer.
+The canvas is **not a sequence.** Dorobantu et al. write that it is *"arranged as
+a puzzle because each element must 'fit' with related elements,"* and explicitly
+that their aim is *"not … to impose a universal template for doing research or
+writing papers."* The MIS Quarterly editorial warns against *"script-following or
+check-box behavior … that runs counter to the spirit of qualitative inquiry."*
+Colquitt and George note that the topic decision is made *"years earlier"* than
+submission — the order of writing is not the order of working. And the project's
+own discussion paper says: *"It should not become a rigid research lifecycle."*
 
-### 4.4 Abhängigkeiten statt Stufensperre
-
-Der Canvas ist **kein Ablauf**. Dorobantu et al. schreiben, er sei *„arranged as
-a puzzle because each element must 'fit' with related elements"*, und ausdrücklich
-*„not … impose a universal template for doing research or writing papers"*. Die
-MISQ-Editorial warnt vor *„script-following or check-box behavior … that runs
-counter to the spirit of qualitative inquiry"*. Colquitt & George merken an, dass
-die Themenentscheidung *„years earlier"* fällt als die Einreichung — die
-Schreibreihenfolge ist nicht die Arbeitsreihenfolge. Und das Diskussionspapier
-sagt: *„It should not become a rigid research lifecycle."*
-
-Deshalb **keine Sperre gegen Überspringen.** Stattdessen ein Graph:
+So: **no gate against skipping.** A graph instead:
 
 ```
 1 Puzzle          ←  —
@@ -227,55 +218,54 @@ Deshalb **keine Sperre gegen Überspringen.** Stattdessen ein Graph:
 9 Boundaries      ←  5, 6, 7
 ```
 
-**Die Regel:** Ein Element darf nicht `[accepted]` tragen, solange ein Element,
-von dem es abhängt, es nicht trägt. `canvas-review` meldet jede Verletzung. Es
-blockiert nichts.
+**The rule:** an element may not carry `[accepted]` while an element it depends
+on does not. `canvas-review` reports every violation. It blocks nothing.
 
-Das leistet mehr als eine Sperre: Wer Element 1 wieder auf `[tentative]` setzt,
-macht 3, 8 und alles Nachgelagerte automatisch inkonsistent und damit sichtbar.
-Bei einem Stage-Gate ist Zurückgehen ein Verwaltungsakt; hier zeigt es sofort,
-was jetzt auf Sand steht.
+This does more than a gate would: setting element 1 back to `[tentative]` makes
+3, 8 and everything downstream inconsistent, and therefore visible, at once. With
+a stage gate, going back is an administrative act; here it immediately shows what
+now rests on sand.
 
-Der Graph ist aus dem Worksheet selbst abgeleitet — es fragt bei der Research
-Question wörtlich *„How does answering your research question advance prior
-research and our understanding of the puzzle?"* (→ 3 hängt an 1 und 2).
+The graph is derived from the worksheet itself, which asks under Research
+Question: *"How does answering your research question advance prior research and
+our understanding of the puzzle?"* (→ 3 depends on 1 and 2).
 
 ### 4.5 `research/decisions.md`
 
-Append-only. Historie wird nie editiert; eine Korrektur hängt einen neuen Eintrag
-an und benennt den überholten.
+Append-only. History is never edited; a correction appends a new entry and names
+the one it supersedes.
 
 ```markdown
-# Entscheidungslog — junior-gap
+# Decision log — junior-gap
 
 ## [#12] 2026-09-15 · DECISION · 3 Research Question
-Die Frage zielt auf den Übergang, nicht auf das Ergebnis. [accepted]
-**Warum:** ...
-**Verworfen:** ...
+The question targets the transition, not the outcome. [accepted]
+**Why:** ...
+**Rejected:** ...
 
 ## [#13] 2026-09-16 · DISCOVERY · 2 Prior Research
-Zwei Studien widersprechen sich in ... [tentative]
-**Ersetzt:** #7
+Two studies contradict each other on ... [tentative]
+**Supersedes:** #7
 ```
 
-Arten: `DECISION` (Festlegung), `CONSTRAINT` (Randbedingung, die Optionen
-ausschließt), `DISCOVERY` (Befund, der die Lage ändert). Übernommen aus
-Sidequests Story-Log — dem einzigen Mechanismus, der von Toolshed auf Paper-Arbeit
-wirklich überträgt. Die laufende Nummer trägt den Sitzungs-Ledger (§5.2).
+Kinds: `DECISION` (a commitment), `CONSTRAINT` (a condition that rules options
+out), `DISCOVERY` (a finding that changes the situation). Adopted from Sidequest's
+story log — the one mechanism that genuinely transfers from Toolshed to paper
+work. The sequence number drives the session ledger (§5.2).
 
 ---
 
-## 5 · Bausteine
+## 5 · Components
 
 ```
-research-harness/                          ← Marketplace-Repo
+research-harness/                          ← marketplace repo
   .claude-plugin/marketplace.json
   plugins/research-harness/
     .claude-plugin/plugin.json
     hooks/
       hooks.json
-      inject-state.js                      ← SessionStart, fail-open
-      guard-promotion.js                   ← PreToolUse, fail-closed
+      inject-state.js                      ← SessionStart, fails open
+      guard-promotion.js                   ← PreToolUse, fails closed
     references/
       canvas-elements.md
       amj-map.md
@@ -283,114 +273,116 @@ research-harness/                          ← Marketplace-Repo
     skills/
       canvas/SKILL.md
       canvas-review/SKILL.md
-    bin/canvas-serve.js                    ← Stufe 2
-    dashboard/canvas.html                  ← Stufe 2
+    bin/canvas-serve.js                    ← stage 2
+    dashboard/canvas.html                  ← stage 2
     test/guard-promotion.test.js
     README.md
 ```
 
-Kein `package.json`, kein Build, kein `lib/` — reines Node-stdlib-CommonJS, wie
-fünf der sechs Toolshed-Plugins. Tests werden konventionsbasiert gefunden
+No `package.json`, no build step, no `lib/` — plain Node stdlib CommonJS, like
+five of Toolshed's six plugins. Tests are found by convention
 (`node --test "test/*.test.js"`).
 
-### 5.1 Manifeste
+### 5.1 Manifests
 
-`marketplace.json`: vier Top-Level-Felder (`name`, `owner`, `description`,
-`version`) und ein `plugins[]`-Array mit einem Eintrag. `plugin.json`: `name`,
-`version`, `description`, `author`, `license`. `description` und `version` stehen
-doppelt; ein kurzes Guard-Skript vergleicht sie, weil sie sonst auseinanderlaufen.
+`marketplace.json`: four top-level fields (`name`, `owner`, `description`,
+`version`) and a `plugins[]` array with one entry. `plugin.json`: `name`,
+`version`, `description`, `author`, `license`. `description` and `version` are
+duplicated across the two; a short guard script compares them, because otherwise
+they drift.
 
-**Kein `commands/`.** Toolshed hatte es vier Tage und entfernte alle Wrapper
-(`a6c42e49`): `commands/x.md` und `skills/x/SKILL.md` mappen beide auf `/x`, der
-Harness lädt den dünnen Wrapper und hält den Skill danach für „already loaded" —
-die echten Schritte werden nie injiziert.
+**No `commands/`.** Toolshed had one for four days and then removed every wrapper
+(`a6c42e49`): `commands/x.md` and `skills/x/SKILL.md` both map to `/x`, the
+harness loads the thin wrapper and afterwards treats the skill as "already
+loaded" — the real steps are never injected.
 
 ### 5.2 `inject-state.js` — SessionStart
 
-Injiziert über `hookSpecificOutput.additionalContext`, dem einzigen Kanal zum
-Modell (`systemMessage` liest das Modell nicht). Budget **unter 4 KiB**, bei
-Überlauf UTF-8-sicher gekürzt mit Wasserzeichen und dem Hinweis, wie nachzuladen
-ist.
+Injects through `hookSpecificOutput.additionalContext`, the only channel to the
+model (the model does not read `systemMessage`). Budget **under 4 KiB**; on
+overflow, truncate UTF-8-safely with a watermark and a pointer to how the rest can
+be loaded.
 
-Inhalt: welche der neun Elemente leer sind; welche nur `[proposed]`/`[tentative]`
-tragen; Verletzungen der Abhängigkeitsregel; die Einträge aus `decisions.md`, die
-diese Sitzung noch nicht gesehen hat; der Modus (`brainstorming` / `seed` /
-`import`).
+Contents: which of the nine elements are empty; which carry only `[proposed]` or
+`[tentative]`; violations of the dependency rule; the entries in `decisions.md`
+this session has not yet seen; the mode (`brainstorming` / `seed` / `import`).
 
-Der Sitzungs-Ledger liegt unter `~/.claude/research-harness/` (flüchtiger
-Zustand, gehört nicht ins Paper) und merkt sich die zuletzt injizierte laufende
-Nummer.
+The session ledger lives under `~/.claude/research-harness/` — transient state
+that does not belong to the paper — and remembers the highest sequence number
+injected so far.
 
-**Fail-open:** Fehlt `research/canvas.md`, ist es unlesbar oder fehlerhaft,
-injiziert der Hook nichts und beendet mit 0. Ein Hook darf nie einen Prompt
-anhalten.
+**Fails open:** if `research/canvas.md` is absent, unreadable, or malformed, the
+hook injects nothing and exits 0. A hook must never stop a prompt.
 
 ### 5.3 `guard-promotion.js` — PreToolUse
 
-Matcher auf `Edit|Write|NotebookEdit|Bash`. Greift bei Schreibzugriffen auf
-`canvas.md` und `decisions.md` im Zustandsverzeichnis (`research/`, oder was
-`RESEARCH_HARNESS_DIR` sagt) — und ab Stufe 2 zusätzlich bei `Bash`-Aufrufen
-gegen den Port des Canvas-Servers (§7).
+Matcher on `Edit|Write|NotebookEdit|Bash`. Applies to writes against `canvas.md`
+and `decisions.md` in the state directory (`research/`, or whatever
+`RESEARCH_HARNESS_DIR` says) — and, from stage 2 on, to `Bash` invocations
+against the canvas server's port (§7).
 
-**Regel für `canvas.md`** — drei Verbote, sonst alles erlaubt:
+**Rule for `canvas.md`** — three prohibitions, everything else allowed:
 
-1. Keine Aussage mit `[accepted]` anlegen.
-2. Keine bestehende Aussage mit `[stated]` oder `[accepted]` ändern oder entfernen
-   — auch nicht ihren Marker herabstufen.
-3. Keine Aussage mit `[proposed]`/`[tentative]` in `[stated]`/`[accepted]` heben.
+1. Do not create a statement carrying `[accepted]`.
+2. Do not alter or remove an existing statement carrying `[stated]` or
+   `[accepted]` — including downgrading its marker.
+3. Do not promote a `[proposed]`/`[tentative]` statement to `[stated]` or
+   `[accepted]`.
 
-Erlaubt bleibt: `[proposed]`- und `[tentative]`-Aussagen anlegen, ändern,
-entfernen; und `[stated]` als Mitschrift **neu** anlegen (§4.3).
+Still allowed: creating, editing, and removing `[proposed]` and `[tentative]`
+statements; and creating a **new** `[stated]` statement as transcription (§4.3).
 
-Verstoß → `permissionDecision: "deny"` mit einem `permissionDecisionReason`, der
-die legale nächste Aktion nennt: „schlage die Änderung als `[proposed]` daneben
-vor, oder der Forschende übernimmt sie selbst über die Canvas-Ansicht."
+Violation → `permissionDecision: "deny"` with a `permissionDecisionReason` naming
+the next legal action: "propose the change as `[proposed]` alongside it, or let
+the researcher make it through the canvas view."
 
-**Regel für `decisions.md`:** nur Anhängen. Jede Änderung an bestehendem Inhalt
-wird verweigert.
+**Rule for `decisions.md`:** append only. Any change to existing content is
+refused.
 
-**Fail-closed — bewusste Abweichung von Toolsheds Doktrin.** Toolshed schreibt
-fail-soft vor („a malformed rule file degrades to 'skip that rule'"), aber das
-gilt für Kontextinjektion. Ein Berechtigungswächter, der bei einem Fehler
-durchlässt, ist ein Loch. Kann `guard-promotion.js` den Diff nicht sicher
-beurteilen, verweigert er mit einer Begründung, die das sagt.
+**Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
+mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that
+rule'"), but that doctrine is about context injection. A permission guard that
+lets writes through on error is a hole. If `guard-promotion.js` cannot judge a
+diff confidently, it denies with a reason that says so.
 
-Refusal-Texte sind Teil des Produkts: jeder nennt die nächste legale Aktion,
-sonst blockiert der Harness sich selbst.
+Refusal texts are part of the product: each one names the next legal action,
+otherwise the harness blocks itself.
 
-### 5.4 Die zwei Skills
+### 5.4 The two skills
 
-Frontmatter minimal (`name`, `description` als *„Use when …"*-Satz), wie 15 der
-17 Toolshed-Skills. Alles Längere liegt in `references/` und wird im Skill-Text
-explizit zum Lesen angewiesen — sonst frisst jeder Aufruf Kontext.
+Minimal frontmatter (`name`, `description` phrased as a *"Use when …"* sentence),
+like 15 of Toolshed's 17 skills. Anything longer lives in `references/` and the
+skill text explicitly instructs the model to read it — otherwise every invocation
+eats context.
 
-**`/research-harness:canvas`** legt `research/canvas.md` an und arbeitet die
-Elemente im Dialog durch. Schreibt ausschließlich `[proposed]` und `[tentative]`.
-Lässt Elemente leer, für die keine Antwort vorliegt.
+**`/research-harness:canvas`** creates `research/canvas.md` and works through the
+elements in dialogue. Writes only `[proposed]`, `[tentative]`, and transcribed
+`[stated]`. Leaves elements empty when no answer exists.
 
-**`/research-harness:canvas-review`** liest Canvas und — falls vorhanden —
-Manuskript und meldet vier Dinge:
+**`/research-harness:canvas-review`** reads the canvas and, if present, the
+manuscript, and reports four things:
 
-1. leere Elemente,
-2. Verletzungen der Abhängigkeitsregel (§4.4),
-3. Elemente, die inhaltlich nicht zueinander passen (Contributions beantworten
-   die Research Question nicht; Boundary Conditions widersprechen dem Setting),
-4. Aussagen mit `[stated]`/`[accepted]`, die das Manuskript nicht mehr deckt.
+1. empty elements,
+2. violations of the dependency rule (§4.4),
+3. elements that do not fit each other (contributions that do not answer the
+   research question; boundary conditions that contradict the setting),
+4. statements marked `[stated]`/`[accepted]` that the manuscript no longer
+   supports.
 
-Schreibt nur `[proposed]`-Notizen und hängt an `decisions.md` an. Dieser Skill
-ist bereits der größte Teil des späteren Prüfwerkzeugs (B).
+Writes only `[proposed]` notes and appends to `decisions.md`. This skill is
+already most of the later audit tool (B).
 
-### 5.5 `references/` — Struktur ohne fremden Text
+### 5.5 `references/` — structure without other people's text
 
-**Das Plugin liefert keine geschützten Texte aus.** Es kodiert ein eigenes,
-nachgebildetes Fragenwerk, nennt zu jedem Element die vollständige Quellenangabe
-mit DOI und verweist über `RESEARCH_HARNESS_LIBRARY` auf eine lokale Kopie, falls
-vorhanden. Belege in `REFERENCES.md`.
+**The plugin ships none of the protected texts.** It encodes its own question set,
+modelled on and citing the sources, names the full reference with DOI for every
+element, and points at a local copy through `RESEARCH_HARNESS_LIBRARY` if one
+exists. Full references in `REFERENCES.md`.
 
-| Element | AMJ-Teil | Zusatzmodul |
+| Element | AMJ part | Additional module |
 |---|---|---|
-| 1 Puzzle | 1 · Topic Choice (Colquitt & George 2011) | fünf Kriterien: *significance, novelty, curiosity, scope, actionability* |
-| 2 Prior Research | 3 · Setting the Hook (Grant & Pollock 2011) | **Problematisierung** (Monteiro et al. 2022) |
+| 1 Puzzle | 1 · Topic Choice (Colquitt & George 2011) | five criteria: *significance, novelty, curiosity, scope, actionability* |
+| 2 Prior Research | 3 · Setting the Hook (Grant & Pollock 2011) | **problematization** (Monteiro et al. 2022) |
 | 3 Research Question | 3 · Setting the Hook | |
 | 4 Constructs | 4 · Grounding Hypotheses (Sparrowe & Mayer 2011) | |
 | 5 Setting | 2 · Research Design (Bono & McNamara 2011) | 7 · Qualitative (Bansal & Corley 2012) |
@@ -399,183 +391,176 @@ vorhanden. Belege in `REFERENCES.md`.
 | 8 Contributions | 6 · Discussing the Implications (Geletkanycz & Tepper 2012) | |
 | 9 Boundaries | 6 · Discussing the Implications | |
 
-`problematization.md` trägt die vier Sensibilitäten aus Monteiro et al. —
-Dialog mit dem empirischen Feld; Annahmen angreifen; fragen, wie wir hierher
-gekommen sind; das Unsichtbare sichtbar machen — gekreuzt mit *what / when /
-where*. Es hängt an Element 2 und ist die Antwort auf die Worksheet-Frage *„What
-assumptions do prior studies make about the phenomenon? Are they accurate?"*,
-die der Canvas stellt, aber nicht operationalisiert.
+`problematization.md` carries the four sensibilities from Monteiro et al. — enter
+a dialogue with the empirical setting; challenge assumptions; ask how we got here;
+make the invisible visible — crossed with *what / when / where*. It attaches to
+element 2 and answers the worksheet question the canvas raises but does not
+operationalize: *"What assumptions do prior studies make about the phenomenon?
+Are they accurate?"*
 
 ---
 
-## 6 · Die drei Modi
+## 6 · The three modes
 
-Aus Daniels ursprünglicher Core-Liste („via brainstorming / braindump / import
-mode"). Der Modus steht im Frontmatter und steuert, wo `canvas` einsteigt.
+From the original feature list ("via brainstorming / braindump / import mode").
+The mode is recorded in the frontmatter and determines where `canvas` starts.
 
-| Modus | Ausgangslage | Einstieg |
+| Mode | Starting point | Entry |
 |---|---|---|
-| `brainstorming` | nichts liegt vor | Element 1, Dialog, Colquitts fünf Kriterien |
-| `seed` | Material und Phänomen liegen vor, kein Manuskript, keine Literaturfestlegung | Element 1 über das Problematisierungs-Modul, nicht über Prior Research |
-| `import` | ein Manuskript liegt vor | Rekonstruktion rückwärts aus dem Text |
+| `brainstorming` | nothing exists yet | element 1, dialogue, Colquitt's five criteria |
+| `seed` | material and phenomenon exist, no manuscript, no literature commitment | element 1 through the problematization module, not through prior research |
+| `import` | a manuscript exists | reconstruct backwards from the text |
 
-**Harte Regel für `import`:** Alles, was der Agent aus dem Manuskript liest, ist
-`[proposed]`. Nie `[stated]`, auch wenn es wörtlich im Text steht — der Agent
-liest ein Manuskript, er hört nicht den Autor. Die Promotion macht der Mensch.
-Damit ist Import ohne Sonderregel sicher.
-
----
-
-## 7 · Der klickbare Canvas (Stufe 2)
-
-Der Originalcanvas ist als *„ready-to-copy"*-Posterausdruck gedacht. Die digitale
-Entsprechung ist eine Sitzungsansicht für Autorenteam-Meetings und Solo-Reviews.
-
-- **Zoom-out:** das Puzzle-Layout, neun Felder, Marker farbig, Abhängigkeits­
-  verletzungen hervorgehoben.
-- **Zoom-in:** ein Element mit Fragenwerk, Inhalt, Markern, Quellenangabe.
-- **Nummerierung:** jedes Feld und jede Teilfrage trägt ihre Nummer sichtbar.
-- **Editieren und kommentieren:** Kommentare gehen als `DISCOVERY` nach
-  `decisions.md`.
-
-**Eine Wahrheit.** Die Ansicht wird aus `canvas.md` erzeugt und schreibt dorthin
-zurück. Sie lebt nicht daneben.
-
-**Sie ist der Freigabepfad.** Hier setzt der Mensch `[stated]` und `[accepted]` —
-per Klick. `bin/canvas-serve.js` bindet auf `127.0.0.1`, zufälliger Port, und
-schreibt die Promotion direkt in die Datei. Der Deny-Hook bleibt die Gegenprobe
-auf der Modellseite. Damit sind es zwei getrennte Wege in dieselbe Datei: einer
-für den Agenten, einer für den Menschen.
-
-**Und eine ehrliche Grenze.** Ein lokaler HTTP-Server ist keine kryptografische
-Schranke gegen ein Modell, das `Bash` hat. Der Guard verweigert deshalb
-zusätzlich `Bash`-Aufrufe gegen den Server-Port. Die Sicherheitseigenschaft ist
-trotzdem **Sichtbarkeit und Absichtlichkeit, nicht Unmöglichkeit**: eine
-Promotion erfordert einen bewussten, sichtbaren Akt. Das ist strikt mehr als
-Sidequest hat, aber es ist nicht absolut, und der Harness soll das über sich
-selbst aussagen können.
-
-**Nicht im Plugin:** die Veröffentlichung als Artifact für entfernte Koautoren.
-Das hängt an einem Konto; das Plugin liefert die lokale, kontofreie Variante,
-damit es bei fremden Forschenden funktioniert.
+**Hard rule for `import`:** everything the agent reads out of a manuscript is
+`[proposed]`. Never `[stated]`, even when it appears verbatim in the text — the
+agent is reading a manuscript, not hearing the author. Promotion is the human's
+act. This makes import safe without a special case.
 
 ---
 
-## 8 · Bauen in zwei Stufen
+## 7 · The clickable canvas (stage 2)
 
-| Stufe | Inhalt | Größenordnung |
+The original canvas is designed as a *"ready-to-copy"* poster print. Its digital
+equivalent is a session view for author-team meetings and solo reviews.
+
+- **Zoom out:** the puzzle layout, nine fields, markers in colour, dependency
+  violations highlighted.
+- **Zoom in:** one element with its question set, content, markers, and source.
+- **Numbering:** every field and every sub-question shows its number.
+- **Edit and comment:** comments go to `decisions.md` as `DISCOVERY` entries.
+
+**One truth.** The view is generated from `canvas.md` and writes back to it. It
+does not live alongside it.
+
+**It is the approval path.** This is where a human sets `[stated]` and
+`[accepted]` — by clicking. `bin/canvas-serve.js` binds to `127.0.0.1` on a
+random port and writes the promotion directly into the file. The deny hook
+remains the counter-check on the model's side. Two separate routes into the same
+file: one for the agent, one for the human.
+
+**And an honest limit.** A local HTTP server is not a cryptographic barrier
+against a model that has `Bash`. The guard therefore also refuses `Bash`
+invocations against the server's port. The security property is nonetheless
+**visibility and deliberateness, not impossibility**: a promotion requires a
+conscious, visible act. That is strictly more than Sidequest has, but it is not
+absolute, and the harness should be able to say so about itself.
+
+**Not in the plugin:** publishing the canvas as a hosted artifact for remote
+co-authors. That depends on an account; the plugin ships the local, account-free
+variant so it works for other researchers.
+
+---
+
+## 8 · Building in two stages
+
+| Stage | Contents | Size |
 |---|---|---|
-| **1 · Aufzeichnung** | Manifeste, `inject-state.js`, `guard-promotion.js` + Test, zwei Skills, `references/` | ~950 Zeilen, überwiegend Prosa |
-| **2 · Freigabepfad und Sitzungsansicht** | `bin/canvas-serve.js`, `dashboard/canvas.html`, Guard-Erweiterung auf den Server-Port | ~850 Zeilen |
+| **1 · Record** | manifests, `inject-state.js`, `guard-promotion.js` + test, two skills, `references/` | ~950 lines, mostly prose |
+| **2 · Approval path and session view** | `bin/canvas-serve.js`, `dashboard/canvas.html`, guard extended to the server port | ~850 lines |
 
-Nach Stufe 1 gibt es ein benutzbares Werkzeug; der Freigabepfad ist dann „der
-Mensch editiert die Datei selbst" — ehrlich und ausreichend. Zusammen rund 1.800
-Zeilen, unter Sidequests erstem Commit (2.828 Zeilen, der bereits Store, lokalen
-HTTP-Server, CLI und selbstgenügsames Dashboard-HTML enthielt).
-
----
-
-## 9 · Validierung an `junior-gap`
-
-Dieselbe Studie in zwei Zuständen. `research-harness-paper` scheidet als
-Canvas-Testfall aus: der AMJ-Canvas ist für **empirische** Managementforschung
-gebaut, ein konzeptionelles Design-Science-Paper füllt die Hälfte der Elemente
-nicht oder nur metaphorisch.
-
-**Lauf A — Import.** Den Canvas aus dem R2-Manuskript rekonstruieren.
-*Erfolgskriterium:* `canvas-review` findet mindestens eine **inhaltliche**
-Inkohärenz, die Daniel als real anerkennt — nicht nur Formalien wie fehlende
-Elemente. Der Abhängigkeitsgraph muss an einem Paper in Revision weitgehend
-erfüllt sein; ist er es nicht, stimmt entweder der Graph nicht oder das Paper hat
-ein echtes Problem.
-
-**Lauf B — Seed.** Nur Material und Phänomen, kein Manuskript, keine
-Literaturfestlegung, Einstieg über das Problematisierungs-Modul.
-*Erfolgskriterium:* eine Rahmung, die sich von der heutigen substanziell
-unterscheidet. Ob besser oder schlechter — beides ist informativ.
-
-**Der Vergleich beider Läufe ist der Befund**, und er ist zugleich das Artefakt,
-das `research-harness-paper` für den OrgSci-Call braucht („a prototype or
-equivalent research artifact"). Ein Harness, der an einer laufenden Studie in
-zwei Modi lief und deren Rahmungen vergleicht, ist stärker als einer, der auf
-sich selbst angewandt wurde.
-
-**Daten:** lokal, unter bestehender Ethikfreigabe. Lauf B sieht Material aus
-`_raw/`; Lauf A liest nur das Manuskript. Nichts davon wird ausgeliefert.
+After stage 1 there is a usable tool; the approval path is then "the human edits
+the file directly" — honest and sufficient. Together roughly 1,800 lines, below
+Sidequest's first commit (2,828 lines, which already contained a store, a local
+HTTP server, a CLI, and a self-contained dashboard HTML file).
 
 ---
 
-## 10 · Was diesen Entwurf widerlegen würde
+## 9 · Validation on `junior-gap`
 
-Nach dem Muster des Projektcharters aus `02-pilot-and-toolkit.md`: „Evidence that
-would make us narrow, redesign, or abandon the approach."
+The same study in two states. `research-harness-paper` is ruled out as a canvas
+test case: the AMJ canvas is built for **empirical** management research, and a
+conceptual design-science paper leaves half the elements unfilled or fills them
+only metaphorically.
 
-- **Die neun Elemente lassen sich für eine qualitative Studie nur verzerrt
-  füllen.** → Der Canvas ist das falsche Instrument; ein genre-spezifisches
-  Profil muss her, bevor irgendetwas gebaut wird.
-- **`canvas-review` findet nur Formalien, nie Inhaltliches.** → Es ist eine
-  Checkliste, kein Harness. Genau das, wovor die MISQ-Editorial warnt.
-- **Die Promotion über die Ansicht fühlt sich als Reibung an und Daniel editiert
-  stattdessen von Hand.** → Der Freigabepfad ist Theater; die Achse braucht eine
-  andere Form.
-- **Der Seed-Modus produziert nur Gap-Spotting.** → Das
-  Problematisierungs-Modul funktioniert als Prompt nicht und muss anders
-  gebaut werden.
-- **Der Abhängigkeitsgraph meldet an einem Paper in Revision dauernd
-  Verletzungen.** → Der Graph bildet Forschungspraxis falsch ab.
+**Run A — import.** Reconstruct the canvas from the R2 manuscript. *Success
+criterion:* `canvas-review` finds at least one **substantive** incoherence the
+author recognizes as real — not merely formal gaps such as missing elements. The
+dependency graph should be largely satisfied for a paper in revision; if it is
+not, either the graph is wrong or the paper has a real problem.
 
----
+**Run B — seed.** Material and phenomenon only, no manuscript, no literature
+commitment, entering through the problematization module. *Success criterion:* a
+framing that differs substantively from the current one. Better or worse — both
+are informative.
 
-## 11 · Offene Fragen
+**The comparison of the two runs is the finding**, and it is simultaneously the
+artifact `research-harness-paper` needs for the *Organization Science* call ("a
+prototype or equivalent research artifact"). A harness that ran on a live study
+in two modes and compares the resulting framings is stronger evidence than one
+applied to itself.
 
-**Für SQ-6 (Sichtung der drei Bestände) — geschärfter Auftrag:** Nicht offen
-sichten, sondern **gegen diesen Entwurf prüfen.** Trägt das Fragenwerk die Regeln
-aus `junior-gap/material/misq-research-note/`? Widerspricht die Marker-Achse dem
-Oracle-Gate in `research-harness-paper/AGENTS.md`? Welche der Regeln, die in den
-drei driftenden `AGENTS.md` doppelt stehen, fällt unter diesen MVP, welche erst
-unter das Schreibhandwerk oder die Belegmaschinerie?
-
-**Für SQ-7 (Fixture-Strategie) — entblockt:** Die Fixture für diesen MVP ist ein
-synthetischer Canvas plus ein erfundenes Manuskript. Kein personenbezogenes
-Material, keine Einwilligungsfrage. Die Transkript-Frage bleibt offen und muss
-beantwortet werden, bevor die Belegmaschinerie gebaut wird — sie hält den MVP
-aber nicht mehr auf.
-
-**Noch nicht entschieden:**
-
-- Wie oft ein Agent `[stated]` für etwas vergibt, das so nicht gesagt wurde. Das
-  ist die bekannte Restfläche der Achse (§4.3) und nicht maschinell prüfbar. Am
-  echten Fall zu beobachten: Wenn es häufig vorkommt, muss `[stated]` ebenfalls
-  über den Freigabepfad — um den Preis, dass jeder Dialogschritt einen Klick
-  braucht.
-- Ob `decisions.md` bei längerer Laufzeit zu groß für die Injektion wird und eine
-  Verdichtung braucht.
-- Wie ein Koautor, der das Repo teilt, den Freigabepfad benutzt. Der MVP ist
-  ausdrücklich Einzelplatz.
-- Ob `research/` bei Journals kollidiert, die ein eigenes Ordnerschema für
-  Supplements vorschreiben.
+**Data:** local, under existing ethics approval. Run B sees material from
+`_raw/`; run A reads only the manuscript. None of it is shipped.
 
 ---
 
-## 12 · Wo B und C andocken
+## 10 · What would refute this design
 
-- **B (Prüfwerkzeug)** ist `canvas-review` erweitert: Rekonstruktion aus
-  fremden Manuskripten, `/tell-me-why` für Abschlussarbeitende, Devil's Advocate
-  gegen einzelne Elemente.
-- **C (Schreibhandwerk)** liest den Canvas als Kontext und nutzt dieselbe
-  `references/`-Zuordnung: `/abstract` aus den Elementen 1, 3, 7, 8;
-  `/significance-statement` aus 8 und 9; der Absatz-für-Absatz-Review-Modus
-  („but I like to write") mit Versionierung im Entscheidungslog.
+Following the project charter pattern — "evidence that would make us narrow,
+redesign, or abandon the approach."
 
-Beides braucht keine Änderung am Datenmodell.
+- **The nine elements can only be filled for a qualitative study by distorting
+  it.** → The canvas is the wrong instrument; a genre-specific profile is needed
+  before anything gets built.
+- **`canvas-review` finds only formal gaps, never substantive ones.** → It is a
+  checklist, not a harness. Exactly what the MIS Quarterly editorial warns about.
+- **Promotion through the view feels like friction and the author edits the file
+  by hand instead.** → The approval path is theatre; the axis needs another form.
+- **Seed mode produces nothing but gap-spotting.** → The problematization module
+  does not work as a prompt and must be built differently.
+- **The dependency graph reports constant violations on a paper in revision.** →
+  The graph misrepresents research practice.
 
 ---
 
-## Belege
+## 11 · Open questions
 
-Alle in [`REFERENCES.md`](../../../REFERENCES.md). Volltexte lokal unter
-`_literature/` (nicht versioniert), PDFs in `~/dh-library/pdf/`.
+**For SQ-6 (survey of the three rule collections) — sharpened brief:** do not
+survey openly; **test against this design.** Does the question set carry the rules
+in `junior-gap/material/misq-research-note/`? Does the marker axis contradict the
+oracle gate in `research-harness-paper/AGENTS.md`? Of the rules that appear twice
+across the three drifting `AGENTS.md` files, which fall under this MVP, and which
+only under the writing craft or the evidence machinery?
 
-Toolshed-Befunde stammen aus einer Untersuchung des Marketplace-Repos
-(`~/.claude/plugins/marketplaces/eigenwise-toolshed`, 3.979 Commits) vom
-2026-09-15; Datei- und Commit-Angaben sind im Text belegt.
+**For SQ-7 (fixture strategy) — unblocked:** the fixture for this MVP is a
+synthetic canvas plus an invented manuscript. No personal data, no consent
+question. The transcript question stays open and must be answered before the
+evidence machinery is built, but it no longer holds up the MVP.
+
+**Not yet decided:**
+
+- How often an agent marks something `[stated]` that was not in fact said. That
+  is the known residual surface of the axis (§4.3) and is not machine-checkable.
+  To be observed on the real case: if it happens often, `[stated]` must also go
+  through the approval path — at the cost of a click on every dialogue step.
+- Whether `decisions.md` grows too large for injection over a long project and
+  needs compaction.
+- How a co-author sharing the repo uses the approval path. The MVP is explicitly
+  single-seat.
+- Whether `research/` collides with journals that prescribe their own directory
+  scheme for supplementary material.
+
+---
+
+## 12 · Where B and C attach
+
+- **B (audit tool)** is `canvas-review` extended: reconstruction from other
+  people's manuscripts, `/tell-me-why` for thesis students, devil's advocate
+  against individual elements.
+- **C (writing craft)** reads the canvas as context and uses the same
+  `references/` mapping: `/abstract` from elements 1, 3, 7, 8;
+  `/significance-statement` from 8 and 9; the paragraph-by-paragraph review mode
+  ("but I like to write") with versioning in the decision log.
+
+Neither requires a change to the data model.
+
+---
+
+## References
+
+All in [`REFERENCES.md`](../../../REFERENCES.md). Full texts are held locally in
+`_literature/` (not version-controlled); PDFs in the author's library.
+
+Toolshed findings come from a study of the marketplace repository
+(`~/.claude/plugins/marketplaces/eigenwise-toolshed`, 3,979 commits) carried out
+on 2026-09-15; file and commit references are cited inline.

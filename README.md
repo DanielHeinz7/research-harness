@@ -1,46 +1,63 @@
 # research-harness
 
-Ein Research Harness für das Steuern von Paper-Projekten, als Claude-Code-Plugin —
-so wie Toolshed samt Sidequest es für Software-Projekte ist: Verfahren, Aufzeichnungen,
-Checks und Entscheidungsrechte für AI-gestützte Forschung.
+A research harness for steering paper projects, built as a Claude Code plugin —
+the way Toolshed and Sidequest are for software projects: procedures, records,
+checks, and decision rights for AI-assisted research.
 
-**Stand:** Repo angelegt, MVP noch nicht entworfen.
+**Status:** repository created, MVP designed, not yet implemented.
+See [the MVP design](docs/superpowers/specs/2026-09-15-research-harness-mvp-design.md).
 
-## Geltungsbereich
+## Scope
 
-Zunächst ausschließlich **Paper-Projekte** (Journal, Conference; Buchbeiträge fallen mit
-hinein). Anträge, Betreuung und Reviews sind die nächsten Kandidaten — entschieden wird
-das am echten Fall, nicht vorab.
+Paper projects only, for now — journal articles, conference papers, book
+chapters. Grant proposals, supervision, and reviewing are the next candidates,
+but that gets decided on a real case, not in advance.
 
-## Ein Vertrag, kein Pfad
+## A contract, not a path
 
-Der Vertrag ist **„ein Paper-Projekt-Repo"**. Wo dieses Repo liegt, ist Konfiguration.
+The contract is **"a paper project repo."** Where that repo lives is
+configuration.
 
-Das Plugin darf keine Wurzel fest verdrahten — insbesondere nicht `~/dh-research/`, die
-lokale Konvention seines Autors. Es soll über Toolshed an andere Forschende gehen, und
-die haben diese Wurzel nicht. Dieselbe Beziehung hat Toolshed zu `~/dh-appdev`.
+The plugin must not hard-wire any root — least of all its author's local
+convention. It ships through Toolshed to other researchers, and they do not have
+that root. Toolshed stands in the same relationship to its own author's
+directories.
 
-## Wo was liegt
+A repository counts as a paper project when it contains `research/canvas.md`.
+Nothing else. In any other repository the plugin stays silent.
 
-| Ebene | Ort |
-|---|---|
-| Vorhaben, Entscheidungen, Status | `~/dh-hq/vault/areas/research-harness.md` |
-| Dieses Plugin | dieses Repo (öffentlich auf GitHub über Toolshed geplant) |
-| Erster Anwendungsfall | Vorhaben `research-harness-paper` — das Paper *über* Research Harnesses, geschrieben *mit* dem Harness |
+## What it does
 
-Der erste Prototyp der Idee — Manuskript als Git-Repo, Writing-Profile, Oracle-Gate als
-menschliches Qualitätsurteil, `AGENTS.md` mit Anti-Fabrikations-Regeln — lebt als gelebte
-Instanz im Paper-Repo und ist die Vorlage, aus der hier ein verallgemeinertes Template
-abgeleitet wird.
+The first shippable piece makes the state of a paper project durable and
+inspectable:
 
-## Woher die Regeln kommen
+- the nine elements of the AMJ Management Research Canvas as version-controlled
+  project state in `research/canvas.md`, each statement carrying an evidence
+  marker
+- an append-only decision log in `research/decisions.md`
+- a dependency check across the nine elements, reported rather than enforced —
+  the canvas is a puzzle whose pieces must fit, not a sequence of stages
+- an enforced separation between what an agent proposed and what a human
+  accepted, backed by a hook that denies the model the ability to declare a
+  commitment or to alter what the researcher said
+- a clickable session view for author-team meetings, which doubles as the
+  approval path
 
-Das Fragenwerk des Harness ist aus veroeffentlichter Methoden- und
-Schreibhandwerksliteratur abgeleitet — dem AMJ Management Research Canvas, der
-Siebenerserie *Publishing in AMJ*, der MISQ-Editorial zur phaenomenfokussierten
-Problematisierung und zwei JAIS-Beitraegen zum Schreiben. Die vollstaendigen
-Belege stehen in [REFERENCES.md](REFERENCES.md).
+## Where the rules come from
 
-Das Plugin liefert diese Texte nicht mit. Es kodiert ein eigenes, nachgebildetes
-Fragenwerk und verweist auf die Quelle; eine lokale Volltextsammlung wird ueber
-`RESEARCH_HARNESS_LIBRARY` eingebunden.
+The harness's question set is derived from published methodological and
+craft literature — the AMJ Management Research Canvas, the seven-part
+*Publishing in AMJ* series, the MIS Quarterly editorial on phenomenon-focused
+problematization, and two JAIS pieces on writing. Full references in
+[REFERENCES.md](REFERENCES.md).
+
+The plugin does not ship these texts. It encodes its own question set, modelled
+on them and citing them, and points at a local full-text collection through
+`RESEARCH_HARNESS_LIBRARY`.
+
+## Configuration
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `RESEARCH_HARNESS_DIR` | state directory inside the paper repo | `research/` |
+| `RESEARCH_HARNESS_LIBRARY` | local full-text collection of the cited works | unset |

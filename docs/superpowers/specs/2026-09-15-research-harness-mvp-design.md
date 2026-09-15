@@ -6,6 +6,16 @@ This document defines the scope of the first shippable piece of the Claude Code
 plugin `research-harness`. It is the basis for an implementation plan, not the
 plan itself.
 
+> **Before this repository is made public**, strip the passages marked
+> `<!-- private: … -->`. They name the author's own unpublished studies and local
+> directory layout, which carry no argumentative weight outside this draft. Each
+> marker says what to put in its place; where a whole region is affected, it ends
+> at `<!-- /private -->`. Find them with:
+>
+> ```
+> grep -rn "private:\|/private" docs/
+> ```
+
 ---
 
 ## 1 · Purpose
@@ -29,14 +39,17 @@ Three independent lines point at the same thing:
    event, two skills, a `references/` directory. It stayed alone for eight days.
    Sidequest itself started with no MCP, no dispatch, no gates; the order was
    **capture and surface → hand off → verify and lock.**
-2. **The author's own vault format.** The area notes under `~/dh-hq/vault/areas/`
+2. **The author's own vault format.** <!-- private: replace the path with "the
+   author's project notes" --> The area notes under `~/dh-hq/vault/areas/`
    already carry `## Status`, `## Kontext`, `## Entscheidungen` (with
    *decided / why / rejected / open*) and `## Offene Fragen` — plus the markers
    `[stated]` and `[tentative]`, documented in `CONVENTIONS.md:239-242`. That is
    the distinction between a proposal and an accepted claim, proven in daily use.
    The harness does not invent it; it moves it into the paper repo and forces the
    agent to write into it.
-3. **Where `junior-gap` came from.** A real problem, not a literature gap —
+3. <!-- private: replace the study name with "the qualitative study used for
+   validation below" -->
+   **Where `junior-gap` came from.** A real problem, not a literature gap —
    phenomenon-focused problematization in the sense of the MIS Quarterly
    editorial. That is precisely the point where unharnessed AI reliably makes a
    paper mediocre: it produces an unlimited supply of plausible gaps and never a
@@ -60,7 +73,9 @@ multi-author model, no journal search.
 ### The contract
 
 The plugin's contract is **"a paper project repo."** Where that repo lives is
-configuration. `~/dh-research/` is the author's local convention and must appear
+configuration. <!-- private: drop the concrete root; the sentence works as "the
+author's local convention must appear nowhere in the plugin" -->
+`~/dh-research/` is the author's local convention and must appear
 nowhere in the plugin. The only root a hook knows is `${CLAUDE_PLUGIN_ROOT}`; the
 project directory comes from the chain
 `process.env.CLAUDE_PROJECT_DIR || data.cwd || process.cwd()`.
@@ -128,6 +143,8 @@ Each element holds numbered sub-questions (`1.1`, `1.2`, …) drawn from the
 question set in `references/canvas-elements.md`.
 
 ### 4.2 `research/canvas.md`
+
+<!-- private: the example uses a real project name; any placeholder will do -->
 
 ```markdown
 ---
@@ -231,6 +248,8 @@ Question: *"How does answering your research question advance prior research and
 our understanding of the puzzle?"* (→ 3 depends on 1 and 2).
 
 ### 4.5 `research/decisions.md`
+
+<!-- private: the example uses a real project name; any placeholder will do -->
 
 Append-only. History is never edited; a correction appends a new entry and names
 the one it supersedes.
@@ -465,6 +484,10 @@ HTTP server, a CLI, and a self-contained dashboard HTML file).
 
 ---
 
+<!-- private: this whole section names two unpublished projects. Before
+publication, rename them to "the qualitative study" and "the conceptual paper",
+and drop the `_raw/` path at the end. The argument survives the rename. -->
+
 ## 9 · Validation on `junior-gap`
 
 The same study in two states. `research-harness-paper` is ruled out as a canvas
@@ -492,6 +515,8 @@ applied to itself.
 **Data:** local, under existing ethics approval. Run B sees material from
 `_raw/`; run A reads only the manuscript. None of it is shipped.
 
+<!-- /private -->
+
 ---
 
 ## 10 · What would refute this design
@@ -515,6 +540,10 @@ redesign, or abandon the approach."
 
 ## 11 · Open questions
 
+<!-- private: the two paragraphs below name internal paths of other
+repositories. Before publication, cut them entirely — they are working notes for
+the author's own board, not part of the design. -->
+
 **For SQ-6 (survey of the three rule collections) — sharpened brief:** do not
 survey openly; **test against this design.** Does the question set carry the rules
 in `junior-gap/material/misq-research-note/`? Does the marker axis contradict the
@@ -526,6 +555,8 @@ only under the writing craft or the evidence machinery?
 synthetic canvas plus an invented manuscript. No personal data, no consent
 question. The transcript question stays open and must be answered before the
 evidence machinery is built, but it no longer holds up the MVP.
+
+<!-- /private -->
 
 **Not yet decided:**
 

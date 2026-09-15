@@ -32,3 +32,15 @@ Der erste Prototyp der Idee — Manuskript als Git-Repo, Writing-Profile, Oracle
 menschliches Qualitätsurteil, `AGENTS.md` mit Anti-Fabrikations-Regeln — lebt als gelebte
 Instanz im Paper-Repo und ist die Vorlage, aus der hier ein verallgemeinertes Template
 abgeleitet wird.
+
+## Woher die Regeln kommen
+
+Das Fragenwerk des Harness ist aus veroeffentlichter Methoden- und
+Schreibhandwerksliteratur abgeleitet — dem AMJ Management Research Canvas, der
+Siebenerserie *Publishing in AMJ*, der MISQ-Editorial zur phaenomenfokussierten
+Problematisierung und zwei JAIS-Beitraegen zum Schreiben. Die vollstaendigen
+Belege stehen in [REFERENCES.md](REFERENCES.md).
+
+Das Plugin liefert diese Texte nicht mit. Es kodiert ein eigenes, nachgebildetes
+Fragenwerk und verweist auf die Quelle; eine lokale Volltextsammlung wird ueber
+`RESEARCH_HARNESS_LIBRARY` eingebunden.

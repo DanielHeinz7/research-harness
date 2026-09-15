@@ -60,7 +60,8 @@ Three independent lines point at the same thing:
 ## 2 · What the MVP is — and is not
 
 **It is:** the canvas of a paper project as durable, version-controlled project
-state inside the paper repo, with evidence markers, a dependency check, an
+state inside the paper repo, with an authorization axis and an evidence axis, a
+dependency check, an
 append-only decision log, context injection at session start, an enforced
 approval channel, and a clickable session view.
 
@@ -149,9 +150,11 @@ question set in `references/canvas-elements.md`.
 ```markdown
 ---
 project: junior-gap
+outlet: MIS Quarterly
+genre: qualitative / interpretive
 created: 2026-09-15
 mode: import
-canvas-schema: 1
+canvas-schema: 2
 ---
 
 # 1 · Puzzle
@@ -162,26 +165,37 @@ How early-career professionals ... [accepted]
 
 ## 1.2 What are you trying to explain or understand better?
 
-The break between ... [stated]
-A second reading would be ... [proposed]
+The break between onboarding and first delivery ... [stated]
+Prior work treats this as a training problem ... [proposed, unverified]
+Three interviews describe the same reversal ... [proposed, src: int-04 §2]
 
 ## 1.3 Why is this puzzle important?
 
 _(empty)_
 ```
 
+`outlet` and `genre` are frontmatter, not a tenth element: the canvas has nine
+elements by its source, but almost every question in the set is answered
+differently for a qualitative MISQ paper than for an experimental one, and the
+harness must know which before it asks.
+
 **Rules:**
 
-- Markers sit **at the end of a statement**, as in the author's vault. A
-  statement is a paragraph.
-- Ordering: `[proposed]` < `[tentative]` < `[stated]` < `[accepted]`.
-- An element carries the status of its **weakest** statement. An element with no
-  statement is empty. So "element 3 is `[accepted]`" means *every* statement in
-  element 3 carries `[accepted]`.
+- Markers sit **at the end of a statement**, as in the author's own convention.
+  A statement is a paragraph.
+- A statement carries **one authorization marker** and, optionally, **one
+  evidence tag** (§4.3). Both live in the same brackets, separated by a comma.
 - **An empty element is a legal and explicitly desirable state.** It is better
   than plausible filler. This is the anti-fabrication rule at canvas level.
 
-### 4.3 Markers and the two authorization classes
+### 4.3 Two axes, not one
+
+The first draft of this design collapsed two different things into one
+vocabulary and called the result "evidence markers." They are orthogonal and
+have to stay apart. The survey of the existing rule collections (SQ-6) is what
+surfaced this.
+
+**Axis 1 — authorization: who may write this.** Enforced by the guard hook.
 
 | Marker | Meaning | Model may create | Model may alter/remove |
 |---|---|---|---|
@@ -190,27 +204,81 @@ _(empty)_
 | `[stated]` | the researcher said or wrote it | yes — as transcription | **no** |
 | `[accepted]` | a commitment of the project | **no** | **no** |
 
-`[stated]` and `[tentative]` are the author's existing vault markers, carried
-over unchanged.
+**Axis 2 — evidence: what backs this.** Reported by `canvas-review`, never
+enforced, because whether a source *supports* a claim is a judgment.
+
+| Tag | Meaning |
+|---|---|
+| `src: <id>` | resolves to a locatable place in the project's own material |
+| `unverified` | no source was found — stated explicitly, not omitted |
+| `mail YYYY-MM-DD` | from a sent message; counts as `stated` |
+| `cal YYYY-MM-DD` | from the calendar; counts as `stated` |
+
+**The rule the three existing rule collections already share**, and the reason
+axis 2 exists at all: *every factual claim carries a source; if none can be
+found, the claim is marked `unverified` — never invent a citation, DOI, author,
+year, or quote.* It is rule number one in all three of the author's `AGENTS.md`
+files, in nearly identical words. A vocabulary that cannot express it is not the
+vocabulary those files were drifting from.
+
+`canvas-review` reports every factual statement that carries neither an `src:`
+nor `unverified`. Neither is a legal state.
+
+**Relation to the author's existing convention.** The last two tags are taken
+from it unchanged. One thing is *not* taken over: that convention promotes
+`tentative` to `stated` automatically when a finding repeats. That is a rule for
+reconstructing a record after the fact. In a live canvas, repetition is not
+confirmation, and automatic promotion would be exactly the channel the guard
+exists to close. The canvas adopts the vocabulary and drops the auto-promotion,
+deliberately.
 
 **Why `[stated]` may be created but `[accepted]` may not.** `[stated]` is a
-*transcription*: the researcher says something in conversation and the agent
-records it. No hook can verify whether a transcription is faithful — and
-forbidding it would make the dialogue unusable, because the agent could not write
-down what was just said. Something else is both enforceable and meaningful, and
-that is where the gate sits:
+*transcription*: the researcher says something and the agent records it. Where
+the statement claims a source, `canvas-review` can resolve it; where it is pure
+conversation, nothing can. Forbidding transcription outright would make dialogue
+unusable — the agent could not write down what was just said. Two things are
+both enforceable and meaningful, and that is where the gate sits:
 
 - The model may **never alter or delete what the human said.**
 - The model may **never declare a commitment.**
 
-The two markers therefore have different enforcement, and both are needed. One
-residual surface remains: an agent can mark something `[stated]` that was not in
-fact said. This is not machine-checkable, so `canvas-review` lists every
-`[stated]` statement for periodic human review and the session view highlights
-them. The harness should be able to report its own holes rather than conceal
-them.
+The residual surface is narrower than the first draft claimed, but real: a
+purely conversational `[stated]` statement cannot be checked. `canvas-review`
+therefore lists them for periodic review and the session view marks them. The
+harness should report its own holes rather than conceal them.
 
-### 4.4 Dependencies instead of a stage gate
+### 4.4 Element status, and why a proposal must not demote
+
+An element's status is derived **only from its committed statements** — those
+carrying `[stated]` or `[accepted]`. Statements carrying `[proposed]` or
+`[tentative]` sit alongside as open annotations and never lower it.
+
+This is not cosmetic. The first draft derived element status from the weakest
+statement of any kind, while the guard's own refusal text tells the model to
+"propose the change as `[proposed]` alongside it." Composed, those two rules
+meant that every useful suggestion demoted an accepted element and cascaded
+false inconsistencies through everything downstream — the harness would have
+punished helpfulness. SQ-6 found this by reading the two rules against each
+other.
+
+**Acceptance is bound to the text it was given for.** When a statement is
+promoted to `[accepted]`, the approval path appends a `DECISION` entry to
+`decisions.md` carrying a short hash of the accepted text. `canvas-review`
+recomputes it: if the statement has since been reworded, the acceptance no
+longer covers it and is reported as stale. The guard already prevents the model
+from doing that; the hash also catches a human edit, a merge, or a co-author.
+
+The mechanism is not invented here. `ldx-design-mining/artifact/kernel.py` keys
+recorded human reviews to a SHA-256 of the fragment text precisely so they
+survive re-mining, and its `audit_r1()` check mechanically verified 75 of 75
+fragments in the one logged run and caught a deliberately planted fake quote.
+That run is the only empirical evidence in the author's corpus that a provenance
+check of this kind works.
+
+**An element carrying open proposals is reported, not flagged as broken:**
+"element 3 is accepted and carries two open proposals" is information.
+
+### 4.5 Dependencies instead of a stage gate
 
 The canvas is **not a sequence.** Dorobantu et al. write that it is *"arranged as
 a puzzle because each element must 'fit' with related elements,"* and explicitly
@@ -247,30 +315,37 @@ The graph is derived from the worksheet itself, which asks under Research
 Question: *"How does answering your research question advance prior research and
 our understanding of the puzzle?"* (→ 3 depends on 1 and 2).
 
-### 4.5 `research/decisions.md`
+**Two edges are disputed and not yet settled.** SQ-6 argues that `9 ← 5,6,7` runs
+backwards for qualitative work, where the boundary condition drives the sampling
+rather than following from it, and that `3 ← 2` runs backwards where prior theory
+enters late and as data. Both claims cite the author's own MISQ writing guidance.
+Neither has been adjudicated; see §11.
 
-<!-- private: the example uses a real project name; any placeholder will do -->
+### 4.6 `research/decisions.md`
 
 Append-only. History is never edited; a correction appends a new entry and names
 the one it supersedes.
 
+<!-- private: the example uses a real project name; any placeholder will do -->
+
 ```markdown
 # Decision log — junior-gap
 
-## [#12] 2026-09-15 · DECISION · 3 Research Question
+## [#12] 2026-09-15 · DECISION · 3.1 accepted · text a3f1c9
 The question targets the transition, not the outcome. [accepted]
 **Why:** ...
 **Rejected:** ...
 
 ## [#13] 2026-09-16 · DISCOVERY · 2 Prior Research
-Two studies contradict each other on ... [tentative]
+Two studies contradict each other on ... [tentative, src: ref-11]
 **Supersedes:** #7
 ```
 
 Kinds: `DECISION` (a commitment), `CONSTRAINT` (a condition that rules options
 out), `DISCOVERY` (a finding that changes the situation). Adopted from Sidequest's
 story log — the one mechanism that genuinely transfers from Toolshed to paper
-work. The sequence number drives the session ledger (§5.2).
+work. The sequence number drives the session ledger (§5.2); the `text <hash>`
+field on an acceptance is what §4.4 recomputes.
 
 ---
 
@@ -292,9 +367,12 @@ research-harness/                          ← marketplace repo
     skills/
       canvas/SKILL.md
       canvas-review/SKILL.md
+      accept/SKILL.md                      ← human-only, disable-model-invocation
+    bin/research-harness.js                ← the approval CLI
     bin/canvas-serve.js                    ← stage 2
     dashboard/canvas.html                  ← stage 2
     test/guard-promotion.test.js
+    test/accept.test.js
     README.md
 ```
 
@@ -367,7 +445,7 @@ diff confidently, it denies with a reason that says so.
 Refusal texts are part of the product: each one names the next legal action,
 otherwise the harness blocks itself.
 
-### 5.4 The two skills
+### 5.4 The skills
 
 Minimal frontmatter (`name`, `description` phrased as a *"Use when …"* sentence),
 like 15 of Toolshed's 17 skills. Anything longer lives in `references/` and the
@@ -378,15 +456,40 @@ eats context.
 elements in dialogue. Writes only `[proposed]`, `[tentative]`, and transcribed
 `[stated]`. Leaves elements empty when no answer exists.
 
+**`/research-harness:accept <n.n>`** is the approval path, and it exists in
+stage 1. Frontmatter carries `disable-model-invocation: true` and
+`allowed-tools: Bash(node:*)`; the body is a single `!` line that runs
+`bin/research-harness.js accept` and embeds its output. The model cannot invoke
+it and does not perform the write — the CLI does, outside the model's tool
+surface, which is why the guard does not deny it. This is exactly how Toolshed's
+own `board` skill reaches its store.
+
+It promotes one statement to `[accepted]`, appends the `DECISION` entry with the
+text hash (§4.6), and refuses if a dependency is unmet, printing which one.
+
+Stage 1 shipping without any approval path was a mistake in the first draft, and
+the corpus contains the warning: the one logged run of the design-mining artifact
+replaced its strictest human gate with an automatic policy so that the downstream
+stages could run at all. A gate with no usable path is a gate that gets removed.
+
 **`/research-harness:canvas-review`** reads the canvas and, if present, the
-manuscript, and reports four things:
+manuscript, and reports seven things:
 
 1. empty elements,
-2. violations of the dependency rule (§4.4),
+2. violations of the dependency rule (§4.5),
 3. elements that do not fit each other (contributions that do not answer the
    research question; boundary conditions that contradict the setting),
 4. statements marked `[stated]`/`[accepted]` that the manuscript no longer
-   supports.
+   supports,
+5. factual statements carrying neither an `src:` tag nor `unverified` (§4.3),
+6. acceptances whose recorded text hash no longer matches the statement (§4.4),
+7. purely conversational `[stated]` statements, listed for periodic review.
+
+**The review argues against the canvas, it does not tidy it.** For each element
+it must attempt a refutation — what would have to be true for this element to be
+wrong, and does the material say it — before reporting fit. A review that only
+checks whether the pieces match produces a coherent canvas around a bad study,
+and §10 names that as the outcome that would refute this whole design.
 
 Writes only `[proposed]` notes and appends to `decisions.md`. This skill is
 already most of the later audit tool (B).
@@ -451,8 +554,9 @@ equivalent is a session view for author-team meetings and solo reviews.
 **One truth.** The view is generated from `canvas.md` and writes back to it. It
 does not live alongside it.
 
-**It is the approval path.** This is where a human sets `[stated]` and
-`[accepted]` — by clicking. `bin/canvas-serve.js` binds to `127.0.0.1` on a
+**It is the better approval path.** The command line already does the job from
+stage 1; this is where it becomes usable in a meeting — a human sets `[stated]`
+and `[accepted]` by clicking. `bin/canvas-serve.js` binds to `127.0.0.1` on a
 random port and writes the promotion directly into the file. The deny hook
 remains the counter-check on the model's side. Two separate routes into the same
 file: one for the agent, one for the human.
@@ -474,11 +578,12 @@ variant so it works for other researchers.
 
 | Stage | Contents | Size |
 |---|---|---|
-| **1 · Record** | manifests, `inject-state.js`, `guard-promotion.js` + test, two skills, `references/` | ~950 lines, mostly prose |
-| **2 · Approval path and session view** | `bin/canvas-serve.js`, `dashboard/canvas.html`, guard extended to the server port | ~850 lines |
+| **1 · Record and approval** | manifests, `inject-state.js`, `guard-promotion.js` + test, three skills, `bin/research-harness.js` + test, `references/` | ~1,200 lines, mostly prose |
+| **2 · Session view** | `bin/canvas-serve.js`, `dashboard/canvas.html`, guard extended to the server port | ~800 lines |
 
-After stage 1 there is a usable tool; the approval path is then "the human edits
-the file directly" — honest and sufficient. Together roughly 1,800 lines, below
+After stage 1 there is a usable tool with a real approval path on the command
+line; stage 2 makes that path clickable and adds the meeting view. Together
+roughly 2,000 lines, below
 Sidequest's first commit (2,828 lines, which already contained a store, a local
 HTTP server, a CLI, and a self-contained dashboard HTML file).
 
@@ -512,8 +617,15 @@ prototype or equivalent research artifact"). A harness that ran on a live study
 in two modes and compares the resulting framings is stronger evidence than one
 applied to itself.
 
-**Data:** local, under existing ethics approval. Run B sees material from
-`_raw/`; run A reads only the manuscript. None of it is shipped.
+**Data:** local, under existing ethics approval. Run B sees the study's own raw
+material; run A reads only the manuscript. None of it is shipped.
+
+**The canvas never carries raw material verbatim.** Seed mode operates under the
+data rules the study's own `AGENTS.md` already states; a canvas statement may
+cite a source through an `src:` tag and must not quote from it. The canvas is a
+record of framing, and it travels — to a co-author, into a supplement, onto a
+meeting screen. Anything quotable belongs in the manuscript, where the study's
+consent terms already govern it.
 
 <!-- /private -->
 
@@ -558,10 +670,34 @@ evidence machinery is built, but it no longer holds up the MVP.
 
 <!-- /private -->
 
+**Left open by SQ-6, needing the author's judgment — these are the findings this
+draft did not adjudicate:**
+
+- **Two edges of the dependency graph may run backwards** (§4.5). SQ-6 argues
+  from `positioning-method-saturation.md` that for qualitative work the boundary
+  condition drives the sampling, so `9 ← 5,6,7` is inverted; and from
+  `structure-and-framing.md` that prior theory enters late and as data, so
+  `3 ← 2` is inverted. Both are claims about the author's own methodological
+  commitments and cannot be settled from the plugin side.
+- **The seam between the oracle gate and the acceptance axis.** The prototype's
+  oracle gate accepts *work packages* and leaves conversation free; this design's
+  axis gates *file writes* and is strictest in conversation. SQ-6 calls these two
+  acceptance books without a seam, and notes that a verdict already recorded on
+  the board cannot be transcribed into the canvas under the current rules. Whether
+  the two should be joined, or the canvas should simply not know about the board,
+  is undecided.
+- **No discipline anchor.** The canvas is AMJ-shaped. `outlet` and `genre` in the
+  frontmatter (§4.2) are a first answer, but SQ-6 argues the question set itself
+  differs by discipline, not only by outlet.
+
+Full report: `sources/report-sq6-schreibanleitungen-gegentest-2026-09-15.md` in
+the author's notes.
+
 **Not yet decided:**
 
-- How often an agent marks something `[stated]` that was not in fact said. That
-  is the known residual surface of the axis (§4.3) and is not machine-checkable.
+- How often an agent marks something `[stated]` that was not in fact said. With
+  the evidence axis in place this is checkable wherever the statement claims a
+  source, and unresolvable only for purely conversational ones (§4.3).
   To be observed on the real case: if it happens often, `[stated]` must also go
   through the approval path — at the cost of a click on every dialogue step.
 - Whether `decisions.md` grows too large for injection over a long project and

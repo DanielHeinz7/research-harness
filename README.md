@@ -32,8 +32,9 @@ The first shippable piece makes the state of a paper project durable and
 inspectable:
 
 - the nine elements of the AMJ Management Research Canvas as version-controlled
-  project state in `research/canvas.md`, each statement carrying an evidence
-  marker
+  project state in `research/canvas.md`, each statement carrying an authorization
+  marker (who may write it) and, where it makes a factual claim, an evidence tag
+  (what backs it — a locatable source, or `unverified`, never nothing)
 - an append-only decision log in `research/decisions.md`
 - a dependency check across the nine elements, reported rather than enforced —
   the canvas is a puzzle whose pieces must fit, not a sequence of stages

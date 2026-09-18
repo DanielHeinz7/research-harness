@@ -1377,6 +1377,10 @@ profile: is-qualitative
 created: <YYYY-MM-DD>
 mode: brainstorming
 canvas-schema: 2
+source: The AMJ Management Research Canvas — Dorobantu, S., Gruber, M., Ravasi, D., & Wellman, N. (2024). Academy of Management Journal, 67(5), 1163–1174. https://doi.org/10.5465/amj.2024.4005
+wording: the nine elements and their grouping follow that canvas; the questions below are this plugin's own wording, modelled on the structure of its worksheet (Table 1 there) and not copied from it — read the original for the authors' fuller set of prompts
+template: this file is what `research-harness init` copies into a paper project, so keep the heading grammar exactly — `# N · Title` and `## N.M question`, with `_(empty)_` as the only body
+read-with: element 1 with references/problematization.md; the AMJ editorial for each element in references/amj-map.md
 ---
 
 # 1 · Puzzle
@@ -1505,24 +1509,9 @@ _(empty)_
 
 _(empty)_
 
-<!--
-About this file
-
-The nine elements and their grouping follow the AMJ Management Research
-Canvas — Dorobantu, S., Gruber, M., Ravasi, D., & Wellman, N. (2024), Academy
-of Management Journal, 67(5), 1163–1174, https://doi.org/10.5465/amj.2024.4005.
-The questions above are this plugin's own wording, modelled on the structure
-of the canvas's worksheet (Table 1 there), not copied from it. Read the
-original for the authors' fuller set of prompts.
-
-This file is also the template that `research-harness init` copies into a
-paper project. Keep the heading grammar exactly: `# N · Title` and
-`## N.M question`, with `_(empty)_` as the only body.
-
-Element 1 is best read with references/problematization.md; the AMJ
-editorial to read for each element is listed in references/amj-map.md.
--->
 ```
+
+**Where the provenance note goes.** `parseCanvas` has no notion of HTML comments, so an `<!-- … -->` block at the end of the template parses as untagged statements on the last question and breaks this task's own `allStatements(template).length === 0` assertion. The note therefore lives in the frontmatter, the one region the parser reads as metadata and the one region `init` replaces wholesale — so it never leaks into a project's canvas.
 
 - [ ] **Step 4: Write `amj-map.md`**
 
@@ -2647,7 +2636,7 @@ function init(flags) {
   if (fs.existsSync(canvasFile)) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
 
   const template = fs.readFileSync(path.join(pluginRoot(), 'references', 'canvas-elements.md'), 'utf8');
-  const body = template.replace(/^---[\s\S]*?---\n/, '').replace(/\n<!--[\s\S]*?-->\s*$/, '\n');
+  const body = template.replace(/^---[\s\S]*?---\n/, '');
   const frontmatter = [
     '---',
     `project: ${flags.project}`,

@@ -3,3 +3,6 @@
 # Local lookup corpus: full texts of copyrighted works.
 # Never goes to GitHub. References live in REFERENCES.md.
 _literature/
+
+# Session handoff: names board tickets and local paths.
+HANDOFF.md

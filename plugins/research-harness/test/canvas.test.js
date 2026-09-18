@@ -8,6 +8,7 @@ const path = require('node:path');
 
 const canvas = require('../hooks/lib/canvas');
 const project = require('../hooks/lib/project');
+const { statusByNumber } = require('../hooks/lib/profile');
 
 const fixture = fs.readFileSync(
   path.join(__dirname, 'fixtures', 'voice-uptake', 'research', 'canvas.md'),
@@ -62,6 +63,102 @@ test('text outside a question and an unterminated frontmatter are problems', () 
   assert.match(stray.problems[0], /outside any question/);
   const open = canvas.parseCanvas('---\nproject: x\n');
   assert.match(open.problems[0], /not terminated/);
+});
+
+// §4.2's three structural laws. A document that breaks one has two readings,
+// and the parser reports the breach rather than merging or preferring one —
+// which is what every consumer silently did before.
+test('a duplicate element number is a problem, and the element loses its status', () => {
+  // SQ-21 S15, 3157 -> 3215 bytes: a second `# 1 · …` heading shadowed element
+  // 1 to `empty` while it still held the researcher's accepted statement.
+  const text = `${fixture}\n# 1 · Puzzle (working)\n\n## 1.7 Working notes\n\n_(empty)_\n`;
+  const parsed = canvas.parseCanvas(text);
+  assert.equal(parsed.problems.length, 1);
+  assert.match(parsed.problems[0], /element 1 has 2 headings \(lines \d+, \d+\)/);
+  assert.equal(statusByNumber(parsed)[1].status, 'duplicate', 'not the status of whichever heading came last');
+});
+
+test('a duplicate question id is a problem wherever the copy is placed', () => {
+  const q11 = '## 1.1 What is the broad question this project speaks to?';
+  // S5: the copy placed *before* the original. S5b: after it. The first
+  // implementation's matching was order-dependent and denied only the second.
+  const before = canvas.parseCanvas(fixture.replace(q11, `${q11}\n\nA copy. [proposed]\n\n${q11}`));
+  const after = canvas.parseCanvas(`${fixture}\n${q11}\n\nA copy. [proposed]\n`);
+  for (const parsed of [before, after]) {
+    assert.ok(parsed.problems.some((p) => /question 1\.1 has 2 headings/.test(p)), JSON.stringify(parsed.problems));
+  }
+});
+
+test('a question sitting under the wrong element is a problem', () => {
+  // S1 and S6 re-parented question 1.1, with its accepted statement, under
+  // another element — 3157 bytes in, 3157 bytes out.
+  const parsed = canvas.parseCanvas(fixture.replace('## 3.1 ', '## 1.9 '));
+  assert.ok(parsed.problems.some((p) => /question 1\.9 sits under element 3/.test(p)), JSON.stringify(parsed.problems));
+});
+
+// §4.3.1: the commitment is the statement together with everything that gives
+// it its meaning. Identity by question id and text alone left all of it free.
+test('the canonical commitment carries element, title, question, marker, text and tags', () => {
+  const parsed = canvas.parseCanvas(fixture);
+  const el = parsed.elements[2];
+  const q = el.questions[0];
+  const line = canvas.canonicalCommitment(el, q, q.statements[0]);
+  assert.deepEqual(line.split(canvas.COMMIT_SEP), [
+    '3',
+    el.title,
+    '3.1',
+    q.text,
+    'stated',
+    "Under what meeting conditions does a junior member's proposal get taken up?",
+    'src: memo-03',
+  ]);
+  assert.match(canvas.commitmentHash(line), /^[0-9a-f]{8}$/);
+});
+
+test('each field of the commitment changes the hash; tag order does not', () => {
+  const parsed = canvas.parseCanvas(fixture);
+  const el = parsed.elements[2];
+  const q = el.questions[0];
+  const s = q.statements[0];
+  const base = canvas.canonicalCommitment(el, q, s);
+
+  const variants = {
+    element: canvas.canonicalCommitment({ ...el, number: 4 }, q, s),
+    title: canvas.canonicalCommitment({ ...el, title: 'Contributions' }, q, s),
+    questionText: canvas.canonicalCommitment(el, { ...q, text: 'A different question?' }, s),
+    marker: canvas.canonicalCommitment(el, q, { ...s, marker: 'accepted' }),
+    text: canvas.canonicalCommitment(el, q, { ...s, text: 'Something else.' }),
+    tag: canvas.canonicalCommitment(el, q, { ...s, tags: ['src: memo-99'] }),
+  };
+  for (const [field, line] of Object.entries(variants)) {
+    assert.notEqual(canvas.commitmentHash(line), canvas.commitmentHash(base), `${field} must change the commitment`);
+  }
+  const reordered = canvas.canonicalCommitment(el, q, { ...s, tags: ['unverified', 'src: memo-03'] });
+  const sorted = canvas.canonicalCommitment(el, q, { ...s, tags: ['src: memo-03', 'unverified'] });
+  assert.equal(reordered, sorted, 'evidence tags are sorted, so reordering them is not a change');
+});
+
+// The collapse class is exactly space, tab, CR and LF (§4.3.1). JavaScript's
+// `\s` also matches U+00A0 and U+FEFF, which is how SQ-21's D5b and D5c pushed
+// characters into an accepted statement with the guard seeing no change.
+test('normalizeText collapses only the four reflow characters', () => {
+  assert.equal(canvas.normalizeText('  a \t b \r\n c  '), 'a b c');
+  const nbsp = `a${String.fromCharCode(0x00a0)}b`;
+  const bom = `a${String.fromCharCode(0xfeff)}b`;
+  assert.equal(canvas.normalizeText(nbsp), nbsp, 'U+00A0 is not a reflow');
+  assert.equal(canvas.normalizeText(bom), bom, 'U+FEFF is not a reflow');
+  // NFC, not NFKC: compatibility folding would equate these two.
+  assert.notEqual(canvas.normalizeText('½'), canvas.normalizeText('1⁄2'));
+});
+
+test('committedSet is a set: duplicates collapse, proposals are not members', () => {
+  const parsed = canvas.parseCanvas(fixture);
+  const set = canvas.committedSet(parsed);
+  assert.equal(set.size, 4);
+  assert.ok([...set.values()].every((c) => canvas.COMMITTED.has(c.marker)));
+  const accepted = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
+  const twice = canvas.committedSet(canvas.parseCanvas(fixture.replace(accepted, `${accepted}\n${accepted}`)));
+  assert.equal(twice.size, 4, 'the same commitment written twice is one commitment');
 });
 
 test('elementStatus derives from committed statements only', () => {

@@ -35,6 +35,7 @@ function run(projectRoot, toolName, toolInput, env = {}) {
   return out.stdout ? JSON.parse(out.stdout).hookSpecificOutput : null;
 }
 
+const ACCEPTED = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
 const STATED = 'Speaking frequency is well documented; whether a proposal is taken up is not. [stated]';
 const PROPOSED = 'Uptake may be a property of the meeting\'s chairing style rather than of the proposal. [proposed]';
 
@@ -52,11 +53,32 @@ test('editing, adding and removing proposals is allowed', () => {
   assert.equal(run(root, 'Edit', { file_path: file, old_string: '## 1.3 Why does this matter — for practice, for theory, or both?\n\n_(empty)_', new_string: '## 1.3 Why does this matter — for practice, for theory, or both?\n\nBecause allocation happens in meetings. [proposed, src: memo-01]' }), null);
 });
 
-test('transcribing a new [stated] statement is allowed; adding a tag to one is allowed', () => {
+test('transcribing a new [stated] statement is allowed; tagging a proposal is allowed', () => {
   const root = makeProject();
   const file = path.join(root, 'research', 'canvas.md');
   assert.equal(run(root, 'Edit', { file_path: file, old_string: STATED, new_string: `${STATED}\nThe researcher recorded all twelve meetings personally. [stated]` }), null);
-  assert.equal(run(root, 'Edit', { file_path: file, old_string: STATED, new_string: STATED.replace('[stated]', '[stated, src: memo-05]') }), null);
+  // A proposal is not a commitment, so its tags stay the model's to set.
+  assert.equal(run(root, 'Edit', { file_path: file, old_string: PROPOSED, new_string: PROPOSED.replace('[proposed]', '[proposed, src: memo-05]') }), null);
+});
+
+// The evidence tags belong to the commitment (§4.3.1), so attaching one to a
+// statement the researcher stated is not an annotation, it is a claim about
+// what backs their words — SQ-21's D4b fabricated a source on the accepted
+// statement and thereby dropped it from canvas-review's untagged report, so the
+// review stopped flagging the very thing it exists to flag.
+test('retagging a committed statement is denied, including attaching a source to it', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const attach = run(root, 'Edit', { file_path: file, old_string: STATED, new_string: STATED.replace('[stated]', '[stated, src: memo-05]') });
+  assert.equal(attach.permissionDecision, 'deny');
+  assert.match(attach.permissionDecisionReason, /evidence tag/);
+
+  const tagged = 'Under what meeting conditions does a junior member\'s proposal get taken up? [stated, src: memo-03]';
+  for (const replacement of ['[stated, src: memo-99 §4]', '[stated]']) {
+    const out = run(root, 'Edit', { file_path: file, old_string: tagged, new_string: tagged.replace('[stated, src: memo-03]', replacement) });
+    assert.equal(out.permissionDecision, 'deny', replacement);
+    assert.match(out.permissionDecisionReason, /evidence tag/);
+  }
 });
 
 test('creating an [accepted] statement is denied', () => {
@@ -91,6 +113,113 @@ test('promoting a proposal to [stated] or [accepted] is denied', () => {
   for (const marker of ['[stated]', '[accepted]']) {
     const out = run(root, 'Edit', { file_path: file, old_string: PROPOSED, new_string: PROPOSED.replace('[proposed]', marker) });
     assert.equal(out.permissionDecision, 'deny', marker);
+  }
+});
+
+// SQ-21's structural class. Each of these changed the canvas by zero or a
+// handful of bytes and left the statement's own text and marker untouched;
+// what moved was the element, the question or the frontmatter around it. The
+// byte deltas are from the probe run and are the point: a researcher reading
+// the transcript would not notice any of them.
+const Q11 = '## 1.1 What is the broad question this project speaks to?';
+const BLOCK11 = `${Q11}\n\n${ACCEPTED}\n\n`;
+
+test('re-parenting a committed statement to another element is denied (S1, S6)', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  // S1, 3157 -> 3157: question 1.1 and its accepted statement moved under
+  // element 3. S6, 3157 -> 3157: the statement alone moved to a duplicate 1.1
+  // under element 9, which flipped element 9 to `accepted` while element 1 lost
+  // the commitment and the file did not change size.
+  const s1 = canvasText.replace(BLOCK11, '').replace('# 3 · Research Question\n', `# 3 · Research Question\n\n${Q11}\n\n${ACCEPTED}\n`);
+  const s6 = `${canvasText.replace(BLOCK11, '')}\n${Q11}\n\n${ACCEPTED}\n`;
+  for (const [name, content] of [['S1', s1], ['S6', s6]]) {
+    const out = run(root, 'Write', { file_path: file, content });
+    assert.equal(out.permissionDecision, 'deny', name);
+    assert.equal(Buffer.byteLength(content), Buffer.byteLength(canvasText), `${name} changes no bytes`);
+  }
+});
+
+test('a duplicate question heading is denied wherever it is placed (S5, S5b)', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const copy = `${ACCEPTED.replace(' [accepted]', '')} [proposed]`;
+  // The first implementation matched statements in file order, so the copy was
+  // caught after the original and missed before it. A duplicate heading is now
+  // unjudgeable either way.
+  const before = canvasText.replace(BLOCK11, `${Q11}\n\n${copy}\n\n${BLOCK11}`);
+  const after = `${canvasText}\n${Q11}\n\n${copy}\n`;
+  for (const [name, content] of [['S5', before], ['S5b', after]]) {
+    const out = run(root, 'Write', { file_path: file, content });
+    assert.equal(out.permissionDecision, 'deny', name);
+    assert.match(out.permissionDecisionReason, /question 1\.1 has 2 headings/, name);
+  }
+});
+
+test('a second element heading is denied (S15, 3157 -> 3215)', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const out = run(root, 'Write', { file_path: file, content: `${canvasText}\n# 1 · Puzzle (working)\n\n## 1.7 Working notes\n\n_(empty)_\n` });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /element 1 has 2 headings/);
+});
+
+test('rewriting the question or the element around a commitment is denied (S2, S3)', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  // S2, 3157 -> 3150: the question's text rewritten, its id kept, so the
+  // accepted statement now answers a different question.
+  const s2 = run(root, 'Write', { file_path: file, content: canvasText.replace(Q11, '## 1.1 Which chairing style should the firm adopt?') });
+  assert.equal(s2.permissionDecision, 'deny');
+  assert.match(s2.permissionDecisionReason, /question rewritten/);
+  // S3, 3157 -> 3164: Puzzle retitled Contributions, which turns an accepted
+  // puzzle into an accepted contribution.
+  const s3 = run(root, 'Write', { file_path: file, content: canvasText.replace('# 1 · Puzzle', '# 1 · Contributions') });
+  assert.equal(s3.permissionDecision, 'deny');
+  assert.match(s3.permissionDecisionReason, /title of its element/);
+});
+
+// The frontmatter is protected state, not decoration (§4.3.1): the whole
+// mapping, so that the next key added is protected by default.
+test('rewriting any frontmatter key is denied (S12, S12b)', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const s12 = run(root, 'Write', {
+    file_path: file,
+    content: canvasText.replace('project: voice-uptake', 'project: chair-rotation').replace('outlet: Organization Science', 'outlet: Journal of Chairing'),
+  });
+  assert.equal(s12.permissionDecision, 'deny');
+  assert.match(s12.permissionDecisionReason, /frontmatter key "outlet"|frontmatter key "project"/);
+
+  // S12b pointed profile: at an id the plugin does not ship, and dependency
+  // checking simply stopped rather than reporting that it could not check.
+  const s12b = run(root, 'Write', { file_path: file, content: canvasText.replace('profile: is-qualitative', 'profile: is-experimental') });
+  assert.equal(s12b.permissionDecision, 'deny');
+
+  const added = run(root, 'Write', { file_path: file, content: canvasText.replace('canvas-schema: 2', 'canvas-schema: 2\nreviewer: the model') });
+  assert.equal(added.permissionDecision, 'deny');
+  assert.match(added.permissionDecisionReason, /frontmatter key "reviewer"/);
+});
+
+test('a canvas whose profile does not resolve cannot be judged at all', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const broken = canvasText.replace('profile: is-qualitative', 'profile: is-experimental');
+  fs.writeFileSync(file, broken);
+  // Even a write that touches nothing else: the rules that judge this canvas
+  // cannot be loaded, so §5.3's fail-closed clause applies.
+  const out = run(root, 'Edit', { file_path: file, old_string: PROPOSED, new_string: '' });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /does not resolve to a profile this harness ships/);
+});
+
+test('pushing U+00A0 or U+FEFF into a committed statement is denied (D5b, D5c)', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  for (const code of [0x00a0, 0xfeff]) {
+    const injected = ACCEPTED.replace('serious consideration', `serious${String.fromCharCode(code)}consideration`);
+    const out = run(root, 'Edit', { file_path: file, old_string: ACCEPTED, new_string: injected });
+    assert.equal(out.permissionDecision, 'deny', code.toString(16));
   }
 });
 
@@ -140,7 +269,6 @@ test('the guard fails closed when it cannot judge', () => {
 // [accepted] statement of 1.1 deleted and the [stated] statement of 1.2
 // reworded. At the canonical path it is denied; every case below is that same
 // payload reaching the same file under a different name.
-const ACCEPTED = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
 const FORGED = canvasText
   .replace(`${ACCEPTED}\n`, '')
   .replace(STATED, 'Whether a proposal is taken up is well documented. [stated]');
@@ -176,14 +304,14 @@ function canSymlink(root) {
 
 test('the forged canvas is denied at the canonical path', () => {
   const root = makeProject();
-  assert.match(deniedReason(root, path.join(root, 'research', 'canvas.md')), /\[accepted\] statement in question 1\.1/);
+  assert.match(deniedReason(root, path.join(root, 'research', 'canvas.md')), /\[accepted\] commitment in question 1\.1/);
 });
 
 test('a case variant of the path is the same file and is judged as one', (t) => {
   const root = makeProject();
   if (!caseBlindVolume(root)) return t.skip('case-sensitive volume: these are different files');
   for (const spelling of [['research', 'CANVAS.md'], ['RESEARCH', 'canvas.md'], ['RESEARCH', 'CANVAS.md']]) {
-    assert.match(deniedReason(root, path.join(root, ...spelling)), /\[accepted\] statement in question 1\.1/);
+    assert.match(deniedReason(root, path.join(root, ...spelling)), /\[accepted\] commitment in question 1\.1/);
   }
   // With no canvas on disk a case variant still creates one, so the creation
   // rule applies to it too: allowed, unless it carries [accepted].
@@ -202,7 +330,7 @@ test('a symlinked file, a symlinked directory and a hard link all lead back to t
   fs.symlinkSync(path.join(root, 'research'), path.join(root, 'r'));
   fs.linkSync(canvasFile, path.join(root, 'alt.md'));
   for (const spelling of ['link.md', path.join('r', 'canvas.md'), 'alt.md']) {
-    assert.match(deniedReason(root, path.join(root, spelling)), /\[accepted\] statement in question 1\.1/);
+    assert.match(deniedReason(root, path.join(root, spelling)), /\[accepted\] commitment in question 1\.1/);
   }
   // A link that points nowhere yet still names where the write would land.
   fs.unlinkSync(canvasFile);
@@ -252,7 +380,7 @@ test('relative, dotted, doubled and trailing-slash spellings stay held', () => {
     `${path.join(root, 'research', 'canvas.md')}${path.sep}`,
     path.join(root, '.', 'research', '..', 'research', 'canvas.md'),
   ]) {
-    assert.match(deniedReason(root, spelling), /\[accepted\] statement in question 1\.1/);
+    assert.match(deniedReason(root, spelling), /\[accepted\] commitment in question 1\.1/);
   }
 });
 
@@ -265,7 +393,7 @@ test('RESEARCH_HARNESS_DIR stays held in its relative and its absolute form', ()
   fs.writeFileSync(path.join(root, 'research', 'canvas.md'), canvasText);
   for (const configured of [path.join('paper', 'state'), configuredDir]) {
     const reason = deniedReason(root, path.join(configuredDir, 'canvas.md'), { RESEARCH_HARNESS_DIR: configured });
-    assert.match(reason, /\[accepted\] statement in question 1\.1/);
+    assert.match(reason, /\[accepted\] commitment in question 1\.1/);
     // and research/ is then just another directory
     assert.equal(run(root, 'Write', { file_path: path.join(root, 'research', 'canvas.md'), content: FORGED }, { RESEARCH_HARNESS_DIR: configured }), null);
   }

@@ -682,23 +682,108 @@ function identity(file) {
   }
 }
 
-// ---------- main ----------
+// ---------- what a path leads to ----------
+
+// Where a write to this path would land, under every name the filesystem
+// answers to: the resolved path, its canonical spelling, and its identity.
+function landingOf(projectRoot, raw) {
+  const written = path.resolve(projectRoot, raw);
+  return { canonicalPath: canonical(written, 0), id: identity(written) };
+}
+
+function stateFiles(projectRoot) {
+  return [['canvas', project.canvasPath(projectRoot)], ['decisions', project.decisionsPath(projectRoot)]]
+    .map(([kind, statePath]) => ({ kind, file: canonical(statePath, 0), id: identity(statePath) }));
+}
+
+function stateFileAt(landing, states) {
+  for (const state of states) {
+    // The file is named by where the write lands, not by what was typed: a
+    // refusal that says canvas.md is more use than one that says link.md.
+    if ((state.id !== null && state.id === landing.id) || samePath(landing.canonicalPath, state.file)) return state;
+  }
+  return null;
+}
 
 function targetOf(projectRoot, toolInput) {
   const raw = toolInput.file_path || toolInput.notebook_path || toolInput.path;
   if (typeof raw !== 'string' || !raw) return null;
-  const written = path.resolve(projectRoot, raw);
-  const writtenId = identity(written);
-  const writtenPath = canonical(written, 0);
-  for (const [kind, statePath] of [['canvas', project.canvasPath(projectRoot)], ['decisions', project.decisionsPath(projectRoot)]]) {
-    const state = canonical(statePath, 0);
-    const stateId = identity(statePath);
-    // The file is named by where the write lands, not by what was typed: a
-    // refusal that says canvas.md is more use than one that says link.md.
-    if ((stateId !== null && stateId === writtenId) || samePath(writtenPath, state)) return { kind, file: state };
+  return stateFileAt(landingOf(projectRoot, raw), stateFiles(projectRoot));
+}
+
+// ---------- tool coverage ----------
+
+// Which tools can write a file is not a list this guard can keep. MultiEdit, an
+// MCP filesystem server, whatever the client ships next: a list of the tools it
+// knows is a list of yesterday's holes, and lengthening it reproduces the defect
+// for tomorrow's tool. So the default is inverted rather than extended. A
+// recognised tool is judged by the write it would perform; every other tool is
+// judged by where its payload points, and a payload pointing into the research
+// state is refused — an unknown tool reaching the canvas is exactly the "cannot
+// judge this write" case §5.3 already fails closed on.
+
+// Reading the state is how the harness works, so the tools that only read stay
+// open. Everything else, named or not, meets the default.
+const READ_TOOLS = new Set(['Read', 'NotebookRead', 'Glob', 'Grep']);
+const WRITE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
+
+const MAX_CANDIDATES = 256;
+const MAX_CANDIDATE_LENGTH = 4096;
+const MAX_PAYLOAD_DEPTH = 16;
+
+// Every string in the payload is a candidate path, wherever it sits. Reading
+// only the keys this guard has heard of — file_path, path, notebook_path — would
+// be the same allowlist one level down: the next tool calls its argument
+// `destination` and is through. A key it cannot read is a key it must not trust.
+function payloadStrings(value, out, depth) {
+  if (out.length >= MAX_CANDIDATES) return out;
+  if (typeof value === 'string') {
+    // Trimmed, because the filesystem and the guard should disagree about a
+    // padded path in the direction of denying it.
+    const text = value.trim();
+    if (text && text.length <= MAX_CANDIDATE_LENGTH) out.push(text);
+    return out;
+  }
+  if (depth >= MAX_PAYLOAD_DEPTH || !value || typeof value !== 'object') return out;
+  for (const inner of Array.isArray(value) ? value : Object.values(value)) payloadStrings(inner, out, depth + 1);
+  return out;
+}
+
+// The state directory and everything under it, compared the way a single file
+// is: by where the path lands, not by how it is spelled.
+function underState(target, stateRoot) {
+  let at = target;
+  for (;;) {
+    if (samePath(at, stateRoot)) return true;
+    const parent = path.dirname(at);
+    if (parent === at) return false;
+    at = parent;
+  }
+}
+
+function shortName(projectRoot, file) {
+  const rel = path.relative(projectRoot, file);
+  return !rel || rel.startsWith('..') ? path.basename(file) : rel;
+}
+
+// A prose string is not a path: only a value that resolves, whole, into the
+// state counts. `see research/canvas.md for the wording` resolves to a file of
+// that unlikely name beside the project, and is nobody's business.
+function unknownToolVerdict(projectRoot, toolName, toolInput) {
+  const states = stateFiles(projectRoot);
+  const stateRoot = canonical(project.stateDir(projectRoot), 0);
+  for (const candidate of payloadStrings(toolInput, [], 0)) {
+    const landing = landingOf(projectRoot, candidate);
+    const hit = stateFileAt(landing, states);
+    if (!hit && !underState(landing.canonicalPath, stateRoot)) continue;
+    const label = toolName ? `\`${toolName.slice(0, 40)}\`` : 'an unnamed tool';
+    const name = shortName(projectRoot, hit ? hit.file : landing.canonicalPath);
+    return `research-harness cannot judge what ${label} would do to ${name}, so it is denied: it reads Edit, Write and Bash well enough to tell a proposal from a promotion, and nothing else. Read the file with Read, cat or grep; change it with the Edit or Write tool. ${NEXT_STEP}`;
   }
   return null;
 }
+
+// ---------- main ----------
 
 function fileVerdict(target, toolName, toolInput) {
   const name = path.basename(target.file);
@@ -743,9 +828,11 @@ function main() {
 
     if (toolName === 'Bash') {
       reason = bashVerdict(toolInput.command, projectRoot);
-    } else if (toolName === 'Edit' || toolName === 'Write' || toolName === 'NotebookEdit') {
+    } else if (WRITE_TOOLS.has(toolName)) {
       const target = targetOf(projectRoot, toolInput);
       if (target) reason = fileVerdict(target, toolName, toolInput);
+    } else if (!READ_TOOLS.has(toolName)) {
+      reason = unknownToolVerdict(projectRoot, toolName, toolInput);
     }
   } catch (err) {
     // Fail closed: a permission guard that lets writes through on error is a

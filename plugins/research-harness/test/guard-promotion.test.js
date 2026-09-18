@@ -123,6 +123,15 @@ test('the guard fails closed when it cannot judge', () => {
   assert.equal(garbage.permissionDecision, 'deny');
   const notebook = run(root, 'NotebookEdit', { notebook_path: file, new_source: 'x' });
   assert.equal(notebook.permissionDecision, 'deny');
+  assert.match(notebook.permissionDecisionReason, /not a notebook/);
+  // A recognised tool carrying a payload it cannot have written from: no
+  // content to compare against, no old_string to apply.
+  const contentless = run(root, 'Write', { file_path: file });
+  assert.equal(contentless.permissionDecision, 'deny');
+  assert.match(contentless.permissionDecisionReason, /carries no content/);
+  const stringless = run(root, 'Edit', { file_path: file, new_string: 'x [accepted]' });
+  assert.equal(stringless.permissionDecision, 'deny');
+  assert.match(stringless.permissionDecisionReason, /old_string/);
 });
 
 // ---------- path resolution ----------
@@ -414,6 +423,97 @@ test('Bash: a command the lexer cannot read is denied only when it names the sta
   const out = run(root, 'Bash', { command: `${huge} research/canvas.md` });
   assert.equal(out.permissionDecision, 'deny');
   assert.match(out.permissionDecisionReason, /could not read/);
+});
+
+// ---------- tool coverage ----------
+
+// The probe set from SQ-21 (verification/SQ-21/path-and-tool.txt) reached the
+// canvas under tool names the guard had never heard of. It cannot keep a list of
+// the tools that can write a file, so a tool it does not recognise is judged by
+// where its payload points — whatever the key is called, and however deep in the
+// payload it sits.
+const unrecognised = (file) => [
+  ['MultiEdit', { file_path: file, edits: [{ old_string: ACCEPTED, new_string: '' }] }],
+  ['mcp__filesystem__write_file', { path: file, content: FORGED }],
+  ['create_file', { filename: file, contents: FORGED }],
+  ['Scrivener', { target: file }],
+  ['mcp__anvil__apply_patch', { patch: { hunks: [{ where: { document: file } }] } }],
+  ['', { file_path: file }],
+];
+
+test('a tool the guard does not recognise may not reach the research state', () => {
+  const root = makeProject();
+  for (const [toolName, toolInput] of unrecognised(path.join(root, 'research', 'canvas.md'))) {
+    const label = toolName || '(no tool name)';
+    const out = run(root, toolName, toolInput);
+    assert.equal(out && out.permissionDecision, 'deny', label);
+    assert.match(out.permissionDecisionReason, /cannot judge/, label);
+    assert.match(out.permissionDecisionReason, /canvas\.md/, label);
+  }
+  // decisions.md, the directory itself and anything in it are state as much as
+  // the canvas is: what an unknown tool would do to them is equally unreadable.
+  for (const target of [
+    path.join(root, 'research', 'decisions.md'),
+    path.join(root, 'research'),
+    path.join(root, 'research', 'notes.md'),
+  ]) {
+    const out = run(root, 'mcp__filesystem__move_file', { source: target, destination: path.join(root, 'elsewhere') });
+    assert.equal(out && out.permissionDecision, 'deny', target);
+  }
+});
+
+test('an unrecognised tool is judged by where the path lands, not how it is spelled', (t) => {
+  const root = makeProject();
+  for (const spelling of ['research/canvas.md', './research/../research/canvas.md']) {
+    const out = run(root, 'MultiEdit', { file_path: spelling, edits: [] });
+    assert.equal(out && out.permissionDecision, 'deny', spelling);
+  }
+  if (!canSymlink(root)) return t.skip('this platform does not allow symlinks');
+  const canvasFile = path.join(root, 'research', 'canvas.md');
+  fs.symlinkSync(canvasFile, path.join(root, 'link.md'));
+  fs.symlinkSync(path.join(root, 'research'), path.join(root, 'r'));
+  fs.linkSync(canvasFile, path.join(root, 'alt.md'));
+  for (const spelling of ['link.md', path.join('r', 'canvas.md'), 'alt.md']) {
+    const out = run(root, 'mcp__filesystem__write_file', { path: path.join(root, spelling), content: FORGED });
+    assert.equal(out && out.permissionDecision, 'deny', spelling);
+    assert.match(out.permissionDecisionReason, /canvas\.md/, spelling);
+  }
+  return undefined;
+});
+
+// The other half of the acceptance: a default of deny must not make the guard a
+// general write block. Everything here is either outside the state or a read,
+// and none of it is the guard's business.
+test('an unrecognised tool is left alone everywhere else', () => {
+  const root = makeProject();
+  const outside = path.join(root, 'manuscript.md');
+  for (const [toolName, toolInput] of [
+    ['MultiEdit', { file_path: outside, edits: [{ old_string: 'x', new_string: 'y [accepted]' }] }],
+    ['mcp__filesystem__write_file', { path: outside, content: FORGED }],
+    ['create_file', { filename: path.join(root, 'docs', 'research-notes.md'), contents: 'x' }],
+    ['Scrivener', { note: 'see research/canvas.md for the accepted wording' }],
+    ['TodoWrite', { todos: [{ content: 'Ask the researcher to accept 1.2', status: 'pending' }] }],
+    ['WebFetch', { url: 'https://example.org/research/canvas.md', prompt: 'summarise it' }],
+    ['Read', { file_path: path.join(root, 'research', 'canvas.md') }],
+    ['Grep', { pattern: 'accepted', path: path.join(root, 'research') }],
+    ['Glob', { pattern: 'research/*.md' }],
+  ]) {
+    assert.equal(run(root, toolName, toolInput), null, toolName);
+  }
+});
+
+// A hook that never fires is a guard that never decides, so the matcher is the
+// other half of the perimeter. It carries none: every tool reaches the guard,
+// and which of them it can judge is decided in the guard alone.
+test('every tool reaches the guard', () => {
+  const hooks = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'hooks', 'hooks.json'), 'utf8'));
+  for (const group of hooks.hooks.PreToolUse) {
+    const matcher = Object.prototype.hasOwnProperty.call(group, 'matcher') ? group.matcher : null;
+    assert.ok(
+      matcher === null || matcher === '' || matcher === '*',
+      `PreToolUse matcher ${JSON.stringify(matcher)} decides in config what belongs to the guard`,
+    );
+  }
 });
 
 test('canvasVerdict and bashVerdict are exported for reuse', () => {

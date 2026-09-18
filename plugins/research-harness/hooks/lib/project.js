@@ -29,11 +29,18 @@ function decisionsPath(projectRoot) {
   return path.join(stateDir(projectRoot), DECISIONS_FILE);
 }
 
+// "Absent" and "unreadable" are different answers and only the first one is
+// safe to read as an empty file. A caller that cannot tell them apart judges an
+// overwrite as a creation, which is how a chmod 000 canvas ends up writable.
+// ENOENT — including a dangling symlink, which reports the same — is absence;
+// EACCES, EPERM, EISDIR, ELOOP and the rest propagate to a caller that must
+// decide what an unreadable file means for it.
 function readIfExists(file) {
   try {
     return fs.readFileSync(file, 'utf8');
-  } catch (_) {
-    return null;
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null;
+    throw err;
   }
 }
 

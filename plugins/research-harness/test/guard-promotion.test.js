@@ -23,11 +23,11 @@ function makeProject() {
   return root;
 }
 
-function run(projectRoot, toolName, toolInput) {
-  const { CLAUDE_PROJECT_DIR: _ignored, ...ambient } = process.env;
+function run(projectRoot, toolName, toolInput, env = {}) {
+  const { CLAUDE_PROJECT_DIR: _project, RESEARCH_HARNESS_DIR: _dir, ...ambient } = process.env;
   const out = childProcess.spawnSync(process.execPath, [script], {
     cwd: projectRoot,
-    env: { ...ambient, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    env: { ...ambient, CLAUDE_PLUGIN_ROOT: pluginRoot, ...env },
     input: JSON.stringify({ cwd: projectRoot, session_id: 's', hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput }),
     encoding: 'utf8',
   });
@@ -123,6 +123,143 @@ test('the guard fails closed when it cannot judge', () => {
   assert.equal(garbage.permissionDecision, 'deny');
   const notebook = run(root, 'NotebookEdit', { notebook_path: file, new_source: 'x' });
   assert.equal(notebook.permissionDecision, 'deny');
+});
+
+// ---------- path resolution ----------
+
+// The control payload from SQ-21 (verification/SQ-21/path-and-tool.txt): the
+// [accepted] statement of 1.1 deleted and the [stated] statement of 1.2
+// reworded. At the canonical path it is denied; every case below is that same
+// payload reaching the same file under a different name.
+const ACCEPTED = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
+const FORGED = canvasText
+  .replace(`${ACCEPTED}\n`, '')
+  .replace(STATED, 'Whether a proposal is taken up is well documented. [stated]');
+
+function deniedReason(root, file, env) {
+  const out = run(root, 'Write', { file_path: file, content: FORGED }, env);
+  assert.equal(out && out.permissionDecision, 'deny', String(file));
+  return out.permissionDecisionReason;
+}
+
+// Case sensitivity is a property of the volume, so the test asks the volume.
+// Where names are case-sensitive these really are different files and the
+// guard is right to ignore them.
+function caseBlindVolume(root) {
+  try {
+    fs.accessSync(path.join(root, 'RESEARCH', 'canvas.md'));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function canSymlink(root) {
+  const probe = path.join(root, '.symlink-probe');
+  try {
+    fs.symlinkSync(path.join(root, 'research'), probe);
+    fs.unlinkSync(probe);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+test('the forged canvas is denied at the canonical path', () => {
+  const root = makeProject();
+  assert.match(deniedReason(root, path.join(root, 'research', 'canvas.md')), /\[accepted\] statement in question 1\.1/);
+});
+
+test('a case variant of the path is the same file and is judged as one', (t) => {
+  const root = makeProject();
+  if (!caseBlindVolume(root)) return t.skip('case-sensitive volume: these are different files');
+  for (const spelling of [['research', 'CANVAS.md'], ['RESEARCH', 'canvas.md'], ['RESEARCH', 'CANVAS.md']]) {
+    assert.match(deniedReason(root, path.join(root, ...spelling)), /\[accepted\] statement in question 1\.1/);
+  }
+  // With no canvas on disk a case variant still creates one, so the creation
+  // rule applies to it too: allowed, unless it carries [accepted].
+  fs.unlinkSync(path.join(root, 'research', 'canvas.md'));
+  const fresh = path.join(root, 'research', 'CANVAS.md');
+  assert.equal(run(root, 'Write', { file_path: fresh, content: canvasText.replace('[accepted]', '[proposed]') }), null);
+  assert.equal(run(root, 'Write', { file_path: fresh, content: canvasText }).permissionDecision, 'deny');
+  return undefined;
+});
+
+test('a symlinked file, a symlinked directory and a hard link all lead back to the canvas', (t) => {
+  const root = makeProject();
+  if (!canSymlink(root)) return t.skip('this platform does not allow symlinks');
+  const canvasFile = path.join(root, 'research', 'canvas.md');
+  fs.symlinkSync(canvasFile, path.join(root, 'link.md'));
+  fs.symlinkSync(path.join(root, 'research'), path.join(root, 'r'));
+  fs.linkSync(canvasFile, path.join(root, 'alt.md'));
+  for (const spelling of ['link.md', path.join('r', 'canvas.md'), 'alt.md']) {
+    assert.match(deniedReason(root, path.join(root, spelling)), /\[accepted\] statement in question 1\.1/);
+  }
+  // A link that points nowhere yet still names where the write would land.
+  fs.unlinkSync(canvasFile);
+  fs.symlinkSync(canvasFile, path.join(root, 'dangling.md'));
+  assert.equal(run(root, 'Write', { file_path: path.join(root, 'dangling.md'), content: canvasText }).permissionDecision, 'deny');
+  return undefined;
+});
+
+test('an unreadable canvas is unjudgeable, not absent', (t) => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  fs.chmodSync(file, 0o000);
+  try {
+    fs.readFileSync(file);
+    fs.chmodSync(file, 0o644);
+    return t.skip('this process reads a mode 000 file, so the fail-open cannot be reproduced');
+  } catch (_) {
+    // As intended: the guard is about to meet the same EACCES.
+  }
+  for (const toolInput of [
+    { file_path: file, content: FORGED },
+    { file_path: file, content: canvasText },
+  ]) {
+    const out = run(root, 'Write', toolInput);
+    assert.equal(out && out.permissionDecision, 'deny');
+    assert.match(out.permissionDecisionReason, /Cannot judge this write/);
+    assert.match(out.permissionDecisionReason, /cannot be read \(EACCES\)/);
+    // The refusal names the file it could not read, not what was typed.
+    assert.ok(out.permissionDecisionReason.includes(fs.realpathSync.native(file)), out.permissionDecisionReason);
+  }
+  const edit = run(root, 'Edit', { file_path: file, old_string: STATED, new_string: '' });
+  assert.equal(edit.permissionDecision, 'deny');
+  assert.match(edit.permissionDecisionReason, /cannot be read \(EACCES\)/);
+  fs.chmodSync(file, 0o644);
+  return undefined;
+});
+
+// Held, and must stay held: the spellings path.resolve already reduced to the
+// canonical path. Canonicalising must not lose any of them.
+test('relative, dotted, doubled and trailing-slash spellings stay held', () => {
+  const root = makeProject();
+  for (const spelling of [
+    'research/canvas.md',
+    './research/canvas.md',
+    'research/../research/canvas.md',
+    'research//canvas.md',
+    `${path.join(root, 'research', 'canvas.md')}${path.sep}`,
+    path.join(root, '.', 'research', '..', 'research', 'canvas.md'),
+  ]) {
+    assert.match(deniedReason(root, spelling), /\[accepted\] statement in question 1\.1/);
+  }
+});
+
+test('RESEARCH_HARNESS_DIR stays held in its relative and its absolute form', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-'));
+  const configuredDir = path.join(root, 'paper', 'state');
+  fs.mkdirSync(configuredDir, { recursive: true });
+  fs.writeFileSync(path.join(configuredDir, 'canvas.md'), canvasText);
+  fs.mkdirSync(path.join(root, 'research'));
+  fs.writeFileSync(path.join(root, 'research', 'canvas.md'), canvasText);
+  for (const configured of [path.join('paper', 'state'), configuredDir]) {
+    const reason = deniedReason(root, path.join(configuredDir, 'canvas.md'), { RESEARCH_HARNESS_DIR: configured });
+    assert.match(reason, /\[accepted\] statement in question 1\.1/);
+    // and research/ is then just another directory
+    assert.equal(run(root, 'Write', { file_path: path.join(root, 'research', 'canvas.md'), content: FORGED }, { RESEARCH_HARNESS_DIR: configured }), null);
+  }
 });
 
 test('decisions.md may only be appended to', () => {

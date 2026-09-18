@@ -602,14 +602,101 @@ function bashVerdict(command, projectRoot) {
   return bashDenial(refusal);
 }
 
+// ---------- path resolution ----------
+
+// Two names reach the same file more often than they look alike: a case
+// variant on a case-insensitive volume, a symlinked file, a symlinked parent
+// directory, a hard link. Comparing the strings the model typed judges the
+// spelling; the guard has to judge the file (§5.3).
+
+const MAX_LINK_HOPS = 32;
+
+function readLink(file) {
+  try {
+    return fs.readlinkSync(file);
+  } catch (_) {
+    return null;
+  }
+}
+
+// What the filesystem calls this path. `realpathSync.native` is libc's
+// realpath: it follows symlinks and hands back the spelling that is on disk,
+// which is how a case variant is caught without asking the platform what kind
+// of volume this is. It needs every component to exist, so a leaf that is not
+// there yet — creating the canvas is legitimate — is canonicalised through its
+// parent, and a dangling symlink through what it points at.
+function canonical(target, hops) {
+  const full = path.resolve(target);
+  try {
+    return fs.realpathSync.native(full);
+  } catch (err) {
+    // ELOOP, or a parent this process may not traverse: nothing further can be
+    // resolved, and the path as written is the best answer there is.
+    if (!err || err.code !== 'ENOENT') return full;
+  }
+  const link = hops < MAX_LINK_HOPS ? readLink(full) : null;
+  if (link !== null) return canonical(path.resolve(path.dirname(full), link), hops + 1);
+  const parent = path.dirname(full);
+  return parent === full ? full : path.join(canonical(parent, hops), path.basename(full));
+}
+
+function flipCase(name) {
+  return name.replace(/[A-Za-z]/g, (c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));
+}
+
+// Case sensitivity belongs to the volume, not to the platform, so ask the
+// filesystem rather than process.platform: a directory on a case-insensitive
+// volume answers to a flipped spelling of its own name. This only decides
+// paths that do not exist yet — realpath has already settled the ones that do.
+function caseBlind(dir) {
+  let at = path.resolve(dir);
+  for (;;) {
+    const name = path.basename(at);
+    const flipped = flipCase(name);
+    if (flipped !== name) {
+      try {
+        return fs.realpathSync.native(path.join(path.dirname(at), flipped)) === fs.realpathSync.native(at);
+      } catch (_) {
+        return false;
+      }
+    }
+    const parent = path.dirname(at);
+    if (parent === at) return false;
+    at = parent;
+  }
+}
+
+function samePath(a, b) {
+  return a === b || (a.toLowerCase() === b.toLowerCase() && caseBlind(path.dirname(a)));
+}
+
+// Device and inode: one file, however many names lead to it. This is what
+// catches a hard link, which realpath cannot — a hard link is not a reference
+// to a name, it is a second name for the same file.
+function identity(file) {
+  try {
+    const s = fs.statSync(file);
+    return `${s.dev}:${s.ino}`;
+  } catch (_) {
+    return null;
+  }
+}
+
 // ---------- main ----------
 
 function targetOf(projectRoot, toolInput) {
   const raw = toolInput.file_path || toolInput.notebook_path || toolInput.path;
   if (typeof raw !== 'string' || !raw) return null;
-  const resolved = path.resolve(projectRoot, raw);
-  if (resolved === path.resolve(project.canvasPath(projectRoot))) return { kind: 'canvas', file: resolved };
-  if (resolved === path.resolve(project.decisionsPath(projectRoot))) return { kind: 'decisions', file: resolved };
+  const written = path.resolve(projectRoot, raw);
+  const writtenId = identity(written);
+  const writtenPath = canonical(written, 0);
+  for (const [kind, statePath] of [['canvas', project.canvasPath(projectRoot)], ['decisions', project.decisionsPath(projectRoot)]]) {
+    const state = canonical(statePath, 0);
+    const stateId = identity(statePath);
+    // The file is named by where the write lands, not by what was typed: a
+    // refusal that says canvas.md is more use than one that says link.md.
+    if ((stateId !== null && stateId === writtenId) || samePath(writtenPath, state)) return { kind, file: state };
+  }
   return null;
 }
 
@@ -618,7 +705,16 @@ function fileVerdict(target, toolName, toolInput) {
   if (toolName === 'NotebookEdit') {
     return `${name} is Markdown, not a notebook, and a notebook edit cannot be judged here. Use the Edit tool. ${NEXT_STEP}`;
   }
-  const before = project.readIfExists(target.file) || '';
+  let before;
+  try {
+    before = project.readIfExists(target.file) || '';
+  } catch (err) {
+    // An unreadable file is not an absent one. Reading it as absent would make
+    // this a creation rather than a modification, and so permit a write that
+    // deletes whatever the researcher had accepted. §5.3 says the guard denies
+    // what it cannot judge, and it cannot judge this.
+    return `Cannot judge this write: ${target.file} exists but cannot be read (${(err && err.code) || 'unknown error'}). Restore read access to it and retry. ${NEXT_STEP}`;
+  }
   let after;
   if (toolName === 'Write') {
     after = typeof toolInput.content === 'string' ? toolInput.content : null;

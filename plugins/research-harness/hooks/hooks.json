@@ -1,5 +1,5 @@
 {
-  "description": "research-harness stays silent unless the project contains research/canvas.md; SessionStart injects a ≤4 KiB canvas summary and fails open; PreToolUse denies any write that creates an [accepted] statement, alters a [stated] or [accepted] statement, promotes a proposal, or rewrites decisions.md, and fails closed when it cannot judge a diff. PreToolUse carries no matcher on purpose: every tool reaches the guard, which is the one place that decides which of them it can judge.",
+  "description": "research-harness stays silent unless the project contains research/canvas.md; SessionStart injects a ≤4 KiB canvas summary and fails open; PreToolUse denies any write that creates an [accepted] statement, alters a [stated] or [accepted] statement, promotes a proposal, or writes decisions.md at all (the harness seals every entry), and fails closed when it cannot judge a diff. PreToolUse carries no matcher on purpose: every tool reaches the guard, which is the one place that decides which of them it can judge.",
   "hooks": {
     "SessionStart": [
       {

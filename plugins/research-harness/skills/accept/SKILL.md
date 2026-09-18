@@ -10,9 +10,10 @@ Accepting a canvas statement:
 !`node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" accept $ARGUMENTS`
 
 The output above is the result. If it says "Accepted", the statement now
-carries `[accepted]` and the decision log has a new entry with the text hash.
-If it refused — an unmet dependency, an ambiguous question, nothing to accept
-— it names what to do.
+carries `[accepted]` and the decision log has a new entry with the text hash,
+sealed under this machine's key. If it refused — an unmet dependency, an
+ambiguous question, nothing to accept, no sealing key on this machine, a
+broken decision log — it names what to do.
 
 If nothing was printed above, the arguments did not reach the command. Run it
 yourself from the prompt with the `!` prefix, which executes a shell command

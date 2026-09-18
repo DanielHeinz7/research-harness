@@ -56,6 +56,7 @@ test('with a canvas the hook injects a summary under 4 KiB naming empties, open 
   assert.match(text, /Empty: 4, 6, 7, 8, 9/);
   assert.match(text, /Open \(proposals only\): 2/);
   assert.match(text, /Decisions not yet seen: #1 CONSTRAINT 5 Research Setting; #2 DISCOVERY 1 Puzzle; #3 DECISION 1\.1 accepted/);
+  assert.match(text, /Stale acceptances: #3 · Ledger: unverifiable \(3 entries predate the seal\)/);
   assert.match(text, /never write \[accepted\]/i);
   assert.match(text, /\/research-harness:accept/);
 });
@@ -68,6 +69,18 @@ test('a second session start with the same session id does not repeat decisions 
   assert.match(again, /Decisions not yet seen: none/);
   const other = JSON.parse(run(root, stateDir, { session_id: 'sess-2' }).stdout).hookSpecificOutput.additionalContext;
   assert.match(other, /Decisions not yet seen: #1/);
+});
+
+test('the summary names a broken ledger and an unverifiable-here one', () => {
+  const root = makeProject();
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+  const file = path.join(root, 'research', 'decisions.md');
+  fs.appendFileSync(file, '\n## [#4] 2026-09-18 · DISCOVERY · 1 Puzzle · seal 0123456789abcdef\nx [tentative]\n');
+  const noKey = JSON.parse(run(root, stateDir).stdout).hookSpecificOutput.additionalContext;
+  assert.match(noKey, /Ledger: unverifiable here \(no key on this machine\)/);
+  fs.appendFileSync(file, '\n## [#5] 2026-09-18 · DISCOVERY · 1 Puzzle\nunsealed [tentative]\n');
+  const broken = JSON.parse(run(root, stateDir).stdout).hookSpecificOutput.additionalContext;
+  assert.match(broken, /Ledger: BROKEN at #5 \(unsealed\) — run research-harness review/);
 });
 
 test('a malformed canvas or a missing profile does not stop the prompt', () => {

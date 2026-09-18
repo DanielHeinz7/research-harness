@@ -2,12 +2,15 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const project = require('./lib/project');
 const canvas = require('./lib/canvas');
 const profile = require('./lib/profile');
 const output = require('./lib/output');
+const ledger = require('./lib/ledger');
+const seal = require('./lib/seal');
 
 // The plugin's own root, for the one question the guard asks of it: does this
 // canvas name a profile that ships (§4.5)?
@@ -209,6 +212,10 @@ const EXP_RE = /\u0000([A-Za-z0-9_]*)\u0001/g;
 const RUNNERS = new Set(['node', 'nodejs', 'npx', 'bun', 'deno', 'pnpm', 'yarn']);
 const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
 const CLI_READ_SUBS = new Set(['status', 'review', 'init']);
+// `log` is the harness's own append path (§4.7): it seals what it writes, and
+// it is open to the model for these two kinds only. A DECISION is the
+// approval path's alone, and a kind the guard cannot read is judged as one.
+const CLI_LOG_KINDS = new Set(['DISCOVERY', 'CONSTRAINT']);
 
 // Commands that read and cannot be talked into writing by their own arguments.
 // `awk` is absent on purpose: its program text is a language this guard cannot
@@ -528,6 +535,38 @@ function denotesState(candidate, base, stateParts) {
   return true;
 }
 
+// The harness state root, as words on a command line can spell it: resolved,
+// `~`-prefixed, or opaque with the literal tail that survives expansion
+// (`"$HOME/.claude/research-harness/…"`).
+function harnessRoot() {
+  const configured = path.resolve(ledger.stateRoot());
+  const root = canonical(configured, 0);
+  const home = os.homedir();
+  const rel = path.relative(home, root);
+  // Both spellings, because a command names the directory as it was typed and
+  // the filesystem answers to the canonical one (/var → /private/var on macOS).
+  const spellings = [...new Set([configured, root])];
+  return {
+    parts: spellings.map((s) => s.split(path.sep).filter(Boolean)),
+    tail: rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : null,
+    names: new Set([seal.KEY_FILE]),
+  };
+}
+
+function expandTilde(candidate) {
+  if (candidate === '~' || candidate.startsWith('~/')) return path.join(os.homedir(), candidate.slice(1));
+  return candidate;
+}
+
+function wordTouchesHarness(w, base, harness) {
+  if (w.opaque) {
+    const literal = w.text.replace(EXP_RE, '');
+    if (harness.tail && literal.includes(harness.tail)) return true;
+    return opaqueNamesState(w.text, harness.names);
+  }
+  return pathCandidates(w.text).some((candidate) => harness.parts.some((parts) => denotesState(expandTilde(candidate), base || os.homedir(), parts)));
+}
+
 // A word the guard could not fully expand is judged on the literal parts it
 // still has: a path it cannot resolve but that names the state dir or one of
 // its files is treated as touching it.
@@ -563,7 +602,7 @@ function harnessInvocation(args) {
   };
   if (CLI_NAMES.has(baseNameOf(args[0].text))) {
     const k = skipFlags(1);
-    return { harness: true, sub: k < args.length ? args[k] : null };
+    return { harness: true, sub: k < args.length ? args[k] : null, rest: args.slice(k + 1) };
   }
   if (!RUNNERS.has(baseNameOf(args[0].text))) return null;
   const scriptAt = skipFlags(1);
@@ -573,7 +612,18 @@ function harnessInvocation(args) {
   return {
     harness: !script.opaque && CLI_NAMES.has(baseNameOf(script.text)),
     sub: subAt < args.length ? args[subAt] : null,
+    rest: args.slice(subAt + 1),
   };
+}
+
+// What the CLI's `log` subcommand is being asked to write: 'open' for a
+// literal DISCOVERY or CONSTRAINT, 'decision' for DECISION or a kind the guard
+// cannot read, 'none' when no kind was given at all.
+function logKindOf(invocation) {
+  const kind = invocation.rest.find((w) => !w.text.startsWith('-'));
+  if (!kind) return 'none';
+  if (kind.opaque || !CLI_LOG_KINDS.has(kind.text)) return 'decision';
+  return 'open';
 }
 
 // Returns null when the simple command is a named read-only form, or the
@@ -590,7 +640,11 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
   const invocation = harnessInvocation(args);
   if (invocation && invocation.harness) {
     if (!invocation.sub) return null;
-    return !invocation.sub.opaque && CLI_READ_SUBS.has(invocation.sub.text) ? null : 'the CLI is being run with a subcommand that is not status, review or init';
+    if (invocation.sub.opaque) return 'the CLI is being run with a subcommand that is not status, review, init or log';
+    if (invocation.sub.text === 'log') {
+      return logKindOf(invocation) === 'open' ? null : 'the CLI\'s log command takes DISCOVERY or CONSTRAINT as a literal word';
+    }
+    return CLI_READ_SUBS.has(invocation.sub.text) ? null : 'the CLI is being run with a subcommand that is not status, review, init or log';
   }
   if (args[0].opaque) return 'the command name is assembled at runtime';
   const verb = baseNameOf(args[0].text);
@@ -614,12 +668,24 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
 }
 
 function bashDenial(why) {
-  return `Only read-only shell access to the research state is allowed, and ${why}. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-harness status/review/init. Use the Edit tool for [proposed] and [tentative] statements; acceptance is the researcher's act via /research-harness:accept.`;
+  return `Only read-only shell access to the research state is allowed, and ${why}. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-harness status/review/init, and research-harness log DISCOVERY|CONSTRAINT to record a finding. Use the Edit tool for [proposed] and [tentative] statements; acceptance is the researcher's act via /research-harness:accept.`;
 }
 
 // Acceptance is the researcher's act wherever it is invoked from: running it
 // from the shell would be the model declaring a commitment (§4.3).
 const ACCEPT_DENIAL = 'Accepting a statement is the researcher\'s act, so `research-harness accept` cannot be run from the shell — under any name, quoting, or variable. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m>.';
+const LOG_DECISION_DENIAL = 'A DECISION entry is the researcher\'s act, so `research-harness log DECISION` cannot be run from the shell — nor `log` with a kind the guard cannot read. Record a finding with `research-harness log DISCOVERY|CONSTRAINT <ref> --body "<text>"`, and ask the researcher for /research-harness:accept <n.m>.';
+// The CLI reads its configuration from the session. A command line that hands
+// it another home, state directory or project would make it seal with a key
+// of the model's choosing, and the researcher's ledger would then read as
+// broken at that entry.
+const ENV_DENIAL = 'research-harness cannot be run with its own environment set on the command line (`NAME=value research-harness …`): it reads its configuration from the session, and a changed home or state directory would seal the decision log with the wrong key. Run the command without the assignment.';
+// The harness state directory holds the sealing key of the decision log
+// (§4.7). A key the model can read or replace seals nothing, and nothing in
+// that directory is part of the paper.
+function harnessStateDenial(label) {
+  return `research-harness cannot let ${label} touch the harness state directory (${ledger.stateRoot()}): it holds the sealing key of the decision log, and a key the model can read or replace seals nothing. Nothing there is part of the paper; read the research state with Read, cat or grep instead.`;
+}
 
 function bashVerdict(command, projectRoot) {
   const cmd = String(command || '');
@@ -646,9 +712,12 @@ function bashVerdict(command, projectRoot) {
   }
 
   const values = new Map();
+  const harness = harnessRoot();
   let base = root;
   let touches = false;
   let acceptAttempt = false;
+  let decisionAttempt = false;
+  let envAttempt = false;
   let refusal = null;
 
   for (const sc of commands) {
@@ -658,6 +727,14 @@ function bashVerdict(command, projectRoot) {
       const assignment = ASSIGNMENT_RE.exec(w.text);
       if (!assignment) break;
       if (!assignment[2].includes(EXP_OPEN)) values.set(assignment[1], assignment[2]);
+    }
+
+    // The harness state directory admits no form at all, read-only or not.
+    for (const w of sc.words) {
+      if (wordTouchesHarness(w, base, harness)) return harnessStateDenial('this shell command');
+    }
+    for (const redirect of sc.redirects) {
+      if (redirect.target && !redirect.heredoc && wordTouchesHarness(redirect.target, base, harness)) return harnessStateDenial('this shell command');
     }
 
     if (base === null) touches = true;
@@ -677,8 +754,10 @@ function bashVerdict(command, projectRoot) {
     const invocation = harnessInvocation(argv);
     if (invocation) {
       if (invocation.harness) touches = true;
+      if (invocation.harness && verbAt > 0) envAttempt = true;
       if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'accept') acceptAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.opaque) acceptAttempt = true;
+      else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
     }
 
     if (!refusal) refusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames);
@@ -692,6 +771,8 @@ function bashVerdict(command, projectRoot) {
   }
 
   if (acceptAttempt) return ACCEPT_DENIAL;
+  if (decisionAttempt) return LOG_DECISION_DENIAL;
+  if (envAttempt) return ENV_DENIAL;
   if (!touches || !refusal) return null;
   return bashDenial(refusal);
 }
@@ -879,8 +960,27 @@ function unknownToolVerdict(projectRoot, toolName, toolInput) {
 
 // ---------- main ----------
 
+// §5.3: the model does not write decisions.md, appends included. Appending was
+// permitted once, as faithful to "append-only"; SQ-21's D7b and D7c appended a
+// forged acceptance through that door and D8 showed it silenced §4.4's
+// backstop. Every entry now comes through the harness, which seals it.
+const DECISIONS_DENIAL = 'decisions.md is written only by the harness, so that every entry is sealed (§4.7). To record a finding, run `research-harness log DISCOVERY|CONSTRAINT <ref> --body "<text>"`. A DECISION is the researcher\'s act: ask them for /research-harness:accept <n.m>.';
+
+// Any tool whose payload points into the harness's own state directory is
+// refused, reads included: see harnessStateDenial.
+function harnessStateVerdict(projectRoot, toolName, toolInput) {
+  const root = canonical(ledger.stateRoot(), 0);
+  for (const candidate of payloadStrings(toolInput, [], 0)) {
+    if (underState(landingOf(projectRoot, expandTilde(candidate)).canonicalPath, root)) {
+      return harnessStateDenial(toolName ? `\`${toolName.slice(0, 40)}\`` : 'an unnamed tool');
+    }
+  }
+  return null;
+}
+
 function fileVerdict(target, toolName, toolInput) {
   const name = path.basename(target.file);
+  if (target.kind === 'decisions') return DECISIONS_DENIAL;
   if (toolName === 'NotebookEdit') {
     return `${name} is Markdown, not a notebook, and a notebook edit cannot be judged here. Use the Edit tool. ${NEXT_STEP}`;
   }
@@ -904,11 +1004,6 @@ function fileVerdict(target, toolName, toolInput) {
       return `Cannot judge this edit: old_string was not found exactly once in ${name}. Re-read the file and retry with an old_string that appears exactly once.`;
     }
   }
-  if (target.kind === 'decisions') {
-    return after.startsWith(before)
-      ? null
-      : 'decisions.md is append-only: existing entries are never edited. Append a new entry that names the one it supersedes.';
-  }
   return canvasVerdict(before, after);
 }
 
@@ -922,11 +1017,13 @@ function main() {
 
     if (toolName === 'Bash') {
       reason = bashVerdict(toolInput.command, projectRoot);
-    } else if (WRITE_TOOLS.has(toolName)) {
-      const target = targetOf(projectRoot, toolInput);
-      if (target) reason = fileVerdict(target, toolName, toolInput);
-    } else if (!READ_TOOLS.has(toolName)) {
-      reason = unknownToolVerdict(projectRoot, toolName, toolInput);
+    } else if ((reason = harnessStateVerdict(projectRoot, toolName, toolInput)) === null) {
+      if (WRITE_TOOLS.has(toolName)) {
+        const target = targetOf(projectRoot, toolInput);
+        if (target) reason = fileVerdict(target, toolName, toolInput);
+      } else if (!READ_TOOLS.has(toolName)) {
+        reason = unknownToolVerdict(projectRoot, toolName, toolInput);
+      }
     }
   } catch (err) {
     // Fail closed: a permission guard that lets writes through on error is a

@@ -44,9 +44,23 @@ function loadProfile(id, pluginRoot) {
   return { id, graph: parseGraph(text), text };
 }
 
+// An element that appears twice has *no* status — not the status of whichever
+// heading came last (§4.2). The loop that simply assigned into the map is what
+// let SQ-21's S15 append a second `# 1 · …` heading and have element 1 report
+// `empty` while it still held the researcher's accepted statement. A duplicate
+// is a detected condition here and a problem on the parse, never a silent
+// overwrite.
 function statusByNumber(parsed) {
   const map = {};
-  for (const el of parsed.elements) map[el.number] = elementStatus(el);
+  const seen = new Set();
+  for (const el of parsed.elements) {
+    if (seen.has(el.number)) {
+      map[el.number] = { status: 'duplicate', open: 0, duplicate: true };
+      continue;
+    }
+    seen.add(el.number);
+    map[el.number] = elementStatus(el);
+  }
   return map;
 }
 

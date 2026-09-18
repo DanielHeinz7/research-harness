@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('node:crypto');
+
 const MARKERS = ['proposed', 'tentative', 'stated', 'accepted'];
 const COMMITTED = new Set(['stated', 'accepted']);
 const EMPTY_PLACEHOLDER = '_(empty)_';
@@ -8,8 +10,21 @@ const ELEMENT_RE = /^# ([1-9]) · (.+)$/;
 const QUESTION_RE = /^## ([1-9]\.\d+) (.+)$/;
 const MARKER_GROUP_RE = /\s*\[([^[\]]+)\]\s*$/;
 
+// The field separator of a canonical commitment (§4.3.1): a character the
+// researcher cannot have typed into Markdown.
+const COMMIT_SEP = '';
+
+// The collapse class is exactly space, tab, CR and LF — not JavaScript's `\s`,
+// which also matches U+00A0 and U+FEFF. A reflow only ever introduces these
+// four; anything else a write pushes into a committed statement is a change to
+// it, and treating U+00A0 as whitespace is what let SQ-21's D5b and D5c rewrite
+// an accepted statement with the guard seeing no difference at all (§4.3.1).
+const COLLAPSE_RE = /[ \t\r\n]+/g;
+
+// NFC, never NFKC: compatibility folding would equate `½` with `1⁄2` and let a
+// committed statement be rewritten inside its own hash.
 function normalizeText(text) {
-  return String(text).replace(/\s+/g, ' ').trim();
+  return String(text).normalize('NFC').replace(COLLAPSE_RE, ' ').trim();
 }
 
 function parseFrontmatter(lines) {
@@ -31,6 +46,50 @@ function parseMarkerGroup(paragraph) {
   const parts = m[1].split(',').map((p) => p.trim()).filter(Boolean);
   if (!MARKERS.includes(parts[0])) return null;
   return { text: paragraph.slice(0, m.index).trim(), marker: parts[0], tags: parts.slice(1) };
+}
+
+function elementOf(questionId) {
+  return Number(String(questionId).split('.')[0]);
+}
+
+// §4.2's three structural laws. A canvas holding two of the same heading is not
+// untidy — it is a document with two readings, and every consumer silently
+// picked one of them. The parser reports the breach and neither merges,
+// prefers nor overwrites either reading; resolving it is the researcher's act.
+// Both line numbers are named, because they are what the researcher needs to
+// find the duplicate.
+function structuralProblems(elements) {
+  const problems = [];
+  const elementLines = new Map();
+  const questionLines = new Map();
+  const misplaced = [];
+
+  for (const el of elements) {
+    if (!elementLines.has(el.number)) elementLines.set(el.number, []);
+    elementLines.get(el.number).push(el.line);
+    for (const q of el.questions) {
+      if (!questionLines.has(q.id)) questionLines.set(q.id, []);
+      questionLines.get(q.id).push(q.line);
+      if (elementOf(q.id) !== el.number) misplaced.push({ q, element: el.number });
+    }
+  }
+
+  for (const number of [...elementLines.keys()].sort((a, b) => a - b)) {
+    const lines = elementLines.get(number);
+    if (lines.length > 1) {
+      problems.push(`element ${number} has ${lines.length} headings (lines ${lines.join(', ')}); while both stand it has no status, and the model may not resolve the duplicate`);
+    }
+  }
+  for (const id of [...questionLines.keys()].sort()) {
+    const lines = questionLines.get(id);
+    if (lines.length > 1) {
+      problems.push(`question ${id} has ${lines.length} headings (lines ${lines.join(', ')}); while both stand it has no single reading, and the model may not resolve the duplicate`);
+    }
+  }
+  for (const m of misplaced) {
+    problems.push(`line ${m.q.line}: question ${m.q.id} sits under element ${m.element}, but a question belongs to the element it is numbered for`);
+  }
+  return problems;
 }
 
 function parseCanvas(text) {
@@ -98,7 +157,82 @@ function parseCanvas(text) {
     if (parseMarkerGroup(paragraph.join('\n'))) flush();
   }
   flush();
+  result.problems.push(...structuralProblems(result.elements));
   return result;
+}
+
+// Sorting "by code point" is not Array#sort's default, which orders by UTF-16
+// code unit and disagrees with it above the BMP.
+function compareByCodePoint(a, b) {
+  const x = Array.from(a);
+  const y = Array.from(b);
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i += 1) {
+    const d = x[i].codePointAt(0) - y[i].codePointAt(0);
+    if (d !== 0) return d;
+  }
+  return x.length - y.length;
+}
+
+// A commitment is a statement carrying [stated] or [accepted] together with
+// everything that gives it its meaning (§4.3.1). The first implementation
+// identified a statement by question id and text alone, which left the element
+// it sits under, that element's title, the wording of its own question and its
+// evidence tags free to change underneath it — every structural hole SQ-21
+// found went through one of those, leaving the key identical.
+//
+// Fields in the order of §4.3.1's table, separated by U+001F, with the evidence
+// tags sorted so that reordering them is not a change.
+function canonicalCommitment(element, question, statement) {
+  const tags = statement.tags.map(normalizeText).filter(Boolean).sort(compareByCodePoint);
+  return [
+    String(element.number),
+    normalizeText(element.title),
+    normalizeText(question.id),
+    normalizeText(question.text),
+    statement.marker,
+    normalizeText(statement.text),
+    tags.join(', '),
+  ].join(COMMIT_SEP);
+}
+
+// How a commitment is named where it must be named compactly — a refusal text,
+// canvas-review output, the stage-2 view. Deliberately not §4.4's
+// `text <hash>`: that one covers the statement text alone, so an acceptance
+// survives the researcher retitling the element around it, while this one
+// changes, because for the model that retitle is a different commitment.
+function commitmentHash(canonicalLine) {
+  return crypto.createHash('sha256').update(String(canonicalLine), 'utf8').digest('hex').slice(0, 8);
+}
+
+// C(x) of §4.3.1. A set and not a sequence: reordering statements inside a
+// question changes nothing, and a statement duplicated verbatim is the same
+// commitment twice. Statements carrying [proposed] or [tentative] are not
+// members at all and stay as free as §5.3 already makes them.
+function committedSet(parsed) {
+  const map = new Map();
+  for (const el of parsed.elements) {
+    for (const q of el.questions) {
+      for (const s of q.statements) {
+        if (!COMMITTED.has(s.marker)) continue;
+        const line = canonicalCommitment(el, q, s);
+        if (map.has(line)) continue;
+        map.set(line, {
+          canonical: line,
+          hash: commitmentHash(line),
+          element: el.number,
+          elementTitle: el.title,
+          question: q.id,
+          questionText: q.text,
+          marker: s.marker,
+          text: s.text,
+          tags: s.tags.map(normalizeText).filter(Boolean).sort(compareByCodePoint),
+          line: s.line,
+        });
+      }
+    }
+  }
+  return map;
 }
 
 // Status comes from committed statements only (§4.4). Proposals sit alongside
@@ -127,9 +261,15 @@ module.exports = {
   MARKERS,
   COMMITTED,
   EMPTY_PLACEHOLDER,
+  COMMIT_SEP,
   normalizeText,
+  compareByCodePoint,
   parseMarkerGroup,
   parseCanvas,
+  structuralProblems,
+  canonicalCommitment,
+  commitmentHash,
+  committedSet,
   elementStatus,
   allStatements,
 };

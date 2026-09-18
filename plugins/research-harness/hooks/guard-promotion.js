@@ -6,7 +6,18 @@ const path = require('node:path');
 
 const project = require('./lib/project');
 const canvas = require('./lib/canvas');
+const profile = require('./lib/profile');
 const output = require('./lib/output');
+
+// The plugin's own root, for the one question the guard asks of it: does this
+// canvas name a profile that ships (§4.5)?
+function pluginRoot() {
+  return process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
+}
+
+// The schema this parser implements. A canvas that names another one is a
+// migration, which is the harness's own act rather than a model tool call.
+const CANVAS_SCHEMA = '2';
 
 // Every refusal ends here, because a guard that only says no blocks the
 // harness against itself (§5.3).
@@ -32,49 +43,132 @@ function headingKeys(parsed) {
   return keys;
 }
 
-// Returns a refusal reason, or null when the write is permitted (§5.3, §4.4).
+function cannotJudge(what) {
+  return `Cannot judge this write: ${what}. ${NEXT_STEP}`;
+}
+
+// §5.3: a `profile:` that does not resolve to a shipped profile makes the
+// canvas unjudgeable. SQ-21's S12b pointed it at an id the plugin does not
+// ship and dependency checking simply stopped — nothing reported that it could
+// not check. A rule that can be switched off by editing one word is not a rule.
+function profileRefusal(frontmatter) {
+  const id = frontmatter.profile;
+  if (id === undefined) return null;
+  try {
+    profile.loadProfile(id, pluginRoot());
+    return null;
+  } catch (_) {
+    return cannotJudge(`"profile: ${id}" does not resolve to a profile this harness ships, so the rules that judge this canvas cannot be loaded. Restore the profile the canvas was written against`);
+  }
+}
+
+// §5.3 clause 4. The protected thing is the whole mapping, not a list of keys:
+// enumerating them would leave the next key added unprotected by default. The
+// researcher changes the frontmatter in their own editor or through the canvas
+// view, neither of which is a model tool call.
+function frontmatterRefusal(before, after) {
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const k of [...keys].sort()) {
+    const had = Object.prototype.hasOwnProperty.call(before, k);
+    const has = Object.prototype.hasOwnProperty.call(after, k);
+    if (had && !has) return `Removing the frontmatter key "${k}" is not allowed; the frontmatter is the researcher's. ${NEXT_STEP}`;
+    if (!had && has) return `Adding the frontmatter key "${k}" is not allowed; the frontmatter is the researcher's. ${NEXT_STEP}`;
+    if (before[k] !== after[k]) {
+      return `The frontmatter key "${k}" is the researcher's to change ("${before[k]}" to "${after[k]}" was refused); it decides how the whole canvas is read and judged. ${NEXT_STEP}`;
+    }
+  }
+  return null;
+}
+
+// What became of a commitment that is no longer in C(after). The refusal is
+// part of the product, so it says which of the fields around the statement
+// moved rather than only that something did.
+function describeLoss(lost, afterSet) {
+  for (const cand of afterSet.values()) {
+    if (cand.text !== lost.text) continue;
+    if (cand.element !== lost.element) return `was moved to element ${cand.element}`;
+    if (cand.question !== lost.question) return `was moved to question ${cand.question}`;
+    if (cand.marker !== lost.marker) return `was downgraded to [${cand.marker}]`;
+    if (cand.elementTitle !== lost.elementTitle) return `had the title of its element rewritten to "${cand.elementTitle}"`;
+    if (cand.questionText !== lost.questionText) return 'had the text of its own question rewritten, so it now answers a different question';
+    if (cand.tags.join(', ') !== lost.tags.join(', ')) {
+      return lost.tags.length
+        ? `had its evidence tags rewritten from "${lost.tags.join(', ')}" to "${cand.tags.join(', ') || 'none'}"`
+        : `had the evidence tag "${cand.tags.join(', ')}" attached to it`;
+    }
+    return 'was altered';
+  }
+  return 'was altered or removed';
+}
+
+// Returns a refusal reason, or null when the write is permitted (§5.3, §4.3.1).
+//
+// One rule over the committed set, not a check per hole. The three prohibitions
+// of the first draft are what clauses 1 and 2 say about one statement at a
+// time; they were not wrong, they were too narrow, and SQ-21's attacks went
+// around them rather than through them.
 function canvasVerdict(beforeText, afterText) {
   const before = canvas.parseCanvas(beforeText || '');
   const after = canvas.parseCanvas(afterText || '');
+  const existed = String(beforeText || '').trim() !== '';
+
   if (after.problems.length) {
-    return `Cannot judge this write: ${after.problems[0]}. Keep the canvas structure — frontmatter, "# N · Title", "## N.M question", statements ending in a marker group. ${NEXT_STEP}`;
+    return cannotJudge(`${after.problems[0]}. Keep the canvas structure — frontmatter, "# N · Title", "## N.M question", statements ending in a marker group`);
   }
-  if (!after.elements.length) {
-    return `Cannot judge this write: the result has no elements. ${NEXT_STEP}`;
+  if (!after.elements.length) return cannotJudge('the result has no elements');
+  if (after.frontmatter['canvas-schema'] !== undefined && after.frontmatter['canvas-schema'] !== CANVAS_SCHEMA) {
+    return cannotJudge(`the result names canvas-schema ${after.frontmatter['canvas-schema']}, which this parser does not implement`);
   }
+  const badProfile = profileRefusal(after.frontmatter);
+  if (badProfile) return badProfile;
+
+  // Clause 3: every element and question heading that was there is still there.
   const afterHeadings = new Set(headingKeys(after));
   for (const key of headingKeys(before)) {
     if (!afterHeadings.has(key)) return `Removing or renaming the heading ${key} is not allowed; every element and question heading stays. ${NEXT_STEP}`;
   }
 
-  // A statement is identified by where it sits and what it says; its tags are
-  // free to change, its text is not (§4.3).
-  const key = (s) => `${s.question}|${s.text}`;
-  const b = canvas.allStatements(before);
-  const a = canvas.allStatements(after);
-  const bByKey = new Map(b.map((s) => [key(s), s]));
-  const aByKey = new Map(a.map((s) => [key(s), s]));
+  // Clause 4, only once there is a document to compare against: creating the
+  // canvas is legitimate and writes the frontmatter for the first time.
+  if (existed) {
+    const fm = frontmatterRefusal(before.frontmatter, after.frontmatter);
+    if (fm) return fm;
+  }
 
-  for (const s of a) {
-    if (s.marker !== 'accepted') continue;
-    const prev = bByKey.get(key(s));
-    if (!prev || prev.marker !== 'accepted') {
-      return `Only the researcher may write [accepted] (question ${s.question}). ${NEXT_STEP}`;
-    }
+  const beforeSet = canvas.committedSet(before);
+  const afterSet = canvas.committedSet(after);
+
+  // Clause 1: C(before) ⊆ C(after). Nothing committed is lost, moved,
+  // retitled, re-questioned, re-tagged or downgraded.
+  for (const lost of beforeSet.values()) {
+    if (afterSet.has(lost.canonical)) continue;
+    return `The [${lost.marker}] commitment in question ${lost.question} (${lost.hash}) ${describeLoss(lost, afterSet)}. It records what the researcher said or accepted, together with the element, the question and the evidence tags that give it its meaning. ${NEXT_STEP}`;
   }
-  for (const s of b) {
-    if (!canvas.COMMITTED.has(s.marker)) continue;
-    const next = aByKey.get(key(s));
-    if (!next || next.marker !== s.marker) {
-      return `The [${s.marker}] statement in question ${s.question} must not be altered, removed, or downgraded — it records what the researcher said or accepted. ${NEXT_STEP}`;
-    }
+
+  // The first draft's third prohibition, which clauses 1 and 2 do *not*
+  // subsume, though §4.3.1 says the three "are what clauses 1 and 2 say about
+  // one statement at a time". Relabelling a [proposed] statement [stated]
+  // creates a commitment that is new (so clause 1 is silent, the proposal never
+  // being a member of C) and carries [stated] (so clause 2 permits it). The set
+  // rule cannot see a promotion, because it cannot see what the statement used
+  // to be. SQ-21's D3b walks through exactly that gap with one `replace_all`.
+  // Repetition is not confirmation (§4.3), so promotion is refused on its own.
+  const proposals = new Map();
+  for (const s of canvas.allStatements(before)) {
+    if (s.marker === null || canvas.COMMITTED.has(s.marker)) continue;
+    proposals.set(`${s.question}|${s.text}`, s);
   }
-  for (const s of a) {
-    if (s.marker !== 'stated') continue;
-    const prev = bByKey.get(key(s));
-    if (prev && !canvas.COMMITTED.has(prev.marker)) {
-      return `A [${prev.marker}] statement cannot be promoted to [stated] by the model (question ${s.question}); only the researcher confirms it. ${NEXT_STEP}`;
+
+  // Clause 2: every commitment C(after) gained carries [stated] — the model may
+  // transcribe what it just heard, and may never declare a commitment.
+  for (const gained of afterSet.values()) {
+    if (beforeSet.has(gained.canonical)) continue;
+    const was = proposals.get(`${gained.question}|${gained.text}`);
+    if (was) {
+      return `A [${was.marker}] statement cannot be promoted to [${gained.marker}] by the model (question ${gained.question}); only the researcher confirms it. ${NEXT_STEP}`;
     }
+    if (gained.marker === 'stated') continue;
+    return `Only the researcher may write [${gained.marker}] (question ${gained.question}). ${NEXT_STEP}`;
   }
   return null;
 }

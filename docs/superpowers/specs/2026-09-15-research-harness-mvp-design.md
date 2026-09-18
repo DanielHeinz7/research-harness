@@ -193,6 +193,47 @@ harness must know which before it asks. `profile` selects the genre profile
 - **An empty element is a legal and explicitly desirable state.** It is better
   than plausible filler. This is the anti-fabrication rule at canvas level.
 
+**Three structural laws.** The grammar above says what a single heading looks
+like. These say which headings may coexist, and they were added after SQ-21
+showed that a canvas holding two of the same heading is not untidy — it is a
+document with two readings, and every consumer silently picked one of them.
+
+1. **Element numbers are unique.** Each of the nine numbers appears in at most
+   one `# N · Title` heading.
+2. **Question ids are unique.** Each `N.M` appears in at most one `## N.M …`
+   heading.
+3. **A question sits under the element it is numbered for.** `## 3.1` is legal
+   only below `# 3 · …`.
+
+**A document that breaks one of them is unjudgeable, not last-wins.** The parser
+reports the breach as a problem and does not merge, prefer or overwrite either
+reading. An element that appears twice has *no* status — not the status of
+whichever heading came last, which is what the first implementation produced
+(`map[el.number] = …` in a loop), and which let a second `# 1 · …` heading report
+element 1 as `empty` while it still held the researcher's accepted statement.
+
+Placing this in the parser rather than in the guard is deliberate: uniqueness is
+a property of the document, and the guard, `inject-state`, `canvas-review` and
+the stage-2 view have to read it the same way. The guard needs no rule of its
+own — its fail-closed clause (§5.3) already refuses a write it cannot judge.
+
+**What the researcher sees** when they genuinely have a duplicate, from a bad
+merge, a paste, or two hands on the file: `inject-state` names both line numbers
+at session start, so they hear it before the first denied write; `canvas-review`
+reports it as a problem; and the guard's refusal says which heading is
+duplicated and that the model may not resolve it. Merging two readings of a
+question means deciding which committed statements survive, and that is the
+researcher's act, not a repair the harness performs quietly.
+
+This closes SQ-21's **S1** and **S6** (an accepted statement re-parented to a
+duplicate `## 1.1` under another element, byte count unchanged, element 9
+flipping to accepted while element 1 lost the commitment), **S5** and **S5b** (a
+duplicate question heading shadowing the guard's matching — allowed when placed
+before the original, denied when placed after), and **S15** (a second `# 1 · …`
+heading shadowing element 1's status to `empty`). No `canvas-schema` bump: every
+canvas that was well-formed under schema 2 stays well-formed, because the laws
+refuse only documents no one meant to write.
+
 ### 4.3 Two axes, not one
 
 The first draft of this design collapsed two different things into one
@@ -252,11 +293,126 @@ purely conversational `[stated]` statement cannot be checked. `canvas-review`
 therefore lists them for periodic review and the session view marks them. The
 harness should report its own holes rather than conceal them.
 
+#### 4.3.1 What the guard protects is a commitment, not a string
+
+The first implementation identified a statement by question id and text — one
+line, `` `${s.question}|${s.text}` `` — and then enforced the two rules above
+against that identity. SQ-21 left the markers alone and attacked the identity.
+Every direct assault on a statement held: rework, downgrade, creating
+`[accepted]`, splitting, blockquote wrap, homoglyphs, both `replace_all`
+promotions, fenced and comment forgery. What did not hold was everything
+*around* the statement — the element it sits under, the title of that element,
+the text of its own question, its evidence tags, the frontmatter that decides
+which rules judge it. Each of those changes what the commitment means while
+leaving the key identical. The prohibitions were sound; the object they were
+protecting was the wrong object.
+
+A **commitment** is a statement carrying `[stated]` or `[accepted]` together
+with everything that gives it its meaning:
+
+| Field | Why it belongs to the commitment | Probe |
+|---|---|---|
+| element number | the element is what the statement is a commitment *about* | S1, S6 |
+| element title | `Puzzle` renamed to `Contributions` turns an accepted puzzle into an accepted contribution | S3 |
+| question id | the address the decision log and the dependency graph refer to | — |
+| question text | a statement answers a question; change the question and it answers a different one | S2 |
+| marker | the authorization itself | D0b |
+| statement text | what was said | D0a |
+| evidence tags | what backs it, and what `canvas-review` says about it | D4a, D4b, D4c |
+
+Element number and question id are not independent — §4.2's third law derives
+one from the other — and the field is carried anyway, so that a canonical line
+says what it is on its own, in a refusal text or in the stage-2 view, without
+the reader reconstructing the grammar to find out which element it belongs to.
+
+**Canonical form.** A commitment canonicalizes to one line: the fields in the
+order of the table, separated by U+001F (`␟`, unit separator — a character the
+researcher cannot have typed into Markdown), with the evidence tags sorted by
+code point so that reordering them is not a change.
+
+```
+3␟Research Question␟3.1␟What is the question?␟stated␟Under what meeting conditions …␟src: memo-03
+```
+
+Every field is normalized first: NFC, then each run of space, tab, CR and LF
+collapsed to one space, then trimmed. The collapse class is **exactly those four
+characters**, and that is a correction rather than a restatement. JavaScript's
+`\s` also matches U+00A0 and U+FEFF, which is why SQ-21's **D5b** and **D5c**
+could push a no-break space and a byte-order mark into an accepted statement and
+have the guard see no change at all. A reflow only ever introduces the four;
+anything else a write puts inside a committed statement is a change to it.
+
+Not NFKC. Compatibility folding would equate `½` with `1⁄2` and let a committed
+statement be rewritten inside its own hash, which is the opposite of the point.
+
+**Commitment hash:** the first 8 hex of SHA-256 over the canonical line. It is
+how a commitment is named where it must be named compactly — `canvas-review`
+output, the stage-2 view, a refusal text. It is *not* §4.4's `text <hash>`, and
+the difference is deliberate: `text <hash>` covers the statement text alone, so
+an acceptance survives the researcher retitling the element around it, while the
+commitment hash changes, because for the model that retitle is a different
+commitment and is refused.
+
+**The committed set, and the single rule over it.** Write `C(x)` for the set of
+canonical commitments in canvas text `x`. A model write that turns `before` into
+`after` is permitted only when both of these hold:
+
+1. **`C(before) ⊆ C(after)`** — nothing committed is lost, moved, retitled,
+   re-questioned, re-tagged or downgraded.
+2. **Every commitment in `C(after) \ C(before)` carries `[stated]`** — the model
+   may transcribe what it just heard, and may never declare a commitment.
+
+It is a set and not a sequence: reordering statements inside a question changes
+nothing, because their order carries no meaning (**S11** stays allowed).
+Statements carrying `[proposed]` or `[tentative]` are not members of `C` at all
+and remain as free as §5.3 already makes them, fenced examples included
+(**D1c**, **D1d**).
+
+The two clauses are the whole of §5.3's rule for `canvas.md`. The three
+prohibitions of the first draft are what they say about one statement at a time,
+and the structural holes fall out of them without a check each: **S2** (the
+question rewritten under a committed statement), **S3** (element 1 retitled),
+**D4a** (a committed statement's `src:` rewritten from `memo-03` to `memo-99`)
+and **D4c** (its tag stripped) each delete a member of `C(before)` from
+`C(after)`, which is clause 1. **D4b** — a fabricated `src: interview-07 §3`
+attached to the researcher's accepted statement, which also dropped it from the
+untagged report — breaks both clauses: the original commitment is gone, and the
+retagged one is an `[accepted]` the model created. **S1** and **S6** break
+clause 1 as well as the structural laws of §4.2.
+
+**The frontmatter is protected state.** It is not decoration around the canvas.
+`profile:` selects the dependency graph and the genre rules by which everything
+else is judged (§4.5, §4.6); SQ-21's **S12b** pointed it at an id the plugin does
+not ship, and dependency checking simply stopped — `inject-state` and
+`canvas-review` reported nothing, rather than reporting that they could not
+check. A rule that can be switched off by editing one word is not a rule.
+
+The protected thing is the whole frontmatter mapping, not a list of keys: while
+`canvas.md` exists, its set of key/value pairs must be identical before and
+after a model write. Enumerating keys would leave the next key added
+unprotected by default. `project:` and `outlet:` are therefore **protected, not
+merely reported** (**S12**): `project` is the identity the decision log is headed
+with, and a silent change to it splits the ledger from the canvas; `outlet`
+carries the format constraints that decide what "finished" means. Both are the
+researcher's, and the researcher changes them in their own editor or through the
+canvas view, neither of which is a model tool call. The remaining three follow
+the same reasoning: `created:` is a record, `mode:` says where `/canvas` began
+(§6) and not where it stands now, and `canvas-schema:` names the grammar the
+file is written in, so a migration is the harness's own act rather than a tool
+call.
+
+Protection is not correctness, so one check sits beside it: a `profile:` that
+does not resolve to a shipped profile makes the canvas unjudgeable in the sense
+of §5.3, exactly like a duplicate heading. It is reported, never ignored.
+
 ### 4.4 Element status, and why a proposal must not demote
 
 An element's status is derived **only from its committed statements** — those
 carrying `[stated]` or `[accepted]`. Statements carrying `[proposed]` or
-`[tentative]` sit alongside as open annotations and never lower it.
+`[tentative]` sit alongside as open annotations and never lower it. An element
+declared by two headings has no status at all (§4.2); reading the last heading
+and losing the statements under the first is how SQ-21's **S15** reported an
+element as `empty` while it held an acceptance.
 
 This is not cosmetic. The first draft derived element status from the weakest
 statement of any kind, while the guard's own refusal text tells the model to
@@ -274,6 +430,17 @@ acceptance while any wording change does. `canvas-review`
 recomputes it: if the statement has since been reworded, the acceptance no
 longer covers it and is reported as stale. The guard already prevents the model
 from doing that; the hash also catches a human edit, a merge, or a co-author.
+
+**An acceptance is logged only by an entry that verifies.** `canvas-review`
+counts an `[accepted]` statement as unlogged unless some `DECISION` entry names
+its question, carries its `text <hash>`, **and** verifies against the ledger seal
+(§4.7). SQ-21's **D7b**, **D7c** and **D8** are why the third condition exists: a
+forged `DECISION · 1.2 accepted · text d1b87d4e` appended to `decisions.md`
+dropped the unlogged-acceptance count from 2 back to the baseline 1, so the one
+mechanism meant to catch an acceptance the guard missed was silenced by a line of
+text. An entry that does not verify gives no cover: the acceptance it claims to
+account for is still reported as unlogged, and the entry itself is reported as a
+broken ledger.
 
 The mechanism is not invented here. `ldx-design-mining/artifact/kernel.py` keys
 recorded human reviews to a SHA-256 of the fragment text precisely so they
@@ -375,12 +542,12 @@ the one it supersedes.
 ```markdown
 # Decision log — junior-gap
 
-## [#12] 2026-09-15 · DECISION · 3.1 accepted · text a3f1c9d2
+## [#12] 2026-09-15 · DECISION · 3.1 accepted · text a3f1c9d2 · seal 5e8c11ab4f2d7c90
 The question targets the transition, not the outcome. [accepted]
 **Why:** ...
 **Rejected:** ...
 
-## [#13] 2026-09-16 · DISCOVERY · 2 Prior Research
+## [#13] 2026-09-16 · DISCOVERY · 2 Prior Research · seal 91d0f7a3b6c4e825
 Two studies contradict each other on ... [tentative, src: ref-11]
 **Supersedes:** #7
 ```
@@ -389,7 +556,73 @@ Kinds: `DECISION` (a commitment), `CONSTRAINT` (a condition that rules options
 out), `DISCOVERY` (a finding that changes the situation). Adopted from Sidequest's
 story log — the one mechanism that genuinely transfers from Toolshed to paper
 work. The sequence number drives the session ledger (§5.2); the `text <hash>`
-field on an acceptance is what §4.4 recomputes.
+field on an acceptance is what §4.4 recomputes. A `DECISION`'s reference is a
+question id, `N.M`, which under §4.2's third structural law names the element
+too — an acceptance logged for `1.2` cannot silently come to mean an element 9
+statement.
+
+**The seal, and what it is for.** "Append-only" was faithful to the file and
+blind to the act. SQ-21's **D7b** and **D7c** appended a `DECISION` entry
+claiming an acceptance the researcher never made — once with `Edit`, once with a
+whole-file `Write` — and the guard permitted both, correctly by its own rule,
+because appending is permitted. Nothing bound an entry to an act by the
+researcher. **D8** then showed the cost: with that entry in place, §4.4's
+unlogged-acceptance backstop stopped reporting an acceptance planted through the
+shell hole. The guard and the mechanism meant to catch what the guard misses
+failed together.
+
+`seal` is the first 16 hex of HMAC-SHA-256 over the entry's canonical content
+and the seal before it:
+
+```
+seal(n) = HMAC(key, seal(n-1) ␟ seq ␟ date ␟ kind ␟ ref ␟ text-hash ␟ normalize(body))
+```
+
+Chaining makes the log tamper-evident backwards: entry #7 cannot be altered or
+removed without invalidating every seal after it. The **key** is what makes an
+*append* unforgeable, and a plain SHA-256 chain would not have been — anyone who
+can read the log can compute the next digest, so a forger would simply have
+sealed their own entry. The key is created by `research-harness init`, lives
+under `~/.claude/research-harness/<project>/` with mode 0600, and never enters
+the repository. Sixteen hex rather than the eight used for `text`, because this
+one resists guessing rather than drift: a forger can run the verifier locally as
+often as they like, and 32 bits does not survive that.
+
+State the limit rather than overclaim it. The model runs as the same user as the
+approval path, so no purely local secret is beyond its reach. What the seal buys
+is that forging an entry is no longer writing a line of Markdown: it requires
+reaching outside the project into the harness's own state directory, which is a
+step the guard sees and denies, and which leaves the forgery visible as an
+unverifiable entry if it is not taken.
+
+**Only the harness writes this file.** The model never writes `decisions.md`
+directly — §5.3 denies it — because a write it can perform is a write it can seal
+wrongly or leave unsealed. It contributes `DISCOVERY` and `CONSTRAINT` entries
+through the harness's own append path, which seals them. `DECISION` entries come
+from the approval path alone, and the append path refuses to seal one.
+
+**Three verification outcomes**, kept apart by `canvas-review` because they mean
+different things:
+
+| Outcome | When | What is reported |
+|---|---|---|
+| verified | every seal recomputes | nothing |
+| unverifiable here | no key on this machine | the log reads as intact, and cannot be confirmed here — the normal case for a fresh clone or a co-author's checkout |
+| broken | key present, a seal does not recompute | a problem, naming the first entry that fails and whether its own content or the chain before it changed |
+
+The harness never repairs a broken ledger. Repairing means choosing which
+version is true, and that is the researcher's act; `canvas-review` names the
+entry that broke and stops there. While a ledger is broken or unverifiable, §4.4
+keeps reporting: an acceptance covered only by an entry that does not verify is
+an unlogged acceptance.
+
+**A ledger that predates the seal.** Entries carrying no `seal` field are
+legacy. They are reported once, as unverifiable, not as broken — a canvas
+started before this section existed is not a forgery. The first sealed entry
+chains onto the SHA-256 of the entire file content preceding it, so the legacy
+block cannot be quietly rewritten either. Once any entry is sealed, every later
+entry must be sealed: an unsealed entry appended after a sealed one is the
+obvious downgrade attack and is reported as broken.
 
 ---
 
@@ -447,14 +680,23 @@ be loaded.
 
 Contents: which of the nine elements are empty; which carry only `[proposed]` or
 `[tentative]`; violations of the dependency rule; the entries in `decisions.md`
-this session has not yet seen; the mode (`brainstorming` / `seed` / `import`).
+this session has not yet seen; the mode (`brainstorming` / `seed` / `import`);
+and, first, anything that makes the canvas unjudgeable — a duplicate element
+number or question id with both line numbers, a question under the wrong
+element, a `profile:` that does not resolve, a ledger whose seal chain is broken
+(§4.2, §4.3.1, §4.7).
 
 The session ledger lives under `~/.claude/research-harness/` — transient state
 that does not belong to the paper — and remembers the highest sequence number
 injected so far.
 
-**Fails open:** if `research/canvas.md` is absent, unreadable, or malformed, the
-hook injects nothing and exits 0. A hook must never stop a prompt.
+**Fails open:** if `research/canvas.md` is absent or cannot be read or parsed at
+all, the hook injects nothing and exits 0. A hook must never stop a prompt.
+
+A canvas that parses and *then* breaks a structural law is the other case, and
+there silence would be the bug. Those problems are injected, and first, because
+this is where the researcher hears about them — before the guard refuses their
+next write, and long before `canvas-review` is next run.
 
 ### 5.3 `guard-promotion.js` — PreToolUse
 
@@ -463,23 +705,59 @@ and `decisions.md` in the state directory (`research/`, or whatever
 `RESEARCH_HARNESS_DIR` says) — and, from stage 2 on, to `Bash` invocations
 against the canvas server's port (§7).
 
-**Rule for `canvas.md`** — three prohibitions, everything else allowed:
+**Rule for `canvas.md` — one rule, over the committed set.** The guard parses
+the file as it is and as the write would leave it, and permits the write only
+when all four hold:
 
-1. Do not create a statement carrying `[accepted]`.
-2. Do not alter or remove an existing statement carrying `[stated]` or
-   `[accepted]` — including downgrading its marker.
-3. Do not promote a `[proposed]`/`[tentative]` statement to `[stated]` or
-   `[accepted]`.
+1. `C(before) ⊆ C(after)` — see §4.3.1 for `C` and for the canonical form it is
+   a set of.
+2. Every commitment in `C(after) \ C(before)` carries `[stated]`.
+3. Every element and question heading that was there is still there.
+4. The frontmatter mapping is identical.
 
-Still allowed: creating, editing, and removing `[proposed]` and `[tentative]`
-statements; and creating a **new** `[stated]` statement as transcription (§4.3).
+Still allowed: creating, editing and removing `[proposed]` and `[tentative]`
+statements; adding a question and a new `[stated]` statement under it as
+transcription (§4.3); reordering statements inside a question.
+
+The first draft listed three prohibitions — do not create `[accepted]`, do not
+alter or downgrade a committed statement, do not promote a proposal. They are
+what clauses 1 and 2 say about one statement at a time, and SQ-21 confirmed that
+they hold against every direct attack on a statement. They were not wrong; they
+were too narrow, and the attacks went around them:
+
+| SQ-21 probe | What it did | Now refused by |
+|---|---|---|
+| S1, S6 | re-parented a committed statement to a duplicate `## 1.1` under another element | §4.2 laws 2 and 3 — unjudgeable — and clause 1 |
+| S5, S5b | duplicated a question heading, shadowing the guard's matching in file order | §4.2 law 2, order-independently |
+| S15 | added a second `# 1 · …` heading, shadowing the element's status to `empty` | §4.2 law 1 |
+| S2 | rewrote the question text above a committed statement | clause 1 |
+| S3 | retitled element 1, `Puzzle` to `Contributions` | clause 1 |
+| S12 | rewrote `project:` and `outlet:` | clause 4 |
+| S12b | pointed `profile:` at an id the plugin does not ship | clause 4, and fail-closed below |
+| D4a, D4c | rewrote and stripped the `src:` tag of a committed statement | clause 1 |
+| D4b | fabricated an `src:` on the researcher's accepted statement | clauses 1 and 2 |
+| D5b, D5c | pushed U+00A0 and U+FEFF into an accepted statement | the normalization class of §4.3.1 |
+
+Rendering visibility — a committed statement indented into a code block (S8) or
+wrapped in an HTML comment (S10), key and §4.4 hash unchanged — is a different
+question and is decided on SQ-20, not here.
 
 Violation → `permissionDecision: "deny"` with a `permissionDecisionReason` naming
 the next legal action: "propose the change as `[proposed]` alongside it, or let
 the researcher make it through the canvas view."
 
-**Rule for `decisions.md`:** append only. Any change to existing content is
-refused.
+**Rule for `decisions.md`: the model does not write it.** Every model write is
+refused, appends included. The refusal names the harness command that appends a
+`DISCOVERY` or `CONSTRAINT` entry properly, and says that a `DECISION` is the
+researcher's act. The first draft allowed appends and was faithful to
+"append-only"; **D7b** and **D7c** appended a forged acceptance through that
+door, and **D8** showed what it buys — §4.4's unlogged-acceptance backstop went
+quiet. The seal (§4.7) is the other half of the answer: an entry planted outside
+the guard does not verify, and an entry that does not verify logs nothing.
+
+**The approval path is not a model tool call.** `accept` is the researcher's
+act. The guard denies every invocation of the approval CLI it can see, by
+whatever name or route it is reached (SQ-22).
 
 **Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
 mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that
@@ -487,8 +765,32 @@ rule'"), but that doctrine is about context injection. A permission guard that
 lets writes through on error is a hole. If `guard-promotion.js` cannot judge a
 diff confidently, it denies with a reason that says so.
 
-Refusal texts are part of the product: each one names the next legal action,
-otherwise the harness blocks itself.
+**What "cannot judge" covers.** The clause is not a blank to be filled in by
+whoever implements the next case. It is this list, so that the perimeter tickets
+implement a stated rule instead of inventing one:
+
+- the result does not parse: frontmatter not terminated, text outside any
+  question, no elements at all (already honoured — S13, S16);
+- the document breaks a structural law of §4.2: a duplicate element number, a
+  duplicate question id, a question under the wrong element (S1, S5, S5b, S6,
+  S15);
+- `profile:` does not resolve to a shipped profile (S12b), or `canvas-schema:`
+  names a schema this parser does not implement;
+- the file the write starts from cannot be read, or its path cannot be resolved
+  to a canonical identity — a case variant, a symlink, a hard link (SQ-23);
+- the edit cannot be applied unambiguously: `old_string` is absent, not a
+  string, or present more than once without `replace_all` (already honoured —
+  D2b);
+- the call arrives through a tool the guard cannot turn into a resulting file
+  content, including tools that do not exist yet and MCP tools (SQ-24);
+- a `Bash` command the lexer cannot resolve to a set of words, or a resolvable
+  word that can denote the state directory and is not a named read-only form
+  (SQ-22).
+
+Denial is the answer in every one of them. Refusal texts are part of the
+product: each one names the next legal action, otherwise the harness blocks
+itself. A guard that cannot judge and allows anyway is not a guard; a guard that
+cannot judge, denies, and will not say why is a wall.
 
 ### 5.4 The skills
 
@@ -742,8 +1044,10 @@ the author's notes.
   through the approval path — at the cost of a click on every dialogue step.
 - Whether `decisions.md` grows too large for injection over a long project and
   needs compaction.
-- How a co-author sharing the repo uses the approval path. The MVP is explicitly
-  single-seat.
+- How a co-author sharing the repo uses the approval path, and what they do with
+  the ledger seal key (§4.7), which by design never enters the repository: their
+  checkout reports the log as unverifiable here, which is honest but not useful
+  to them. The MVP is explicitly single-seat.
 - Whether `research/` collides with journals that prescribe their own directory
   scheme for supplementary material.
 

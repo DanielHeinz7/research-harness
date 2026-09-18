@@ -1,0 +1,97 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const { textHash } = require('../hooks/lib/hash');
+const decisions = require('../hooks/lib/decisions');
+
+const fixture = fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'voice-uptake', 'research', 'decisions.md'),
+  'utf8',
+);
+
+test('textHash is 8 hex chars and ignores whitespace differences', () => {
+  const a = textHash('When do members\'  suggestions\nget taken up?');
+  const b = textHash('When do members\' suggestions get taken up?');
+  assert.match(a, /^[0-9a-f]{8}$/);
+  assert.equal(a, b);
+  assert.notEqual(a, textHash('When do members\' suggestions get taken up'));
+});
+
+test('parseDecisions reads seq, date, kind, ref and optional hash', () => {
+  const parsed = decisions.parseDecisions(fixture);
+  assert.equal(parsed.maxSeq, 3);
+  assert.equal(parsed.entries.length, 3);
+  assert.deepEqual(
+    parsed.entries.map((e) => [e.seq, e.kind, e.ref, e.hash]),
+    [
+      [1, 'CONSTRAINT', '5 Research Setting', null],
+      [2, 'DISCOVERY', '1 Puzzle', null],
+      [3, 'DECISION', '1.1 accepted', '3b7a1c9e'],
+    ],
+  );
+  assert.equal(parsed.entries[2].date, '2026-09-15');
+});
+
+test('parseDecisions on an empty or header-only file has maxSeq 0', () => {
+  assert.equal(decisions.parseDecisions('').maxSeq, 0);
+  assert.equal(decisions.parseDecisions(decisions.header('x')).maxSeq, 0);
+});
+
+test('formatEntry renders the heading grammar and optional fields', () => {
+  const text = decisions.formatEntry({
+    seq: 4,
+    date: '2026-09-16',
+    kind: 'DECISION',
+    ref: '3.1 accepted',
+    hash: 'deadbeef',
+    body: 'Under what conditions ... [accepted]',
+    why: 'because',
+    rejected: 'the alternative',
+  });
+  assert.equal(
+    text,
+    '## [#4] 2026-09-16 · DECISION · 3.1 accepted · text deadbeef\n' +
+      'Under what conditions ... [accepted]\n' +
+      '**Why:** because\n' +
+      '**Rejected:** the alternative\n',
+  );
+  const plain = decisions.formatEntry({ seq: 5, date: '2026-09-16', kind: 'DISCOVERY', ref: '2 Audience and Prior Research', body: 'x [tentative]', supersedes: 2 });
+  assert.equal(plain, '## [#5] 2026-09-16 · DISCOVERY · 2 Audience and Prior Research\nx [tentative]\n**Supersedes:** #2\n');
+  assert.throws(() => decisions.formatEntry({ seq: 6, date: '2026-09-16', kind: 'VERDICT', ref: 'x', body: 'y' }), /kind/);
+});
+
+test('an entry formatted with a hash round-trips through the parser', () => {
+  const entry = decisions.formatEntry({
+    seq: 7,
+    date: '2026-09-17',
+    kind: 'DECISION',
+    ref: '1.1 accepted',
+    hash: textHash('When do members\' suggestions get taken up?'),
+    body: 'When do members\' suggestions get taken up? [accepted]',
+  });
+  const parsed = decisions.parseDecisions(entry);
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0].ref, '1.1 accepted');
+  assert.equal(parsed.entries[0].hash, textHash('When do members\'  suggestions\n  get taken up?'));
+});
+
+test('appendEntry only ever appends, with exactly one blank line between entries', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-'));
+  const file = path.join(dir, 'decisions.md');
+  fs.writeFileSync(file, decisions.header('voice-uptake'));
+  const before = fs.readFileSync(file, 'utf8');
+  decisions.appendEntry(file, decisions.formatEntry({ seq: 1, date: '2026-09-16', kind: 'CONSTRAINT', ref: '5 Research Setting', body: 'x [stated]' }));
+  const after = fs.readFileSync(file, 'utf8');
+  assert.ok(after.startsWith(before));
+  assert.equal(after, '# Decision log — voice-uptake\n\n## [#1] 2026-09-16 · CONSTRAINT · 5 Research Setting\nx [stated]\n');
+  decisions.appendEntry(file, decisions.formatEntry({ seq: 2, date: '2026-09-16', kind: 'DISCOVERY', ref: '1 Puzzle', body: 'y [tentative]' }));
+  const twice = fs.readFileSync(file, 'utf8');
+  assert.ok(twice.startsWith(after));
+  assert.equal(decisions.parseDecisions(twice).maxSeq, 2);
+  assert.doesNotMatch(twice, /\n\n\n/);
+});

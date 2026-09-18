@@ -5,8 +5,8 @@ the way Toolshed and Sidequest are for software projects: procedures, records,
 checks, and decision rights for AI-assisted research.
 
 **Status:** stage 1 implemented — canvas, guard, session injection, CLI approval
-path, sealed decision log, three skills. Stage 2 (clickable session view) not
-started. The live installation check is outstanding.
+path, sealed decision log, three skills, and verified in a live install. Stage 2
+(clickable session view) not started.
 See [the plugin README](plugins/research-harness/README.md) and
 [the MVP design](docs/superpowers/specs/2026-09-15-research-harness-mvp-design.md).
 

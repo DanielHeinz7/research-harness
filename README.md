@@ -4,8 +4,11 @@ A research harness for steering paper projects, built as a Claude Code plugin �
 the way Toolshed and Sidequest are for software projects: procedures, records,
 checks, and decision rights for AI-assisted research.
 
-**Status:** repository created, MVP designed, not yet implemented.
-See [the MVP design](docs/superpowers/specs/2026-09-15-research-harness-mvp-design.md).
+**Status:** stage 1 implemented — canvas, guard, session injection, CLI approval
+path, sealed decision log, three skills. Stage 2 (clickable session view) not
+started. The live installation check is outstanding.
+See [the plugin README](plugins/research-harness/README.md) and
+[the MVP design](docs/superpowers/specs/2026-09-15-research-harness-mvp-design.md).
 
 ## Scope
 
@@ -46,7 +49,7 @@ inspectable:
   patches, and contributions are welcome.
 - an enforced separation between what an agent proposed and what a human
   accepted, backed by a hook that denies the model the ability to declare a
-  commitment or to alter what the researcher said
+  commitment, to alter what the researcher said, or to write the decision log
 - a clickable session view for author-team meetings, which doubles as the
   approval path
 
@@ -68,6 +71,7 @@ on them and citing them, and points at a local full-text collection through
 |---|---|---|
 | `RESEARCH_HARNESS_DIR` | state directory inside the paper repo | `research/` |
 | `RESEARCH_HARNESS_LIBRARY` | local full-text collection of the cited works | unset |
+| `RESEARCH_HARNESS_STATE_DIR` | session ledger and the decision log's sealing key, outside the paper repo | `~/.claude/research-harness` |
 
 The genre profile is not an environment variable — it is named in the canvas
 frontmatter (`profile: is-qualitative`) so it travels with the project.

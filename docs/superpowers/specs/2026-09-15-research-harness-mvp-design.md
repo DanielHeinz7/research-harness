@@ -107,6 +107,7 @@ authorization axis.
 | Files | `research/canvas.md`, `research/decisions.md` |
 | State override | `RESEARCH_HARNESS_DIR` |
 | Library override | `RESEARCH_HARNESS_LIBRARY` |
+| Harness state override | `RESEARCH_HARNESS_STATE_DIR` — the session ledger (§5.2) and the sealing key (§4.7); outside the repository, never part of the paper |
 | Marker vocabulary | `[proposed]` `[tentative]` `[stated]` `[accepted]` |
 | Evidence tags | `src:` `unverified` `mail` `cal` |
 | Default profile id | `is-qualitative` |
@@ -368,8 +369,7 @@ Statements carrying `[proposed]` or `[tentative]` are not members of `C` at all
 and remain as free as §5.3 already makes them, fenced examples included
 (**D1c**, **D1d**).
 
-The two clauses are the whole of §5.3's rule for `canvas.md`. The three
-prohibitions of the first draft are what they say about one statement at a time,
+The two clauses subsume the *first two* of the first draft's three prohibitions,
 and the structural holes fall out of them without a check each: **S2** (the
 question rewritten under a committed statement), **S3** (element 1 retitled),
 **D4a** (a committed statement's `src:` rewritten from `memo-03` to `memo-99`)
@@ -379,6 +379,22 @@ attached to the researcher's accepted statement, which also dropped it from the
 untagged report — breaks both clauses: the original commitment is gone, and the
 retagged one is an `[accepted]` the model created. **S1** and **S6** break
 clause 1 as well as the structural laws of §4.2.
+
+**The third prohibition does not follow, and is kept as a rule of its own.**
+Promoting a `[proposed]` statement to `[stated]` produces a commitment that is
+*new* — clause 1 is silent, a proposal never having been a member of `C` — and
+that carries `[stated]`, which clause 2 explicitly permits. A comparison of sets
+cannot see a promotion, because it cannot see what a statement used to be. This
+was not noticed by reading: an earlier draft of this section claimed the three
+prohibitions "are what the two clauses say about one statement at a time", the
+guard was built to that claim, and SQ-21's **D3b** — one `replace_all` of
+`[proposed]` to `[stated]` — went from DENY to ALLOW, 3157 bytes to 3155, with
+the whole test suite green, because every existing promotion test edited a single
+statement and so tripped clause 1 for an unrelated reason. The probe re-run
+caught it as a verdict flip. §5.3's rule for `canvas.md` therefore has five
+clauses, not four, and the fifth is checked against the statements of `before` by
+question id and normalized text. A document that summarises its own completeness
+is asserting something testable.
 
 **The frontmatter is protected state.** It is not decoration around the canvas.
 `profile:` selects the dependency graph and the genre rules by which everything
@@ -598,8 +614,12 @@ unverifiable entry if it is not taken.
 **Only the harness writes this file.** The model never writes `decisions.md`
 directly — §5.3 denies it — because a write it can perform is a write it can seal
 wrongly or leave unsealed. It contributes `DISCOVERY` and `CONSTRAINT` entries
-through the harness's own append path, which seals them. `DECISION` entries come
-from the approval path alone, and the append path refuses to seal one.
+through the harness's own append path — `research-harness log DISCOVERY|CONSTRAINT
+<ref> --body "<text>" [--why <text>] [--supersedes <n>]` — which seals what it
+writes. `DECISION` entries come from the approval path alone, and the append path
+refuses to seal one. §5.3's shell rule admits `log` only with a literal
+`DISCOVERY` or `CONSTRAINT`: a kind the guard cannot read is judged as a
+`DECISION`, because a word it cannot read is a word that may be one.
 
 **Three verification outcomes**, kept apart by `canvas-review` because they mean
 different things:
@@ -637,6 +657,9 @@ research-harness/                          ← marketplace repo
       hooks.json
       inject-state.js                      ← SessionStart, fails open
       guard-promotion.js                   ← PreToolUse, fails closed
+      lib/                                 ← shared by both hooks and bin/
+        canvas.js  decisions.js  hash.js  seal.js
+        ledger.js  output.js  profile.js  project.js  review.js
     references/
       canvas-elements.md
       amj-map.md
@@ -649,14 +672,14 @@ research-harness/                          ← marketplace repo
     bin/research-harness.js                ← the approval CLI
     bin/canvas-serve.js                    ← stage 2
     dashboard/canvas.html                  ← stage 2
-    test/guard-promotion.test.js
-    test/accept.test.js
+    test/*.test.js                         ← one per module, plus the fixture project
     README.md
 ```
 
-No `package.json`, no build step, no `lib/` — plain Node stdlib CommonJS, like
-five of Toolshed's six plugins. Tests are found by convention
-(`node --test "test/*.test.js"`).
+No `package.json`, no build step — plain Node stdlib CommonJS, like five of
+Toolshed's six plugins. Shared code lives in `hooks/lib/`, the layout
+`codebase-mapper` uses, and `bin/` requires it by relative path. Tests are found
+by convention (`node --test "test/*.test.js"`).
 
 ### 5.1 Manifests
 
@@ -700,30 +723,37 @@ next write, and long before `canvas-review` is next run.
 
 ### 5.3 `guard-promotion.js` — PreToolUse
 
-Matcher on `Edit|Write|NotebookEdit|Bash`. Applies to writes against `canvas.md`
-and `decisions.md` in the state directory (`research/`, or whatever
-`RESEARCH_HARNESS_DIR` says) — and, from stage 2 on, to `Bash` invocations
-against the canvas server's port (§7).
+**No matcher.** Every tool call reaches the guard, which is the one place that
+decides which of them it can judge (SQ-24): a matcher naming the tools it knows
+is a list of yesterday's holes, and the next write tool — an MCP filesystem
+server, whatever the client ships next — would arrive unseen. The guard applies
+to writes against `canvas.md` and `decisions.md` in the state directory
+(`research/`, or whatever `RESEARCH_HARNESS_DIR` says), to the harness's own
+state directory (§4.7), and, from stage 2 on, to `Bash` invocations against the
+canvas server's port (§7).
 
 **Rule for `canvas.md` — one rule, over the committed set.** The guard parses
 the file as it is and as the write would leave it, and permits the write only
-when all four hold:
+when all five hold:
 
 1. `C(before) ⊆ C(after)` — see §4.3.1 for `C` and for the canonical form it is
    a set of.
 2. Every commitment in `C(after) \ C(before)` carries `[stated]`.
 3. Every element and question heading that was there is still there.
 4. The frontmatter mapping is identical.
+5. No statement that carried `[proposed]` or `[tentative]` in `before` carries
+   `[stated]` or `[accepted]` in `after` — the promotion prohibition, which
+   clauses 1 and 2 cannot express (§4.3.1).
 
 Still allowed: creating, editing and removing `[proposed]` and `[tentative]`
 statements; adding a question and a new `[stated]` statement under it as
 transcription (§4.3); reordering statements inside a question.
 
 The first draft listed three prohibitions — do not create `[accepted]`, do not
-alter or downgrade a committed statement, do not promote a proposal. They are
-what clauses 1 and 2 say about one statement at a time, and SQ-21 confirmed that
-they hold against every direct attack on a statement. They were not wrong; they
-were too narrow, and the attacks went around them:
+alter or downgrade a committed statement, do not promote a proposal. Clauses 1
+and 2 say the first two of them over the whole document at once, and SQ-21
+confirmed that they hold against every direct attack on a statement. They were
+not wrong; they were too narrow, and the attacks went around them:
 
 | SQ-21 probe | What it did | Now refused by |
 |---|---|---|
@@ -759,6 +789,16 @@ the guard does not verify, and an entry that does not verify logs nothing.
 act. The guard denies every invocation of the approval CLI it can see, by
 whatever name or route it is reached (SQ-22).
 
+**The harness's own state is not the project's state.** The sealing key of §4.7
+lives under `RESEARCH_HARNESS_STATE_DIR`, or `~/.claude/research-harness` by
+default, and the guard refuses every tool call that reaches into that directory,
+reads included — a key the model can read or replace seals nothing. For the same
+reason the guard refuses a harness invocation that carries its own environment on
+the command line (`RESEARCH_HARNESS_STATE_DIR=… research-harness log …`): the CLI
+reads its configuration from the session, and a changed home or state directory
+would seal the decision log with a key of the model's choosing, leaving the
+researcher's log reading as broken at that entry (SQ-27).
+
 **Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
 mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that
 rule'"), but that doctrine is about context injection. A permission guard that
@@ -783,6 +823,9 @@ implement a stated rule instead of inventing one:
   D2b);
 - the call arrives through a tool the guard cannot turn into a resulting file
   content, including tools that do not exist yet and MCP tools (SQ-24);
+- the call points into the harness's own state directory (§4.7), by any tool and
+  including a read: the sealing key is a secret only while the model cannot read
+  it, and nothing in that directory is part of the paper (SQ-27);
 - a `Bash` command the lexer cannot resolve to a set of words, or a resolvable
   word that can denote the state directory and is not a named read-only form
   (SQ-22).

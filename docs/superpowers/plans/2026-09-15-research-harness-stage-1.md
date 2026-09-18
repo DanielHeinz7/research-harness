@@ -1718,7 +1718,7 @@ test('with a canvas the hook injects a summary under 4 KiB naming empties, open 
   assert.match(text, /Empty: 4, 6, 7, 8, 9/);
   assert.match(text, /Open \(proposals only\): 2/);
   assert.match(text, /Decisions not yet seen: #1 CONSTRAINT 5 Research Setting; #2 DISCOVERY 1 Puzzle; #3 DECISION 1\.1 accepted/);
-  assert.match(text, /never write \[accepted\]/);
+  assert.match(text, /never write \[accepted\]/i); // RULES says "Never write"; keep the grammatical sentence, match case-insensitively
   assert.match(text, /\/research-harness:accept/);
 });
 

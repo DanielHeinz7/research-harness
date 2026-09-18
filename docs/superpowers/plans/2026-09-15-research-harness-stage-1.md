@@ -24,7 +24,7 @@
 - **The plugin ships no copyrighted text.** `references/` contains an original question set that cites its sources; never a copied table or paragraph. (§5.5)
 - **Every refusal names the next legal action.** (§5.3)
 - **Tests:** `node --test test/*.test.js` run from `plugins/research-harness/`. Each test builds its own temp project under `os.tmpdir()`; never touch the real home directory (always set `RESEARCH_HARNESS_STATE_DIR` in hook tests).
-- **Commits:** one per task, English, ending with the attribution line shown in each task.
+- **Commits:** one per task, English, ending with the session's own attribution line for the model actually running the task — not a hardcoded one. Also write `.release/unreleased/<ticket-ref>.md` before the commit: any range touching `plugins/research-harness` is refused without it.
 
 ---
 
@@ -254,7 +254,7 @@ git commit -m "Add marketplace and plugin manifests
 One marketplace, one plugin, versions checked for drift by a test.
 hooks.json is a skeleton; the hooks arrive with their own tasks.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -749,7 +749,7 @@ never demoting (spec 4.4).
 
 The fixture is the discussion paper's own invented example, voice-uptake.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -971,7 +971,7 @@ text, the way the design-mining artifact keys human reviews to fragment
 text so they survive re-mining. decisions.md is parsed for sequence
 numbers and hashes; appendEntry is its only write.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -1301,7 +1301,7 @@ The mechanical review computes what a skill should not: empties, open
 elements, violations, untagged statements, and acceptances whose text
 hash no longer matches the log.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -1639,7 +1639,7 @@ init copies; a test keeps it parseable and aligned with the fixture. All
 three files are the plugin's own wording, modelled on and citing their
 sources — no copyrighted text ships (spec 5.5).
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -2008,7 +2008,7 @@ this session has not yet seen, then restates the four writing rules.
 A per-project, per-session ledger under the state dir keeps decisions
 from being injected twice.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -2415,7 +2415,7 @@ read-only, and accept via Bash is denied because that is the model
 declaring a commitment. When the guard cannot judge, it denies and says
 why (spec 5.3).
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -2807,7 +2807,7 @@ refuses when a dependency is not accepted, and appends a DECISION entry
 carrying the text hash. It is the human's path from stage 1 on (spec
 5.4); the guard denies the model from running it through Bash.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -3031,7 +3031,7 @@ canvas element by element before reporting fit. accept is the human's
 button: disable-model-invocation, a single ! line into the CLI, the way
 Toolshed's board skill reaches its store.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---
@@ -3184,7 +3184,7 @@ that shared code lives in hooks/lib. Live check: <record here whether
 \$ARGUMENTS reached the accept skill's ! line, or the ! prompt prefix
 was needed>.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<attribution line for the model actually running this task>"
 ```
 
 ---

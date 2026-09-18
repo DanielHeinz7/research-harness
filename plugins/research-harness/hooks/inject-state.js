@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+const project = require('./lib/project');
+const canvas = require('./lib/canvas');
+const profileLib = require('./lib/profile');
+const { mechanicalReview } = require('./lib/review');
+const { parseDecisions } = require('./lib/decisions');
+const ledger = require('./lib/ledger');
+const output = require('./lib/output');
+
+// The four writing rules, restated once per session because the model reads
+// them once per session (§5.2). The guard enforces them; this only states them.
+const RULES = [
+  'Rules for research/canvas.md: write only [proposed], [tentative], or [stated] as a transcription of what the researcher said.',
+  'Never write [accepted]. Never alter or remove a [stated] or [accepted] statement — propose alongside as [proposed].',
+  'Factual claims carry `src: <id>` or `unverified`, never nothing. An empty element is fine; plausible filler is not.',
+  'Only the researcher accepts, via /research-harness:accept <n.m>. Skills: /research-harness:canvas, /research-harness:canvas-review.',
+].join(' ');
+
+function readStdin() {
+  try {
+    const raw = fs.readFileSync(0, 'utf8');
+    return raw ? JSON.parse(raw) || {} : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function pluginRoot() {
+  return process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
+}
+
+// Returns { text, maxSeq } or null when there is nothing to inject. Exported
+// so `research-harness status` (Task 8) prints the same summary the session
+// was given; two renderings of the same state would drift.
+function summarize(projectRoot, { seenSeq = 0 } = {}) {
+  const canvasText = project.readIfExists(project.canvasPath(projectRoot));
+  if (canvasText === null) return null;
+  const parsed = canvas.parseCanvas(canvasText);
+  if (!parsed.elements.length) return null;
+
+  const fm = parsed.frontmatter;
+  const profileId = fm.profile || 'is-qualitative';
+  let profileNote = `profile ${profileId}`;
+  let graph = null;
+  try {
+    graph = profileLib.loadProfile(profileId, pluginRoot()).graph;
+  } catch (_) {
+    // A profile the plugin does not ship is the researcher's business, not a
+    // reason to say nothing: report the rest and name what went unchecked.
+    profileNote = `profile ${profileId} (not found; dependencies not checked)`;
+  }
+
+  const decisionsText = project.readIfExists(project.decisionsPath(projectRoot)) || '';
+  const report = mechanicalReview({ parsed, graph, decisionsText });
+  const log = parseDecisions(decisionsText);
+
+  const statusLine = parsed.elements
+    .map((e) => {
+      const s = report.statuses[e.number];
+      return `${e.number} ${s.status}${s.open ? ` (+${s.open} open)` : ''}`;
+    })
+    .join(' · ');
+  const list = (arr) => (arr.length ? arr.join(', ') : 'none');
+  const unseen = log.entries.filter((e) => e.seq > seenSeq);
+  const unseenLine = unseen.length ? unseen.map((e) => `#${e.seq} ${e.kind} ${e.ref}`).join('; ') : 'none';
+  const violationLine = report.violations.length
+    ? report.violations
+        .map((v) => `${v.element} accepted but ${v.missing.map((m) => `${m.element} is ${m.status}`).join(', ')}`)
+        .join('; ')
+    : 'none';
+  const staleLine = report.staleAcceptances.length ? report.staleAcceptances.map((s) => `#${s.seq}`).join(', ') : 'none';
+
+  const text = [
+    `research-harness · paper project "${fm.project || '?'}" · ${profileNote} · mode ${fm.mode || '?'}`,
+    `Elements: ${statusLine}`,
+    `Empty: ${list(report.empty)} · Open (proposals only): ${list(report.open)}`,
+    `Dependency violations: ${violationLine} · Stale acceptances: ${staleLine}`,
+    `Decisions not yet seen: ${unseenLine}`,
+    RULES,
+  ].join('\n');
+  return { text, maxSeq: log.maxSeq };
+}
+
+function main() {
+  try {
+    const data = readStdin();
+    const projectRoot = project.projectDir(data);
+    const sessionId = typeof data.session_id === 'string' ? data.session_id : '';
+    const summary = summarize(projectRoot, { seenSeq: ledger.readSeen(projectRoot, sessionId) });
+    if (!summary) return;
+    ledger.writeSeen(projectRoot, sessionId, summary.maxSeq);
+    output.writeContext('SessionStart', summary.text);
+  } catch (_) {
+    // Fail open: a hook must never stop a prompt (§5.2). A canvas this parser
+    // cannot read means no injection, not a broken session.
+  }
+}
+
+if (require.main === module) main();
+
+module.exports = { summarize, RULES };

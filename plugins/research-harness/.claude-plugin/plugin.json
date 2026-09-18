@@ -1,0 +1,19 @@
+{
+  "name": "research-harness",
+  "version": "0.1.0",
+  "description": "A research harness for paper projects: the AMJ research canvas as version-controlled project state, with an enforced line between what an agent proposed and what the researcher accepted.",
+  "author": {
+    "name": "Daniel Heinz"
+  },
+  "homepage": "https://github.com/DanielHeinz7/research-harness/tree/main/plugins/research-harness",
+  "repository": "https://github.com/DanielHeinz7/research-harness",
+  "license": "MIT",
+  "keywords": [
+    "research",
+    "academic-writing",
+    "paper",
+    "canvas",
+    "qualitative",
+    "harness"
+  ]
+}

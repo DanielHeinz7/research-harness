@@ -185,7 +185,9 @@ harness must know which before it asks. `profile` selects the genre profile
 **Rules:**
 
 - Markers sit **at the end of a statement**, as in the author's own convention.
-  A statement is a paragraph.
+  A statement ends at the line carrying its marker group, or at a blank line if
+  it has none. Consecutive statements therefore sit on consecutive lines, as in
+  the example above, and a statement may still span several lines.
 - A statement carries **one authorization marker** and, optionally, **one
   evidence tag** (§4.3). Both live in the same brackets, separated by a comma.
 - **An empty element is a legal and explicitly desirable state.** It is better

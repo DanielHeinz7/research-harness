@@ -275,7 +275,7 @@ The canvas grammar (§4.2), stated once here and implemented below:
 
 - Frontmatter between two `---` lines, `key: value` per line.
 - `# N · Title` starts element N (1–9). `## N.M question text` starts a sub-question.
-- A **statement** is a paragraph (run of non-blank lines) under a sub-question, ending in `[marker]` or `[marker, tag, tag]`. The first token is the authorization marker; the rest are evidence tags.
+- A **statement** under a sub-question ends at the line carrying its marker group — `[marker]` or `[marker, tag, tag]` — or at a blank line if it carries none. The first token is the authorization marker; the rest are evidence tags. Consecutive statements sit on consecutive lines (see the fixture), and a statement may still span several lines, ending at the line with the marker. A blank line alone is **not** the only boundary; deriving one from the other is what made three of this task's own tests fail on first implementation.
 - `_(empty)_` alone on a line is the placeholder for "no statements".
 - A paragraph without a valid marker group is an **unmarked** statement (`marker: null`) — recorded, reported by review, never committed.
 
@@ -691,6 +691,11 @@ function parseCanvas(text) {
     }
     if (!paragraph.length) paragraphStart = i;
     paragraph.push(l);
+    // A statement ends at the line carrying its marker group; a blank line is
+    // not the only boundary. A statement may still run over several lines: it
+    // ends at the line that carries the marker. Text with no marker group, or
+    // with an unknown one, keeps accumulating to the next blank line.
+    if (parseMarkerGroup(paragraph.join('\n'))) flush();
   }
   flush();
   return result;

@@ -1,0 +1,92 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const canvas = require('../hooks/lib/canvas');
+const decisions = require('../hooks/lib/decisions');
+const seal = require('../hooks/lib/seal');
+const review = require('../hooks/lib/review');
+const { textHash } = require('../hooks/lib/hash');
+
+const fixtureDir = path.join(__dirname, 'fixtures', 'voice-uptake', 'research');
+const canvasText = fs.readFileSync(path.join(fixtureDir, 'canvas.md'), 'utf8');
+const legacyLog = fs.readFileSync(path.join(fixtureDir, 'decisions.md'), 'utf8');
+
+const KEY = Buffer.from('00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff', 'hex');
+const STATED = 'Speaking frequency is well documented; whether a proposal is taken up is not. [stated]';
+const FORGED = 'Chair rotation is the mechanism that determines uptake.';
+const ACCEPTED_11 = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement?";
+
+function tempLog(text) {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-')), 'decisions.md');
+  fs.writeFileSync(file, text);
+  return file;
+}
+
+function reviewOf(canvasSource, decisionsText, key) {
+  return review.mechanicalReview({ parsed: canvas.parseCanvas(canvasSource), graph: null, decisionsText, key });
+}
+
+test('the review carries the ledger verdict and lists every DECISION that gives no cover', () => {
+  const report = reviewOf(canvasText, legacyLog, KEY);
+  assert.equal(report.ledger.status, 'unverifiable');
+  assert.equal(report.ledger.reason, 'legacy');
+  assert.deepEqual(report.ledger.legacy, [1, 2, 3]);
+  assert.deepEqual(report.unverifiedDecisions.map((d) => [d.seq, d.state]), [[3, 'legacy']]);
+});
+
+test('D8: a forged DECISION appended to a legacy log does not cover the acceptance it claims', () => {
+  const planted = canvasText.replace(STATED, `${STATED}\n${FORGED} [accepted]`);
+  const forged = `${legacyLog}\n## [#4] 2026-09-18 · DECISION · 1.2 accepted · text ${textHash(FORGED)}\n${FORGED}\n**Why:** confirmed by the researcher in session.\n`;
+  const withoutEntry = reviewOf(planted, legacyLog, KEY);
+  const withEntry = reviewOf(planted, forged, KEY);
+  assert.equal(withoutEntry.unloggedAcceptances.length, 2);
+  assert.equal(withEntry.unloggedAcceptances.length, 2, 'the forged entry silenced the backstop');
+  const covered = withEntry.unloggedAcceptances.find((s) => s.question === '1.2');
+  assert.deepEqual(covered.coveredBy, { seq: 4, state: 'legacy' });
+  assert.equal(withEntry.unloggedAcceptances.find((s) => s.question === '1.1').coveredBy, null);
+  assert.deepEqual(withEntry.staleAcceptances.map((s) => s.seq), [3], 'a hash that matches is not stale, verified or not');
+});
+
+test('only a DECISION whose seal verifies logs an acceptance; without the key it is unverifiable here, not silent', () => {
+  const file = tempLog(decisions.header('voice-uptake'));
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash(ACCEPTED_11), body: `${ACCEPTED_11} [accepted]` }, KEY, { decision: true });
+  const sealedLog = fs.readFileSync(file, 'utf8');
+
+  const withKey = reviewOf(canvasText, sealedLog, KEY);
+  assert.equal(withKey.ledger.status, 'verified');
+  assert.deepEqual(withKey.unloggedAcceptances, []);
+  assert.deepEqual(withKey.staleAcceptances, []);
+  assert.deepEqual(withKey.unverifiedDecisions, []);
+
+  const noKey = reviewOf(canvasText, sealedLog, null);
+  assert.equal(noKey.ledger.status, 'unverifiable');
+  assert.equal(noKey.ledger.reason, 'no-key');
+  assert.deepEqual(noKey.unloggedAcceptances.map((s) => [s.question, s.coveredBy]), [['1.1', { seq: 1, state: 'unverifiable' }]]);
+  assert.deepEqual(noKey.unverifiedDecisions.map((d) => [d.seq, d.state]), [[1, 'unverifiable']]);
+});
+
+test('tampering with a sealed DECISION withdraws its cover and is reported as a broken ledger', () => {
+  const file = tempLog(decisions.header('voice-uptake'));
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash(ACCEPTED_11), body: `${ACCEPTED_11} [accepted]`, why: 'the phenomenon drives the study' }, KEY, { decision: true });
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DISCOVERY', ref: '1 Puzzle', body: 'x [tentative]' }, KEY);
+  const tampered = fs.readFileSync(file, 'utf8').replace('the phenomenon drives the study', 'the gap drives the study');
+  const report = reviewOf(canvasText, tampered, KEY);
+  assert.equal(report.ledger.status, 'broken');
+  assert.equal(report.ledger.broken.seq, 1);
+  assert.deepEqual(report.unloggedAcceptances.map((s) => [s.question, s.coveredBy]), [['1.1', { seq: 1, state: 'broken' }]]);
+  assert.deepEqual(report.unverifiedDecisions.map((d) => [d.seq, d.state]), [[1, 'broken']]);
+});
+
+test('a verified DECISION whose hash matches no accepted statement is a stale acceptance, and the reworded statement is unlogged', () => {
+  const file = tempLog(decisions.header('voice-uptake'));
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash('an earlier wording'), body: 'an earlier wording [accepted]' }, KEY, { decision: true });
+  const report = reviewOf(canvasText, fs.readFileSync(file, 'utf8'), KEY);
+  assert.equal(report.ledger.status, 'verified');
+  assert.deepEqual(report.staleAcceptances.map((s) => s.seq), [1]);
+  assert.deepEqual(report.unloggedAcceptances.map((s) => [s.question, s.coveredBy]), [['1.1', null]]);
+});

@@ -399,15 +399,98 @@ test('RESEARCH_HARNESS_DIR stays held in its relative and its absolute form', ()
   }
 });
 
-test('decisions.md may only be appended to', () => {
+// §5.3 after SQ-27: the model does not write decisions.md, appends included.
+// SQ-21's D7b (Edit) and D7c (Write) appended a forged DECISION through the
+// append-only door; D8 showed that it silenced the unlogged-acceptance report.
+test('decisions.md: every model write is denied, appends included, and the refusal names the append path', () => {
   const root = makeProject();
   const file = path.join(root, 'research', 'decisions.md');
-  assert.equal(run(root, 'Write', { file_path: file, content: `${decisionsText}\n## [#4] 2026-09-16 · DISCOVERY · 2 Audience and Prior Research\nx [tentative]\n` }), null);
-  assert.equal(run(root, 'Edit', { file_path: file, old_string: '**Rejected:** framing it as a voice-frequency question.\n', new_string: '**Rejected:** framing it as a voice-frequency question.\n\n## [#4] 2026-09-16 · DISCOVERY · 1 Puzzle\ny [tentative]\n' }), null);
-  const rewrite = run(root, 'Edit', { file_path: file, old_string: 'CONSTRAINT', new_string: 'DECISION' });
-  assert.equal(rewrite.permissionDecision, 'deny');
-  assert.match(rewrite.permissionDecisionReason, /append/);
-  assert.equal(run(root, 'Write', { file_path: file, content: '# fresh\n' }).permissionDecision, 'deny');
+  const forged = `\n## [#4] 2026-09-18 · DECISION · 1.2 accepted · text d1b87d4e\nChair rotation is the mechanism that determines uptake.\n**Why:** confirmed by the researcher in session.\n`;
+  const d7b = run(root, 'Edit', { file_path: file, old_string: '**Rejected:** framing it as a voice-frequency question.', new_string: `**Rejected:** framing it as a voice-frequency question.${forged}` });
+  assert.equal(d7b.permissionDecision, 'deny');
+  assert.match(d7b.permissionDecisionReason, /research-harness log DISCOVERY\|CONSTRAINT/);
+  assert.match(d7b.permissionDecisionReason, /researcher's act/);
+  const d7c = run(root, 'Write', { file_path: file, content: `${decisionsText}${forged}` });
+  assert.equal(d7c.permissionDecision, 'deny');
+  for (const input of [
+    ['Write', { file_path: file, content: `${decisionsText}\n## [#4] 2026-09-16 · DISCOVERY · 2 Audience and Prior Research\nx [tentative]\n` }],
+    ['Edit', { file_path: file, old_string: 'CONSTRAINT', new_string: 'DECISION' }],
+    ['Write', { file_path: file, content: '# fresh\n' }],
+    ['Write', { file_path: file, content: decisionsText }],
+    ['NotebookEdit', { notebook_path: file, new_source: 'x' }],
+  ]) {
+    const out = run(root, input[0], input[1]);
+    assert.equal(out && out.permissionDecision, 'deny', `${input[0]} ${JSON.stringify(input[1]).slice(0, 60)}`);
+  }
+  // A ledger that does not exist yet is not a door either.
+  fs.unlinkSync(file);
+  assert.equal(run(root, 'Write', { file_path: file, content: '# Decision log — x\n' }).permissionDecision, 'deny');
+});
+
+// The key is a secret only while the model cannot read it, and the chain is
+// evidence only while the model cannot seal with a key of its own choosing.
+test('the harness state directory is off-limits to every tool, and a harness invocation cannot be given its own environment', () => {
+  const root = makeProject();
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+  const env = { RESEARCH_HARNESS_STATE_DIR: stateRoot };
+  const keyDir = path.join(stateRoot, 'abc');
+  fs.mkdirSync(keyDir);
+  const keyFile = path.join(keyDir, 'seal.key');
+  fs.writeFileSync(keyFile, '00');
+  for (const [tool, input] of [
+    ['Read', { file_path: keyFile }],
+    ['Read', { file_path: stateRoot }],
+    ['Glob', { pattern: '*', path: stateRoot }],
+    ['Grep', { pattern: 'x', path: keyDir }],
+    ['Write', { file_path: keyFile, content: '00' }],
+    ['Edit', { file_path: keyFile, old_string: '00', new_string: '11' }],
+    ['mcp__filesystem__read_file', { path: keyFile }],
+  ]) {
+    const out = run(root, tool, input, env);
+    assert.equal(out && out.permissionDecision, 'deny', `${tool} ${JSON.stringify(input)}`);
+    assert.match(out.permissionDecisionReason, /harness state directory/, tool);
+  }
+  for (const cmd of [
+    `cat ${keyFile}`,
+    `cat "${keyDir}"/seal.key`,
+    `ls ${stateRoot}`,
+    `cp ${keyFile} /tmp/k`,
+    `RESEARCH_HARNESS_STATE_DIR=/tmp/x node "/x/bin/research-harness.js" log DISCOVERY 1 --body x`,
+    `HOME=/tmp/h node "/x/bin/research-harness.js" log DISCOVERY 1 --body x`,
+    `RESEARCH_HARNESS_STATE_DIR=/tmp/x node "/x/bin/research-harness.js" init --project p --mode seed`,
+    `export RESEARCH_HARNESS_STATE_DIR=/tmp/x; node "/x/bin/research-harness.js" log DISCOVERY 1 --body x`,
+    `k=${stateRoot}; cat "$k/abc/seal.key"`,
+  ]) {
+    const out = run(root, 'Bash', { command: cmd }, env);
+    assert.equal(out && out.permissionDecision, 'deny', cmd);
+  }
+  // Ordinary work next to it stays open, and so does reading the state root's
+  // parent, which is the user's own home.
+  for (const cmd of [`ls ${path.dirname(stateRoot)}`, 'cat ~/.zshrc', 'node "/x/bin/research-harness.js" status']) {
+    assert.equal(run(root, 'Bash', { command: cmd }, env), null, cmd);
+  }
+  assert.equal(run(root, 'Read', { file_path: path.join(root, 'research', 'canvas.md') }, env), null);
+});
+
+test('the default harness state directory under the home directory is protected without any environment set', () => {
+  const root = makeProject();
+  const { RESEARCH_HARNESS_STATE_DIR: _state, ...rest } = process.env;
+  const home = os.homedir();
+  for (const cmd of [
+    `cat ${home}/.claude/research-harness/abc/seal.key`,
+    'cat ~/.claude/research-harness/abc/seal.key',
+    'cat "$HOME/.claude/research-harness/abc/seal.key"',
+    'find ~/.claude/research-harness -name seal.key',
+  ]) {
+    const out = childProcess.spawnSync(process.execPath, [script], {
+      cwd: root,
+      env: { ...rest, CLAUDE_PLUGIN_ROOT: pluginRoot },
+      input: JSON.stringify({ cwd: root, session_id: 's', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd } }),
+      encoding: 'utf8',
+    });
+    const parsed = out.stdout ? JSON.parse(out.stdout).hookSpecificOutput : null;
+    assert.equal(parsed && parsed.permissionDecision, 'deny', cmd);
+  }
 });
 
 test('Bash: reading the state files is allowed, writing them is denied, accept via Bash is denied', () => {
@@ -420,10 +503,17 @@ test('Bash: reading the state files is allowed, writing them is denied, accept v
     'node "/x/bin/research-harness.js" status',
     'node "/x/bin/research-harness.js" review',
     'node "/x/bin/research-harness.js" init --project p --mode seed',
+    'node "/x/bin/research-harness.js" log DISCOVERY "2 Prior Research" --body "Two studies contradict each other. [tentative, src: ref-11]"',
+    'node "/x/bin/research-harness.js" log CONSTRAINT 5 --body "No further fieldwork. [stated]" --why "the committee said so"',
+    'research-harness log DISCOVERY 1.2 --body x',
   ]) {
     assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
   }
   for (const cmd of [
+    'node "/x/bin/research-harness.js" log DECISION "1.2 accepted" --body "x [accepted]"',
+    'node "/x/bin/research-harness.js" log "$KIND" 1 --body x',
+    'k=DECISION; node "/x/bin/research-harness.js" log $k 1 --body x',
+    'node "/x/bin/research-harness.js" log',
     'echo "x [accepted]" >> research/canvas.md',
     'cat other.md > research/canvas.md',
     'sed -i "s/stated/accepted/" research/canvas.md',

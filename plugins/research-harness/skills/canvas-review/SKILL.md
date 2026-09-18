@@ -13,8 +13,14 @@ checks whether the pieces fit produces a coherent canvas around a bad study.
 Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" review` and read the
 report. It lists: empty elements; open elements (proposals only); dependency
 violations; unmarked and untagged statements; conversational `[stated]`
-statements; acceptances whose text hash no longer matches; accepted statements
-with no log entry. Report all of it verbatim to the researcher first.
+statements; the state of the decision log's seal chain (verified, unverifiable
+here, or broken at a named entry); acceptances whose text hash no longer
+matches; accepted statements no verified log entry accounts for; and DECISION
+entries that give no cover. Report all of it verbatim to the researcher first.
+
+A broken decision log is the most consequential finding on the page: name the
+entry and stop. The harness never repairs a ledger, and neither do you —
+deciding which version is true is the researcher's act.
 
 Then read the profile named in the canvas frontmatter under
 `${CLAUDE_PLUGIN_ROOT}/references/profiles/` and
@@ -59,11 +65,11 @@ statement yourself; propose it alongside.
 ## What you write
 
 Only `[proposed]` paragraphs in the canvas, next to the statement they concern,
-and `DISCOVERY` entries appended to `research/decisions.md` in this form:
+and `DISCOVERY` entries recorded through the harness, which seals them:
 
-    ## [#<next seq>] <YYYY-MM-DD> · DISCOVERY · <element or n.m>
-    <one paragraph> [proposed]
+    node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" log DISCOVERY "<element or n.m>" --body "<one paragraph> [proposed]"
 
-Never edit an existing entry. Never change a marker. When you are done, list
-the findings by element, most consequential first, and stop — the researcher
-decides what to do with them.
+Never write `research/decisions.md` yourself; the guard denies it, appends
+included, because an entry the harness did not seal does not verify. Never
+change a marker. When you are done, list the findings by element, most
+consequential first, and stop — the researcher decides what to do with them.

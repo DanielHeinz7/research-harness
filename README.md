@@ -35,7 +35,9 @@ inspectable:
   project state in `research/canvas.md`, each statement carrying an authorization
   marker (who may write it) and, where it makes a factual claim, an evidence tag
   (what backs it — a locatable source, or `unverified`, never nothing)
-- an append-only decision log in `research/decisions.md`
+- an append-only decision log in `research/decisions.md`, made tamper-evident by
+  a seal chained over its entries under a per-project key that never enters the
+  repository, so a forged acceptance is visible as an entry that does not verify
 - a dependency check across the nine elements, reported rather than enforced —
   the canvas is a puzzle whose pieces must fit, not a sequence of stages
 - a genre profile that owns the question emphasis and the dependency graph,

@@ -7,9 +7,10 @@ const path = require('node:path');
 const project = require('./lib/project');
 const canvas = require('./lib/canvas');
 const profileLib = require('./lib/profile');
-const { mechanicalReview } = require('./lib/review');
+const { mechanicalReview, ledgerSummary } = require('./lib/review');
 const { parseDecisions } = require('./lib/decisions');
 const ledger = require('./lib/ledger');
+const seal = require('./lib/seal');
 const output = require('./lib/output');
 
 // The four writing rules, restated once per session because the model reads
@@ -56,7 +57,14 @@ function summarize(projectRoot, { seenSeq = 0 } = {}) {
   }
 
   const decisionsText = project.readIfExists(project.decisionsPath(projectRoot)) || '';
-  const report = mechanicalReview({ parsed, graph, decisionsText });
+  let key = null;
+  try {
+    key = seal.readKey(projectRoot);
+  } catch (_) {
+    // A key this hook cannot read is the same as none: the ledger reads as
+    // unverifiable here, which is the honest word for it.
+  }
+  const report = mechanicalReview({ parsed, graph, decisionsText, key });
   const log = parseDecisions(decisionsText);
 
   const statusLine = parsed.elements
@@ -79,7 +87,7 @@ function summarize(projectRoot, { seenSeq = 0 } = {}) {
     `research-harness · paper project "${fm.project || '?'}" · ${profileNote} · mode ${fm.mode || '?'}`,
     `Elements: ${statusLine}`,
     `Empty: ${list(report.empty)} · Open (proposals only): ${list(report.open)}`,
-    `Dependency violations: ${violationLine} · Stale acceptances: ${staleLine}`,
+    `Dependency violations: ${violationLine} · Stale acceptances: ${staleLine} · Ledger: ${ledgerSummary(report.ledger)}`,
     `Decisions not yet seen: ${unseenLine}`,
     RULES,
   ].join('\n');

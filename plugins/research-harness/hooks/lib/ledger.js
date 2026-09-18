@@ -18,8 +18,21 @@ function digest(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 24);
 }
 
+// One directory per project under the state root, shared with the sealing key
+// (seal.js). Named by the real path, so a symlinked checkout of the same
+// project finds the same directory.
+function projectStateDir(projectRoot) {
+  let real;
+  try {
+    real = fs.realpathSync(projectRoot);
+  } catch (_) {
+    real = path.resolve(projectRoot);
+  }
+  return path.join(stateRoot(), digest(real));
+}
+
 function ledgerFile(projectRoot, sessionId) {
-  return path.join(stateRoot(), digest(path.resolve(projectRoot)), `${digest(sessionId)}.json`);
+  return path.join(projectStateDir(projectRoot), `${digest(sessionId)}.json`);
 }
 
 function readSeen(projectRoot, sessionId) {
@@ -44,4 +57,4 @@ function writeSeen(projectRoot, sessionId, seenSeq) {
   }
 }
 
-module.exports = { stateRoot, readSeen, writeSeen };
+module.exports = { stateRoot, projectStateDir, readSeen, writeSeen };

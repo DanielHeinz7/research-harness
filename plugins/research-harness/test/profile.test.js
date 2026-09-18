@@ -61,7 +61,10 @@ test('mechanicalReview cross-checks acceptances against the decision log', () =>
   const goodLog = decisionsText.replace('text 3b7a1c9e', `text ${textHash(acceptedText)}`);
   const ok = review.mechanicalReview({ parsed: canvas.parseCanvas(canvasText), graph, decisionsText: goodLog });
   assert.deepEqual(ok.staleAcceptances, []);
-  assert.deepEqual(ok.unloggedAcceptances, []);
+  // The hash matches, but a legacy entry carries no seal and so gives no
+  // cover (§4.4, §4.7): the acceptance is reported, naming the entry that
+  // claims it and why that claim cannot be checked.
+  assert.deepEqual(ok.unloggedAcceptances.map((s) => [s.question, s.coveredBy]), [['1.1', { seq: 3, state: 'legacy' }]]);
   // The fixture's placeholder hash does not match → the acceptance is stale
   // and the accepted statement has no matching log entry.
   const bad = review.mechanicalReview({ parsed: canvas.parseCanvas(canvasText), graph, decisionsText });

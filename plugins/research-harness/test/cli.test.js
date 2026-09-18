@@ -9,6 +9,7 @@ const path = require('node:path');
 
 const canvas = require('../hooks/lib/canvas');
 const decisions = require('../hooks/lib/decisions');
+const seal = require('../hooks/lib/seal');
 const { textHash } = require('../hooks/lib/hash');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -25,7 +26,15 @@ function makeProject(withState = true) {
   return root;
 }
 
-function run(root, args) {
+// One harness state directory per fixture project, so the key `init` creates
+// is the key `accept` and `review` read — as on a real machine.
+const stateDirs = new Map();
+function stateDirOf(root) {
+  if (!stateDirs.has(root)) stateDirs.set(root, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')));
+  return stateDirs.get(root);
+}
+
+function run(root, args, env = {}) {
   // Claude Code sets CLAUDE_PROJECT_DIR; an inherited value would point every
   // fixture at the real project, so it is stripped here. RESEARCH_HARNESS_DIR
   // would move research/ somewhere else for the same reason.
@@ -35,10 +44,24 @@ function run(root, args) {
     env: {
       ...ambient,
       CLAUDE_PLUGIN_ROOT: pluginRoot,
-      RESEARCH_HARNESS_STATE_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')),
+      RESEARCH_HARNESS_STATE_DIR: stateDirOf(root),
+      ...env,
     },
     encoding: 'utf8',
   });
+}
+
+function readLog(root) {
+  return fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8');
+}
+
+// The fixture project as a researcher would have it after upgrading: a legacy
+// log and a key on this machine, created by init on the existing project.
+function keyedProject() {
+  const root = makeProject();
+  const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  assert.equal(out.status, 0, out.stdout);
+  return root;
 }
 
 test('init creates canvas.md from the template and an empty decision log; refuses to overwrite', () => {
@@ -55,11 +78,34 @@ test('init creates canvas.md from the template and an empty decision log; refuse
   assert.equal(parsed.elements.length, 9);
   assert.equal(canvas.allStatements(parsed).length, 0);
   assert.equal(fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8'), decisions.header('voice-uptake'));
+  // The sealing key lives outside the repository, mode 0600, and init says so.
+  const keyFile = path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key');
+  assert.ok(fs.existsSync(keyFile), keyFile);
+  assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600);
+  assert.match(out.stdout, /Sealing key created/);
+  assert.match(out.stdout, /0600/);
   const again = run(root, ['init', '--project', 'x', '--mode', 'seed']);
   assert.equal(again.status, 1);
   assert.match(again.stdout, /already exists/);
   const bad = run(makeProject(false), ['init', '--project', 'x', '--mode', 'whatever']);
   assert.equal(bad.status, 2);
+});
+
+test('init on an existing project only creates the missing key, and never replaces one', () => {
+  const root = makeProject();
+  const canvasBefore = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+  const first = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  assert.equal(first.status, 0, first.stdout);
+  assert.match(first.stdout, /already exists/);
+  assert.match(first.stdout, /Sealing key created/);
+  assert.equal(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), canvasBefore);
+  assert.equal(readLog(root), fs.readFileSync(path.join(fixtureDir, 'decisions.md'), 'utf8'));
+  const keyFile = path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key');
+  const key = fs.readFileSync(keyFile, 'utf8');
+  const second = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  assert.equal(second.status, 1);
+  assert.match(second.stdout, /already exists; nothing written/);
+  assert.equal(fs.readFileSync(keyFile, 'utf8'), key);
 });
 
 test('status prints the same summary the session hook injects', () => {
@@ -82,11 +128,31 @@ test('review prints the mechanical report as markdown', () => {
   assert.match(out.stdout, /## Untagged statements/);
   assert.match(out.stdout, /1\.2 \[stated\]/);
   assert.match(out.stdout, /## Stale acceptances\n#3/);
-  assert.match(out.stdout, /## Unlogged acceptances\n1\.1/);
+  assert.match(out.stdout, /## Unlogged acceptances\n[^\n]+\n1\.1/);
+  assert.match(out.stdout, /## Decision log\nunverifiable: entries #1, #2, #3 predate the seal/);
+  assert.match(out.stdout, /## Unverified decisions\n[^\n]+\n#3 1\.1 accepted — legacy/);
 });
 
-test('accept promotes the single candidate, keeps tags, logs a DECISION with the text hash', () => {
-  const root = makeProject();
+test('review reports a verified, an unverifiable-here and a broken ledger, and names the cover an unlogged acceptance lacks', () => {
+  const root = keyedProject();
+  const one = run(root, ['accept', '1.2', '--match', 'Speaking frequency']);
+  assert.equal(one.status, 0, one.stdout);
+  const verified = run(root, ['review']);
+  assert.match(verified.stdout, /## Decision log\nverified: 1 sealed entry; entries #1, #2, #3 predate the seal/);
+  assert.match(verified.stdout, /## Unlogged acceptances\n[^\n]+\n1\.1 \(line \d+\): [^\n]+\n\n## /, 'the sealed acceptance of 1.2 is covered; only 1.1 remains');
+
+  const elsewhere = run(root, ['review'], { RESEARCH_HARNESS_STATE_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')) });
+  assert.match(elsewhere.stdout, /## Decision log\nunverifiable here: no sealing key on this machine \(expected at [^\n]+seal\.key\)/);
+  assert.match(elsewhere.stdout, /## Unlogged acceptances\n[^\n]+\n1\.1 [^\n]+\n1\.2 \(line \d+\): [^\n]+ — covered only by #4, unverifiable here/);
+
+  fs.writeFileSync(path.join(root, 'research', 'decisions.md'), readLog(root).replace('the phenomenon, not a gap', 'the gap'));
+  const broken = run(root, ['review']);
+  assert.match(broken.stdout, /## Decision log\nBROKEN at #4 \(line \d+\): its own content or the unsealed block before it changed/);
+  assert.match(broken.stdout, /1\.2 \(line \d+\): [^\n]+ — covered only by #4, broken/);
+});
+
+test('accept promotes the single candidate, keeps tags, logs a sealed DECISION with the text hash', () => {
+  const root = keyedProject();
   // 3.1 depends on 1 (is-qualitative). Element 1 is stated, not accepted → refused first.
   const refused = run(root, ['accept', '3.1']);
   assert.equal(refused.status, 1);
@@ -101,6 +167,8 @@ test('accept promotes the single candidate, keeps tags, logs a DECISION with the
   assert.equal(log.maxSeq, 4);
   assert.equal(log.entries[3].ref, '1.2 accepted');
   assert.equal(log.entries[3].hash, textHash('Speaking frequency is well documented; whether a proposal is taken up is not.'));
+  assert.match(log.entries[3].seal, /^[0-9a-f]{16}$/);
+  assert.match(one.stdout, /sealed/);
   // Now 3.1 is acceptable; its src: tag survives.
   const three = run(root, ['accept', '3.1']);
   assert.equal(three.status, 0, three.stdout);
@@ -108,6 +176,61 @@ test('accept promotes the single candidate, keeps tags, logs a DECISION with the
   assert.match(text, /get taken up\? \[accepted, src: memo-03\]/);
   log = decisions.parseDecisions(fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8'));
   assert.equal(log.maxSeq, 5);
+  const key = Buffer.from(fs.readFileSync(path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key'), 'utf8'), 'hex');
+  assert.equal(seal.verifyChain(readLog(root), key).status, 'verified');
+});
+
+test('accept refuses without a key and on a broken ledger, and leaves the canvas untouched', () => {
+  const noKey = makeProject();
+  const canvasBefore = fs.readFileSync(path.join(noKey.toString(), 'research', 'canvas.md'), 'utf8');
+  const refused = run(noKey, ['accept', '1.2', '--match', 'Speaking frequency']);
+  assert.equal(refused.status, 1);
+  assert.match(refused.stdout, /no sealing key/i);
+  assert.match(refused.stdout, /research-harness init/);
+  assert.equal(fs.readFileSync(path.join(noKey, 'research', 'canvas.md'), 'utf8'), canvasBefore, 'nothing is accepted without a log entry');
+
+  const root = keyedProject();
+  assert.equal(run(root, ['accept', '1.2', '--match', 'Speaking frequency']).status, 0);
+  fs.appendFileSync(path.join(root, 'research', 'decisions.md'), '\n## [#5] 2026-09-18 · DECISION · 3.1 accepted · text deadbeef\nforged [accepted]\n');
+  const before = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+  const onBroken = run(root, ['accept', '3.1']);
+  assert.equal(onBroken.status, 1);
+  assert.match(onBroken.stdout, /broken at #5/);
+  assert.equal(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), before);
+});
+
+test('log appends a sealed DISCOVERY or CONSTRAINT and refuses a DECISION, a missing key, and a broken ledger', () => {
+  const root = keyedProject();
+  const out = run(root, ['log', 'DISCOVERY', '2 Audience and Prior Research', '--body', 'Two studies contradict each other on uptake. [tentative, src: ref-11]', '--supersedes', '2']);
+  assert.equal(out.status, 0, out.stdout);
+  assert.match(out.stdout, /Logged #4 DISCOVERY 2 Audience and Prior Research/);
+  const log = decisions.parseDecisions(readLog(root));
+  assert.equal(log.entries[3].kind, 'DISCOVERY');
+  assert.match(log.entries[3].seal, /^[0-9a-f]{16}$/);
+  assert.equal(log.entries[3].body, 'Two studies contradict each other on uptake. [tentative, src: ref-11]\n**Supersedes:** #2');
+  const constraint = run(root, ['log', 'CONSTRAINT', '5 Research Setting', '--body', 'No further fieldwork. [stated]', '--why', 'the committee said so']);
+  assert.equal(constraint.status, 0, constraint.stdout);
+  assert.equal(decisions.parseDecisions(readLog(root)).maxSeq, 5);
+
+  const decision = run(root, ['log', 'DECISION', '1.2 accepted', '--body', 'x [accepted]']);
+  assert.equal(decision.status, 2);
+  assert.match(decision.stdout, /researcher's act/);
+  const badKind = run(root, ['log', 'VERDICT', '1 Puzzle', '--body', 'x']);
+  assert.equal(badKind.status, 2);
+  const noBody = run(root, ['log', 'DISCOVERY', '1 Puzzle']);
+  assert.equal(noBody.status, 2);
+  assert.equal(decisions.parseDecisions(readLog(root)).maxSeq, 5, 'refusals append nothing');
+
+  const noKey = makeProject();
+  const unkeyed = run(noKey, ['log', 'DISCOVERY', '1 Puzzle', '--body', 'x [tentative]']);
+  assert.equal(unkeyed.status, 1);
+  assert.match(unkeyed.stdout, /no sealing key/i);
+
+  fs.appendFileSync(path.join(root, 'research', 'decisions.md'), '\n## [#6] 2026-09-18 · DISCOVERY · 1 Puzzle\nunsealed [tentative]\n');
+  const onBroken = run(root, ['log', 'DISCOVERY', '1 Puzzle', '--body', 'y [tentative]']);
+  assert.equal(onBroken.status, 1);
+  assert.match(onBroken.stdout, /broken at #6/);
+  assert.equal(decisions.parseDecisions(readLog(root)).maxSeq, 6);
 });
 
 test('accept refuses ambiguity, unknown questions, and already-accepted statements', () => {
@@ -125,7 +248,7 @@ test('accept refuses ambiguity, unknown questions, and already-accepted statemen
 
 test('nothing is written to stderr, so a skill can embed the output through a `!` line', () => {
   const root = makeProject();
-  for (const args of [['status'], ['review'], ['accept', '1.2'], ['accept'], []]) {
+  for (const args of [['status'], ['review'], ['accept', '1.2'], ['accept'], ['log'], ['log', 'DISCOVERY', '1 Puzzle', '--body', 'x'], []]) {
     const out = run(root, args);
     assert.equal(out.stderr, '', `${args.join(' ') || '<no command>'} wrote to stderr`);
     assert.ok(out.stdout.length > 0, `${args.join(' ') || '<no command>'} printed nothing`);

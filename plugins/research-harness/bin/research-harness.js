@@ -9,15 +9,18 @@ const canvas = require('../hooks/lib/canvas');
 const decisions = require('../hooks/lib/decisions');
 const { textHash } = require('../hooks/lib/hash');
 const profileLib = require('../hooks/lib/profile');
-const { mechanicalReview } = require('../hooks/lib/review');
+const seal = require('../hooks/lib/seal');
+const { mechanicalReview, ledgerReport, coverNote, COVER_STATE } = require('../hooks/lib/review');
 const { summarize } = require('../hooks/inject-state');
 
 const MODES = ['brainstorming', 'seed', 'import'];
+const LOG_KINDS = ['DISCOVERY', 'CONSTRAINT'];
 const USAGE = [
   'research-harness init --project <slug> --mode brainstorming|seed|import [--outlet <name>] [--profile <id>]',
   'research-harness status',
   'research-harness review',
   'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
+  'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
 ].join('\n');
 
 function pluginRoot() {
@@ -67,7 +70,16 @@ function init(flags) {
     return fail(err.message, 2);
   }
   const canvasFile = project.canvasPath(root);
-  if (fs.existsSync(canvasFile)) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
+  // An existing project may still lack a key on this machine — a co-author's
+  // clone, or a project started before the seal existed. init creates the
+  // missing key and touches nothing else; with both present it does nothing.
+  if (fs.existsSync(canvasFile)) {
+    const key = seal.createKey(root);
+    if (!key.created) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
+    say(`${path.relative(root, canvasFile)} already exists; kept.`);
+    say(keyLine(key));
+    return 0;
+  }
 
   // The template's own frontmatter documents the template; the project gets
   // its own. Everything below the frontmatter is copied unchanged, so the
@@ -89,9 +101,17 @@ function init(flags) {
   fs.writeFileSync(canvasFile, `${frontmatter}${body}`);
   const decisionsFile = project.decisionsPath(root);
   if (!fs.existsSync(decisionsFile)) fs.writeFileSync(decisionsFile, decisions.header(flags.project));
+  const key = seal.createKey(root);
   say(`Created ${path.relative(root, canvasFile)} and ${path.relative(root, decisionsFile)} (profile ${profileId}, mode ${flags.mode}).`);
+  say(keyLine(key));
   say('Every element is empty. That is the correct starting state.');
   return 0;
+}
+
+function keyLine(key) {
+  return key.created
+    ? `Sealing key created at ${key.path} (mode 0600, outside the repository). It seals every entry of the decision log written on this machine; it is never committed.`
+    : `Sealing key already present at ${key.path}; kept.`;
 }
 
 // ---------- status / review ----------
@@ -111,7 +131,30 @@ function loadState() {
   } catch (err) {
     profileError = err.message;
   }
-  return { root, canvasText, parsed, decisionsText, graph, profileError };
+  // No key is the normal state of a fresh clone; a key that exists and cannot
+  // be read is reported, not hidden behind "no key".
+  let key = null;
+  let keyError = null;
+  try {
+    key = seal.readKey(root);
+  } catch (err) {
+    keyError = `the sealing key at ${seal.keyPath(root)} exists but cannot be read (${(err && err.code) || 'unknown error'})`;
+  }
+  return { root, canvasText, parsed, decisionsText, graph, profileError, key, keyError };
+}
+
+// Why the ledger cannot take a new entry right now, or null. Checked before
+// the canvas is touched, so a refusal leaves nothing half-done.
+function ledgerRefusal(state) {
+  if (state.keyError) return `${state.keyError}; nothing is written.`;
+  if (!state.key) {
+    return `No sealing key for this project on this machine, so nothing is written: an entry counts only if it verifies (§4.7). Run \`research-harness init --project <slug> --mode <mode>\` once here to create the key, then retry.`;
+  }
+  const chain = seal.verifyChain(state.decisionsText, state.key);
+  if (chain.status === 'broken') {
+    return `research/decisions.md is broken at #${chain.broken.seq} (line ${chain.broken.line}); nothing is written. The harness never repairs a ledger — run research-harness review, then decide which version is true.`;
+  }
+  return null;
 }
 
 // The session hook and this command must never render the same state twice:
@@ -127,11 +170,12 @@ function status() {
 function review() {
   const state = loadState();
   if (state.error) return fail(state.error);
-  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText });
+  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText, key: state.key });
   const list = (arr) => (arr.length ? arr.join(', ') : 'none');
   const stmt = (s) => `${s.question} [${s.marker === null ? 'unmarked' : s.marker}] (line ${s.line}): ${s.text}`;
   const lines = ['# Mechanical review', ''];
   if (state.profileError) lines.push(`> ${state.profileError}; dependencies not checked.`, '');
+  if (state.keyError) lines.push(`> ${state.keyError}; the ledger is judged as if there were none.`, '');
   if (report.problems.length) lines.push('## Parse problems', ...report.problems, '');
   lines.push('## Element status', ...state.parsed.elements.map((e) => `${e.number} ${e.title}: ${report.statuses[e.number].status}${report.statuses[e.number].open ? ` (+${report.statuses[e.number].open} open)` : ''}`), '');
   lines.push('## Empty elements', list(report.empty), '');
@@ -140,8 +184,10 @@ function review() {
   lines.push('## Unmarked statements', ...(report.unmarked.length ? report.unmarked.map(stmt) : ['none']), '');
   lines.push('## Untagged statements', '(no `src:` or `unverified` — decide whether each is a factual claim)', ...(report.untagged.length ? report.untagged.map(stmt) : ['none']), '');
   lines.push('## Conversational [stated] statements (review periodically)', ...(report.conversationalStated.length ? report.conversationalStated.map(stmt) : ['none']), '');
+  lines.push('## Decision log', ...ledgerReport(report.ledger, seal.keyPath(state.root)), '');
   lines.push('## Stale acceptances', ...(report.staleAcceptances.length ? report.staleAcceptances.map((s) => `#${s.seq} ${s.ref} — text ${s.hash} no longer matches any accepted statement`) : ['none']), '');
-  lines.push('## Unlogged acceptances', ...(report.unloggedAcceptances.length ? report.unloggedAcceptances.map((s) => `${s.question} (line ${s.line}): ${s.text}`) : ['none']), '');
+  lines.push('## Unlogged acceptances', '(no verified DECISION entry accounts for these)', ...(report.unloggedAcceptances.length ? report.unloggedAcceptances.map((s) => `${s.question} (line ${s.line}): ${s.text}${coverNote(s.coveredBy)}`) : ['none']), '');
+  lines.push('## Unverified decisions', '(DECISION entries that give no cover)', ...(report.unverifiedDecisions.length ? report.unverifiedDecisions.map((d) => `#${d.seq} ${d.ref} — ${COVER_STATE[d.state]}`) : ['none']), '');
   say(lines.join('\n'));
   return 0;
 }
@@ -186,6 +232,10 @@ function accept(positional, flags) {
   if (unmet.length) {
     return fail(`Cannot accept ${questionId}: element ${element.number} depends on ${unmet.map((d) => `element ${d.element} is ${d.status}`).join(', ')}. Accept those first, or change the graph in the profile.`);
   }
+  // An acceptance is logged only by an entry that verifies (§4.4), so a
+  // ledger that cannot take one refuses the acceptance before the canvas moves.
+  const refusal = ledgerRefusal(state);
+  if (refusal) return fail(`Cannot accept ${questionId}: ${refusal}`);
 
   const lines = state.canvasText.split('\n');
   const start = target.line - 1;
@@ -194,10 +244,8 @@ function accept(positional, flags) {
   lines.splice(start, count, ...replaced.split('\n'));
   fs.writeFileSync(project.canvasPath(state.root), lines.join('\n'));
 
-  const log = decisions.parseDecisions(state.decisionsText);
   const hash = textHash(target.text);
-  decisions.appendEntry(project.decisionsPath(state.root), decisions.formatEntry({
-    seq: log.maxSeq + 1,
+  const logged = seal.sealedAppend(project.decisionsPath(state.root), {
     date: today(),
     kind: 'DECISION',
     ref: `${questionId} accepted`,
@@ -205,9 +253,40 @@ function accept(positional, flags) {
     body: `${target.text} [accepted${target.tags.length ? `, ${target.tags.join(', ')}` : ''}]`,
     why: typeof flags.why === 'string' ? flags.why : undefined,
     rejected: typeof flags.rejected === 'string' ? flags.rejected : undefined,
-  }));
+  }, state.key, { decision: true });
   say(`Accepted ${questionId} (was [${target.marker}]): ${target.text}`);
-  say(`Logged as #${log.maxSeq + 1} with text ${hash}.`);
+  say(`Logged as #${logged.seq} with text ${hash}, sealed ${logged.seal}.`);
+  return 0;
+}
+
+// ---------- log ----------
+
+// The append path for what the model and the researcher find out: sealed,
+// so it verifies, and never a DECISION, which is the approval path's alone.
+function log(positional, flags) {
+  const [kind, ref] = positional;
+  if (kind === 'DECISION') return fail(`A DECISION is the researcher's act: it is written by /research-harness:accept, never by log.\n${USAGE}`, 2);
+  if (!LOG_KINDS.includes(kind)) return fail(`log needs a kind, ${LOG_KINDS.join(' or ')}.\n${USAGE}`, 2);
+  if (typeof ref !== 'string' || !ref.trim() || /[·\n]/.test(ref)) return fail(`log needs a reference — an element number or title, or a question id like 3.1 — without a middle dot or a line break.\n${USAGE}`, 2);
+  const body = typeof flags.body === 'string' ? flags.body.trim() : '';
+  if (!body) return fail(`log needs --body <text>.\n${USAGE}`, 2);
+  if (/^## \[#/m.test(body)) return fail('The body may not contain a line that starts like an entry heading (`## [#`).', 2);
+  const supersedes = flags.supersedes === undefined ? undefined : Number(flags.supersedes);
+  if (supersedes !== undefined && !Number.isInteger(supersedes)) return fail('--supersedes takes an entry number.', 2);
+
+  const state = loadState();
+  if (state.error) return fail(state.error);
+  const refusal = ledgerRefusal(state);
+  if (refusal) return fail(`Cannot log: ${refusal}`);
+  const logged = seal.sealedAppend(project.decisionsPath(state.root), {
+    date: today(),
+    kind,
+    ref: ref.trim(),
+    body,
+    why: typeof flags.why === 'string' ? flags.why : undefined,
+    supersedes,
+  }, state.key);
+  say(`Logged #${logged.seq} ${kind} ${ref.trim()}, sealed ${logged.seal}.`);
   return 0;
 }
 
@@ -221,6 +300,7 @@ function main(argv) {
     case 'status': return status();
     case 'review': return review();
     case 'accept': return accept(positional, flags);
+    case 'log': return log(positional, flags);
     default: return fail(USAGE, 2);
   }
 }

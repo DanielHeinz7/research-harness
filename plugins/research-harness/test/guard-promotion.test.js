@@ -163,6 +163,122 @@ test('Bash: reading the state files is allowed, writing them is denied, accept v
   }
 });
 
+// The probe set from SQ-21 (verification/SQ-21/bash.txt). One case per evasion
+// family rather than one per probe: each family is a different way of writing
+// the same intent, which is why the guard lexes the command instead of matching
+// strings against it.
+const BASH_EVASIONS = [
+  ['chained behind a read verb', 'cat research/canvas.md; rm research/canvas.md'],
+  ['chained behind a read verb, newline separator', 'cat research/canvas.md\nrm research/canvas.md'],
+  ['chained into an interpreter', 'wc -l research/canvas.md; python3 -c \'open("research/canvas.md","a").write("It is settled. [accepted]")\''],
+  ['chained behind &&', 'grep -c stated research/canvas.md && mv forged.md research/canvas.md'],
+  ['chained behind a checksum', 'shasum research/canvas.md; cp forged.md research/canvas.md'],
+  ['glob', 'printf "It is settled. [accepted]\\n" >> research/can*.md'],
+  ['quote splitting', 'printf "It is settled. [accepted]\\n" >> research/can"vas.md"'],
+  ['variable assembly', 'f=research/canvas; printf "It is settled. [accepted]\\n" >> "$f.md"'],
+  ['command substitution', 'printf "It is settled. [accepted]\\n" >> "$(ls research/*.md | head -1)"'],
+  ['awk redirection', 'awk -v f=research/canvas.md \'BEGIN{print "It is settled. [accepted]" >> f}\''],
+  ['directory removal', 'rm -rf research'],
+  ['symlink onto the state dir', 'ln -s research r'],
+  ['hard link out of the state dir', 'ln research/c*.md alt.md'],
+  ['ledger append behind a read', 'cat research/decisions.md; printf "\\n## [#99] 2026-09-18 · DECISION · 1.2 accepted · text deadbeef\\nForged.\\n" >> research/dec*.md'],
+  ['interpreter naming the file in its program text', 'node -e \'require("fs").appendFileSync("research/canvas.md","x")\''],
+  ['restoring the file out of git', 'git checkout HEAD -- research/'],
+  ['permissions', 'chmod 000 research/*.md'],
+];
+
+// Commands the guard already held. They stay denied: the new shape must not
+// trade one hole for another.
+const BASH_HELD = [
+  'printf "It is settled. [accepted]\\n" >> research/canvas.md',
+  'cd research && printf "It is settled. [accepted]\\n" >> canvas.md',
+  'vim research/canvas.md',
+  "perl -pi -e 's/\\[stated\\]/[accepted]/' research/canvas.md",
+  'ruby -e \'File.write("research/canvas.md","x")\'',
+  'env printf "It is settled. [accepted]\\n" >> research/canvas.md',
+  'cat > research/canvas.md <<EOF\nx [accepted]\nEOF',
+  'sed -i "" s/stated/accepted/ research/canvas.md',
+  'echo x | tee research/canvas.md',
+  'cat research/canvas.md | tee copy.md',
+  'ln -s research/canvas.md link.md',
+  'true; rm research/canvas.md',
+  'open -a TextEdit research/canvas.md',
+];
+
+// Deny by default only inside the scope the lexer can see. These are the
+// negative controls against over-denial: reads over the state, and ordinary
+// work that has nothing to do with it.
+const BASH_ALLOWED = [
+  'git log --oneline -- research/canvas.md',
+  'git show HEAD:research/canvas.md',
+  'git add research/canvas.md',
+  'git commit -m "update research/canvas.md"',
+  'wc -l research/canvas.md research/decisions.md | sort | uniq -c',
+  'diff research/canvas.md /tmp/other.md',
+  'cd research && cat canvas.md',
+  'grep -c stated research/canvas.md > /tmp/rh-count',
+  'find research -name "*.md"',
+  'shasum research/*.md',
+  'cat bin/research-harness.js',
+  'npx research-harness status',
+  'echo "see research/canvas.md"',
+  'echo x > "$LOG"',
+  'node -e \'console.log(1)\'',
+  'git add .',
+  'npm test',
+  'mkdir -p docs/research-notes',
+  'rm -rf node_modules',
+];
+
+test('Bash: every evasion family in the probe set is denied', () => {
+  const root = makeProject();
+  for (const [family, cmd] of BASH_EVASIONS) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', `${family}: ${cmd}`);
+    assert.match(out.permissionDecisionReason, /read-only/, family);
+  }
+});
+
+test('Bash: the commands the guard already held stay denied', () => {
+  const root = makeProject();
+  for (const cmd of BASH_HELD) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', cmd);
+  }
+});
+
+test('Bash: reads over the state and ordinary work elsewhere are not refused', () => {
+  const root = makeProject();
+  for (const cmd of BASH_ALLOWED) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
+  }
+});
+
+test('Bash: accept is the researcher\'s act however it is spelled', () => {
+  const root = makeProject();
+  for (const cmd of [
+    'node bin/research-harness.js accept 1.2',
+    'node bin/research-harness.js "accept" 1.2',
+    'S=accept; node bin/research-harness.js $S 1.2',
+    'cp bin/research-harness.js rh.js && node rh.js accept 1.2',
+    'npx research-harness accept 1.2',
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', cmd);
+    assert.match(out.permissionDecisionReason, /researcher's act/, cmd);
+    assert.match(out.permissionDecisionReason, /research-harness:accept/, cmd);
+  }
+});
+
+test('Bash: a command the lexer cannot read is denied only when it names the state', () => {
+  const root = makeProject();
+  const huge = `echo ${'a'.repeat(70000)}`;
+  assert.equal(run(root, 'Bash', { command: huge }), null);
+  const out = run(root, 'Bash', { command: `${huge} research/canvas.md` });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /could not read/);
+});
+
 test('canvasVerdict and bashVerdict are exported for reuse', () => {
   assert.equal(guard.canvasVerdict(canvasText, canvasText), null);
   assert.match(guard.canvasVerdict(canvasText, canvasText.replace('[stated, src: memo-03]', '[accepted, src: memo-03]')), /\[accepted\]/);

@@ -93,26 +93,513 @@ function applyEdit(current, toolInput) {
 
 // ---------- Bash ----------
 
-const READ_ONLY_RE = /^\s*(?:cat|head|tail|less|more|wc|grep|rg|diff|stat|ls|file|md5sum|shasum|sed\s+-n|awk|git\s+(?:diff|log|show|status|blame))\b/;
-// A redirection into one of the two files, or tee anywhere in the pipeline.
-const REDIRECT_RE = /(?:>>?|\|)\s*\S*(?:canvas|decisions)\.md|\btee\b/;
-// `-i` edits in place for sed and perl; for grep it only means ignore-case, so
-// the hint is bound to the commands that can actually write.
-const IN_PLACE_RE = /\b(?:sed|perl|ruby)\b[^;|&]*\s-i\b|\s--in-place\b/;
-const CLI_READ_RE = /research-harness\.js"?\s+(?:status|review|init)\b/;
-const CLI_ACCEPT_RE = /research-harness(?:\.js)?["']?\s+accept\b/;
+// A gate built from string tests over an unparsed command line cannot
+// enumerate the ways a shell can be told to write a file — quoting, chaining,
+// globbing, assembling the path in a variable, `cd`, a nested substitution are
+// all the same intent written differently. So the guard lexes the command far
+// enough to see every word, and then asks one question of each: can this denote
+// the research state directory? Where one can, nothing runs but a named
+// read-only form. Deny by default inside a scope the lexer can see, rather than
+// allow by default outside one (§5.3).
 
-function bashVerdict(command) {
-  const cmd = String(command || '');
-  // Acceptance is the researcher's act wherever it is invoked from: running it
-  // from the shell would be the model declaring a commitment (§4.3).
-  if (CLI_ACCEPT_RE.test(cmd)) {
-    return `Accepting a statement is the researcher's act, so \`research-harness accept\` cannot be run from the shell. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m>.`;
+const MAX_COMMAND_LENGTH = 64 * 1024;
+const MAX_SUBSTITUTION_DEPTH = 8;
+
+// An expansion leaves a mark where it stood, so a word keeps its literal parts
+// and still remembers that the rest of it is unknown.
+const EXP_OPEN = '\u0000';
+const EXP_CLOSE = '\u0001';
+const EXP_UNKNOWN = `${EXP_OPEN}${EXP_CLOSE}`;
+const EXP_RE = /\u0000([A-Za-z0-9_]*)\u0001/g;
+
+const RUNNERS = new Set(['node', 'nodejs', 'npx', 'bun', 'deno', 'pnpm', 'yarn']);
+const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
+const CLI_READ_SUBS = new Set(['status', 'review', 'init']);
+
+// Commands that read and cannot be talked into writing by their own arguments.
+// `awk` is absent on purpose: its program text is a language this guard cannot
+// read, and `print > f` inside it writes a file.
+const READ_ONLY = new Set([
+  'cat', 'head', 'tail', 'less', 'more', 'nl', 'wc', 'cut', 'tr', 'column', 'sort', 'uniq',
+  'grep', 'egrep', 'fgrep', 'rg', 'diff', 'cmp', 'stat', 'ls', 'file', 'find', 'realpath',
+  'basename', 'dirname', 'md5sum', 'shasum', 'sha1sum', 'sha256sum', 'cksum',
+  'echo', 'printf', 'pwd', 'cd', 'true', 'false', 'test', '[', '[[', 'date', 'sed', 'git',
+]);
+// `add` and `commit` stage and record; neither rewrites a tracked file, and
+// leaving them out would refuse `git commit -m "update research/canvas.md"`
+// for naming the path. `checkout`, `restore`, `stash` and `clean` do rewrite.
+const GIT_READ_ONLY = new Set([
+  'diff', 'log', 'show', 'status', 'blame', 'grep', 'add', 'commit',
+  'rev-parse', 'ls-files', 'cat-file', 'describe', 'shortlog',
+]);
+const WRITE_FLAG_RE = /^--(?:output|out-file|output-file|write|in-place)(?:=|$)/;
+const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
+const VALUE_RE = /^[^=\s]+=([\s\S]+)$/;
+const FRAGMENT_SPLIT = /[^A-Za-z0-9._\-/~*?[\]+@:]+/;
+
+// Splits a command line into simple commands, each carrying its words and its
+// redirections. Commands nested in `$(...)` or backticks are real commands and
+// join the list; the word that held them keeps a mark that it is unknown.
+function lexBash(text, depth) {
+  const commands = [];
+  let cmd = { words: [], redirects: [] };
+  let word = null;
+  let pending = null;
+  const heredocs = [];
+  let i = 0;
+
+  function startWord() {
+    if (!word) word = { text: '', opaque: false };
+    return word;
   }
-  if (!/(?:canvas|decisions)\.md/.test(cmd)) return null;
-  if (CLI_READ_RE.test(cmd)) return null;
-  if (READ_ONLY_RE.test(cmd) && !REDIRECT_RE.test(cmd) && !IN_PLACE_RE.test(cmd)) return null;
-  return `Only read-only shell access to canvas.md and decisions.md is allowed here (cat, grep, sed -n, git diff, or research-harness status/review/init). Use the Edit tool for [proposed] and [tentative] statements; acceptance is the researcher's act via /research-harness:accept.`;
+  function endWord() {
+    if (!word) return;
+    word.opaque = word.text.includes(EXP_OPEN);
+    if (pending) {
+      pending.target = word;
+      if (pending.heredoc) heredocs.push(word.text);
+      pending = null;
+    } else {
+      cmd.words.push(word);
+    }
+    word = null;
+  }
+  function endCommand() {
+    endWord();
+    pending = null;
+    if (cmd.words.length || cmd.redirects.length) commands.push(cmd);
+    cmd = { words: [], redirects: [] };
+  }
+  function nest(body) {
+    if (depth >= MAX_SUBSTITUTION_DEPTH) return;
+    for (const inner of lexBash(body, depth + 1)) commands.push(inner);
+  }
+
+  function readSubstitution() {
+    let level = 1;
+    let body = '';
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '\\') { body += ch + (text[i + 1] || ''); i += 2; continue; }
+      if (ch === "'") {
+        const end = text.indexOf("'", i + 1);
+        const stop = end < 0 ? text.length : end + 1;
+        body += text.slice(i, stop);
+        i = stop;
+        continue;
+      }
+      if (ch === '"') {
+        let j = i + 1;
+        while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+        const stop = Math.min(j + 1, text.length);
+        body += text.slice(i, stop);
+        i = stop;
+        continue;
+      }
+      if (ch === '(') level += 1;
+      else if (ch === ')') {
+        level -= 1;
+        i += 1;
+        if (!level) return body;
+        body += ch;
+        continue;
+      }
+      body += ch;
+      i += 1;
+    }
+    return body;
+  }
+
+  function readBackquote(w) {
+    let body = '';
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '\\') { body += text[i + 1] || ''; i += 2; continue; }
+      if (ch === '`') { i += 1; break; }
+      body += ch;
+      i += 1;
+    }
+    w.text += EXP_UNKNOWN;
+    nest(body);
+  }
+
+  function readDollar(w) {
+    const next = text[i + 1];
+    if (next === '(') {
+      i += 2;
+      const body = readSubstitution();
+      w.text += EXP_UNKNOWN;
+      nest(body);
+      return;
+    }
+    if (next === '{') {
+      i += 2;
+      let name = '';
+      let level = 1;
+      while (i < text.length) {
+        const ch = text[i];
+        if (ch === '{') { level += 1; name += ch; i += 1; continue; }
+        if (ch === '}') {
+          level -= 1;
+          i += 1;
+          if (!level) break;
+          name += ch;
+          continue;
+        }
+        name += ch;
+        i += 1;
+      }
+      w.text += /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? `${EXP_OPEN}${name}${EXP_CLOSE}` : EXP_UNKNOWN;
+      return;
+    }
+    if (next !== undefined && /[A-Za-z_]/.test(next)) {
+      let j = i + 1;
+      let name = '';
+      while (j < text.length && /[A-Za-z0-9_]/.test(text[j])) { name += text[j]; j += 1; }
+      i = j;
+      w.text += `${EXP_OPEN}${name}${EXP_CLOSE}`;
+      return;
+    }
+    if (next !== undefined && /[0-9@*#?$!-]/.test(next)) { i += 2; w.text += EXP_UNKNOWN; return; }
+    w.text += '$';
+    i += 1;
+  }
+
+  function readDoubleQuoted(w) {
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '"') { i += 1; return; }
+      if (ch === '\\') {
+        const next = text[i + 1];
+        if (next === undefined) { i += 1; return; }
+        if (next === '\n') { i += 2; continue; }
+        if (next === '$' || next === '`' || next === '"' || next === '\\') { w.text += next; i += 2; continue; }
+        w.text += ch;
+        i += 1;
+        continue;
+      }
+      if (ch === '$') { readDollar(w); continue; }
+      if (ch === '`') { i += 1; readBackquote(w); continue; }
+      w.text += ch;
+      i += 1;
+    }
+  }
+
+  // `i` points at `<` or `>`; `forced` marks the `&>` form, which writes.
+  function readRedirect(forced) {
+    const op = text[i];
+    i += 1;
+    let write = forced || op === '>';
+    let heredoc = false;
+    if (op === '>') {
+      if (text[i] === '>' || text[i] === '|' || text[i] === '&') i += 1;
+    } else if (text[i] === '<') {
+      heredoc = true;
+      i += 1;
+      if (text[i] === '<') { heredoc = false; i += 1; } else if (text[i] === '-') i += 1;
+    } else if (text[i] === '>') { write = true; i += 1; } else if (text[i] === '&') i += 1;
+    pending = { write, heredoc, target: null };
+    cmd.redirects.push(pending);
+  }
+
+  function consumeHeredocs() {
+    while (heredocs.length) {
+      const delimiter = heredocs.shift().replace(/['"\\]/g, '').trim();
+      for (;;) {
+        if (i >= text.length) return;
+        const nl = text.indexOf('\n', i);
+        const line = nl < 0 ? text.slice(i) : text.slice(i, nl);
+        i = nl < 0 ? text.length : nl + 1;
+        if (line.trim() === delimiter) break;
+        if (nl < 0) return;
+      }
+    }
+  }
+
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '\\') {
+      const next = text[i + 1];
+      if (next === undefined) { i += 1; continue; }
+      if (next === '\n') { i += 2; continue; }
+      startWord().text += next;
+      i += 2;
+      continue;
+    }
+    if (ch === "'") {
+      i += 1;
+      const end = text.indexOf("'", i);
+      startWord().text += end < 0 ? text.slice(i) : text.slice(i, end);
+      i = end < 0 ? text.length : end + 1;
+      continue;
+    }
+    if (ch === '"') { i += 1; readDoubleQuoted(startWord()); continue; }
+    if (ch === '`') { i += 1; readBackquote(startWord()); continue; }
+    if (ch === '$') { readDollar(startWord()); continue; }
+    if (ch === '#' && !word) {
+      const nl = text.indexOf('\n', i);
+      i = nl < 0 ? text.length : nl;
+      continue;
+    }
+    if (ch === ' ' || ch === '\t' || ch === '\r') { endWord(); i += 1; continue; }
+    if (ch === '\n') { endWord(); i += 1; consumeHeredocs(); endCommand(); continue; }
+    if (ch === '&' && text[i + 1] === '>') { endWord(); i += 1; readRedirect(true); continue; }
+    if (ch === ';' || ch === '&' || ch === '|') {
+      endCommand();
+      i += 1;
+      if (text[i] === ch || (ch === '|' && text[i] === '&')) i += 1;
+      continue;
+    }
+    if (ch === '(' || ch === ')') { endCommand(); i += 1; continue; }
+    if (ch === '<' || ch === '>') {
+      if (word && /^[0-9]+$/.test(word.text)) word = null;
+      else endWord();
+      readRedirect(false);
+      continue;
+    }
+    startWord().text += ch;
+    i += 1;
+  }
+  endWord();
+  consumeHeredocs();
+  endCommand();
+  return commands;
+}
+
+function baseNameOf(text) {
+  const cut = text.lastIndexOf('/');
+  return cut < 0 ? text : text.slice(cut + 1);
+}
+
+function substitute(w, values) {
+  if (!w.text.includes(EXP_OPEN)) return;
+  w.text = w.text.replace(EXP_RE, (all, name) => (name && values.has(name) ? values.get(name) : all));
+  w.opaque = w.text.includes(EXP_OPEN);
+}
+
+// One word can carry several paths: the word itself, the value of a `k=v`
+// argument (`awk -v f=research/canvas.md`), and any slash-bearing run inside a
+// quoted program text (`node -e '…("research/canvas.md")'`).
+function pathCandidates(text) {
+  const out = [text];
+  const value = VALUE_RE.exec(text);
+  if (value) out.push(value[1]);
+  for (const fragment of text.split(FRAGMENT_SPLIT)) {
+    if (fragment.includes('/')) out.push(fragment);
+  }
+  return out;
+}
+
+function globToRegExp(component) {
+  let source = '';
+  for (let k = 0; k < component.length; k += 1) {
+    const ch = component[k];
+    if (ch === '*') source += '[^/]*';
+    else if (ch === '?') source += '[^/]';
+    else if (ch === '[') {
+      const end = component.indexOf(']', k + 1);
+      if (end < 0) source += '\\[';
+      else { source += `[${component.slice(k + 1, end).replace(/\\/g, '\\\\')}]`; k = end; }
+    } else source += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${source}$`);
+}
+
+function componentMatches(pattern, literal) {
+  if (!/[*?[]/.test(pattern)) return pattern === literal;
+  try {
+    return globToRegExp(pattern).test(literal);
+  } catch (_) {
+    return true;
+  }
+}
+
+// True when the path could name the state directory or anything below it. A
+// word that is only an ancestor (`.`, `..`) does not count: catching those
+// would refuse `git add .`, and this is a promotion guard, not a sandbox
+// against a command that destroys the whole project.
+function denotesState(candidate, base, stateParts) {
+  if (!candidate || candidate.startsWith('~') || candidate.includes(EXP_OPEN)) return false;
+  let resolved;
+  try {
+    resolved = path.resolve(base, candidate);
+  } catch (_) {
+    return false;
+  }
+  const parts = resolved.split(path.sep).filter(Boolean);
+  if (parts.length < stateParts.length) return false;
+  for (let k = 0; k < stateParts.length; k += 1) {
+    if (!componentMatches(parts[k], stateParts[k])) return false;
+  }
+  return true;
+}
+
+// A word the guard could not fully expand is judged on the literal parts it
+// still has: a path it cannot resolve but that names the state dir or one of
+// its files is treated as touching it.
+function opaqueNamesState(text, stateNames) {
+  for (const fragment of text.replace(EXP_RE, ' ').split(FRAGMENT_SPLIT)) {
+    for (const part of fragment.split('/')) {
+      if (part && stateNames.has(part)) return true;
+    }
+  }
+  return false;
+}
+
+function wordTouchesState(w, base, stateParts, stateNames) {
+  if (w.opaque) return opaqueNamesState(w.text, stateNames);
+  if (base === null) return false;
+  return pathCandidates(w.text).some((candidate) => denotesState(candidate, base, stateParts));
+}
+
+// A redirection target built at runtime (`>> "$f.md"`, `>> "$(…)"`) is the
+// assemble-the-path family; a bare `> "$LOG"` has no literal path part and is
+// left alone.
+function assembledTarget(text) {
+  const literal = text.replace(EXP_RE, '');
+  return literal.includes('/') || /\.[A-Za-z0-9]+$/.test(literal);
+}
+
+function harnessInvocation(args) {
+  if (!args.length || args[0].opaque) return null;
+  const skipFlags = (from) => {
+    let k = from;
+    while (k < args.length && args[k].text.startsWith('-')) k += 1;
+    return k;
+  };
+  if (CLI_NAMES.has(baseNameOf(args[0].text))) {
+    const k = skipFlags(1);
+    return { harness: true, sub: k < args.length ? args[k] : null };
+  }
+  if (!RUNNERS.has(baseNameOf(args[0].text))) return null;
+  const scriptAt = skipFlags(1);
+  if (scriptAt >= args.length) return null;
+  const script = args[scriptAt];
+  const subAt = skipFlags(scriptAt + 1);
+  return {
+    harness: !script.opaque && CLI_NAMES.has(baseNameOf(script.text)),
+    sub: subAt < args.length ? args[subAt] : null,
+  };
+}
+
+// Returns null when the simple command is a named read-only form, or the
+// reason it is not.
+function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
+  for (const redirect of sc.redirects) {
+    if (!redirect.write) continue;
+    const target = redirect.target;
+    if (!target || target.opaque) return 'it redirects into a path assembled at runtime';
+    if (base === null && !target.text.startsWith('/')) return 'it redirects into a relative path after a `cd` this guard cannot follow';
+    if (wordTouchesState(target, base, stateParts, stateNames)) return 'it redirects into the research state';
+  }
+  if (!args.length) return null;
+  const invocation = harnessInvocation(args);
+  if (invocation && invocation.harness) {
+    if (!invocation.sub) return null;
+    return !invocation.sub.opaque && CLI_READ_SUBS.has(invocation.sub.text) ? null : 'the CLI is being run with a subcommand that is not status, review or init';
+  }
+  if (args[0].opaque) return 'the command name is assembled at runtime';
+  const verb = baseNameOf(args[0].text);
+  if (!READ_ONLY.has(verb)) return `\`${verb}\` is not a read-only command`;
+  const flags = args.slice(1);
+  const hasFlag = (re) => flags.some((w) => re.test(w.text));
+  if (hasFlag(WRITE_FLAG_RE)) return `\`${verb}\` was given a flag that writes a file`;
+  if (verb === 'sed') {
+    const quiet = hasFlag(/^-[A-Za-z]*n/) || flags.some((w) => w.text === '--quiet' || w.text === '--silent');
+    if (!quiet) return '`sed` only reads with -n';
+    if (hasFlag(/^-[A-Za-z]*i/) || flags.some((w) => w.text === '--in-place')) return '`sed -i` edits in place';
+  }
+  if (verb === 'sort' && hasFlag(/^-o/)) return '`sort -o` writes a file';
+  if (verb === 'uniq' && flags.filter((w) => !w.text.startsWith('-')).length > 1) return '`uniq` with two operands writes the second';
+  if (verb === 'find' && hasFlag(/^-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)$/)) return '`find` was given an action that writes or runs a command';
+  if (verb === 'git') {
+    const sub = flags.find((w) => !w.text.startsWith('-'));
+    if (!sub || sub.opaque || !GIT_READ_ONLY.has(sub.text)) return 'this is not a read-only git subcommand';
+  }
+  return null;
+}
+
+function bashDenial(why) {
+  return `Only read-only shell access to the research state is allowed, and ${why}. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-harness status/review/init. Use the Edit tool for [proposed] and [tentative] statements; acceptance is the researcher's act via /research-harness:accept.`;
+}
+
+// Acceptance is the researcher's act wherever it is invoked from: running it
+// from the shell would be the model declaring a commitment (§4.3).
+const ACCEPT_DENIAL = 'Accepting a statement is the researcher\'s act, so `research-harness accept` cannot be run from the shell — under any name, quoting, or variable. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m>.';
+
+function bashVerdict(command, projectRoot) {
+  const cmd = String(command || '');
+  if (!cmd.trim()) return null;
+  const root = projectRoot || project.projectDir({});
+  const stateDir = project.stateDir(root);
+  const stateParts = stateDir.split(path.sep).filter(Boolean);
+  const stateNames = new Set([project.CANVAS_FILE, project.DECISIONS_FILE, path.basename(stateDir)]);
+
+  let commands = null;
+  if (cmd.length <= MAX_COMMAND_LENGTH) {
+    try {
+      commands = lexBash(cmd, 0);
+    } catch (_) {
+      commands = null;
+    }
+  }
+  if (!commands) {
+    // Unreadable is not the same as harmless: judge it if it names the state.
+    const names = [...stateNames].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    return new RegExp(`${names}|research-harness`).test(cmd)
+      ? 'research-harness could not read this shell command well enough to judge it, and it names the research state, so it is denied. Split it into separate, simpler commands, or use the Edit tool.'
+      : null;
+  }
+
+  const values = new Map();
+  let base = root;
+  let touches = false;
+  let acceptAttempt = false;
+  let refusal = null;
+
+  for (const sc of commands) {
+    for (const w of sc.words) substitute(w, values);
+    for (const redirect of sc.redirects) if (redirect.target) substitute(redirect.target, values);
+    for (const w of sc.words) {
+      const assignment = ASSIGNMENT_RE.exec(w.text);
+      if (!assignment) break;
+      if (!assignment[2].includes(EXP_OPEN)) values.set(assignment[1], assignment[2]);
+    }
+
+    if (base === null) touches = true;
+    for (const w of sc.words) {
+      if (wordTouchesState(w, base, stateParts, stateNames)) touches = true;
+      if (!w.opaque && CLI_NAMES.has(baseNameOf(w.text))) touches = true;
+    }
+    for (const redirect of sc.redirects) {
+      if (!redirect.target || redirect.heredoc) continue;
+      if (wordTouchesState(redirect.target, base, stateParts, stateNames)) touches = true;
+      if (redirect.write && redirect.target.opaque && assembledTarget(redirect.target.text)) touches = true;
+    }
+
+    // Leading `NAME=value` words are assignments, not the command.
+    const verbAt = sc.words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
+    const argv = verbAt < 0 ? [] : sc.words.slice(verbAt);
+    const invocation = harnessInvocation(argv);
+    if (invocation) {
+      if (invocation.harness) touches = true;
+      if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'accept') acceptAttempt = true;
+      else if (invocation.harness && invocation.sub && invocation.sub.opaque) acceptAttempt = true;
+    }
+
+    if (!refusal) refusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames);
+
+    if (argv.length && !argv[0].opaque && baseNameOf(argv[0].text) === 'cd') {
+      const operand = argv.slice(1).find((w) => !w.text.startsWith('-'));
+      base = !operand || operand.opaque || operand.text === '-' || base === null
+        ? null
+        : path.resolve(base, operand.text);
+    }
+  }
+
+  if (acceptAttempt) return ACCEPT_DENIAL;
+  if (!touches || !refusal) return null;
+  return bashDenial(refusal);
 }
 
 // ---------- main ----------
@@ -159,7 +646,7 @@ function main() {
     const projectRoot = project.projectDir(data);
 
     if (toolName === 'Bash') {
-      reason = bashVerdict(toolInput.command);
+      reason = bashVerdict(toolInput.command, projectRoot);
     } else if (toolName === 'Edit' || toolName === 'Write' || toolName === 'NotebookEdit') {
       const target = targetOf(projectRoot, toolInput);
       if (target) reason = fileVerdict(target, toolName, toolInput);

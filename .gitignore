@@ -6,3 +6,6 @@ _literature/
 
 # Session handoff: names board tickets and local paths.
 HANDOFF.md
+
+# Draft body for an upstream issue, kept out of the public repo.
+UPSTREAM-ISSUE.md

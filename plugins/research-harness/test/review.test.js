@@ -90,3 +90,26 @@ test('a verified DECISION whose hash matches no accepted statement is a stale ac
   assert.deepEqual(report.staleAcceptances.map((s) => s.seq), [1]);
   assert.deepEqual(report.unloggedAcceptances.map((s) => [s.question, s.coveredBy]), [['1.1', null]]);
 });
+
+// SQ-20: visibility is reported, never enforced. The guard permits the write —
+// the commitment is intact — and the review tells the researcher that the file
+// and the rendered view disagree.
+test('committed statements that would not render are reported, proposals are not', () => {
+  const accepted = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
+  const proposed = 'Uptake may be a property of the meeting\'s chairing style rather than of the proposal. [proposed]';
+  assert.ok(canvasText.includes(accepted) && canvasText.includes(proposed));
+
+  assert.deepEqual(reviewOf(canvasText, legacyLog, KEY).invisibleCommitments, []);
+
+  const hidden = canvasText
+    .replace(accepted, `<!--\n\n${accepted}\n\n-->`)
+    .replace(proposed, `    ${proposed}`);
+  const report = reviewOf(hidden, legacyLog, KEY);
+  assert.deepEqual(
+    report.invisibleCommitments.map((s) => [s.question, s.marker, s.hidden]),
+    [['1.1', 'accepted', 'comment']],
+    'the hidden proposal is not a commitment, so it is not reported',
+  );
+  // The commitment itself is untouched: this is a visibility finding, not a loss.
+  assert.equal(report.unloggedAcceptances.length, reviewOf(canvasText, legacyLog, KEY).unloggedAcceptances.length);
+});

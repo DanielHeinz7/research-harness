@@ -209,3 +209,38 @@ test('projectDir prefers CLAUDE_PROJECT_DIR, then data.cwd, then process.cwd', (
   assert.equal(project.projectDir({}), process.cwd());
   if (saved !== undefined) process.env.CLAUDE_PROJECT_DIR = saved;
 });
+
+// SQ-20: the parser stays comment-blind on purpose — a statement wrapped in an
+// HTML comment is still a commitment and still protected. What changes is that
+// the parser now says it would not be visible to a reader, so the review can
+// report the divergence between what the file holds and what the eye sees.
+test('a committed statement is marked as hidden when it would not render', () => {
+  const base = fs.readFileSync(path.join(__dirname, 'fixtures', 'voice-uptake', 'research', 'canvas.md'), 'utf8');
+  const accepted = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
+  assert.ok(base.includes(accepted));
+
+  const visible = canvas.parseCanvas(base);
+  const plain = canvas.allStatements(visible).find((s) => s.marker === 'accepted');
+  assert.equal(plain.hidden, null, 'an ordinary statement renders');
+
+  // The S10 form: comment markers as their own paragraphs, so the statement
+  // keeps its text, its marker and its hash, and disappears from the rendering.
+  const commented = canvas.parseCanvas(base.replace(accepted, `<!--\n\n${accepted}\n\n-->`));
+  const inComment = canvas.allStatements(commented).find((s) => s.marker === 'accepted');
+  assert.equal(inComment.text, plain.text, 'the statement is unchanged');
+  assert.equal(inComment.hidden, 'comment');
+  assert.equal(canvas.committedSet(commented).size, canvas.committedSet(visible).size);
+
+  // A comment opened and closed on one line hides what sits between.
+  const oneLine = canvas.parseCanvas(base.replace(accepted, `<!-- ${accepted} -->`));
+  assert.equal(canvas.allStatements(oneLine).find((s) => s.marker === 'accepted'), undefined,
+    'on one line the comment markers become part of the text, so this is a different statement');
+
+  // S8: indented four spaces is a code block, which renders as code, not prose.
+  const indented = canvas.parseCanvas(base.replace(accepted, `    ${accepted}`));
+  assert.equal(canvas.allStatements(indented).find((s) => s.marker === 'accepted').hidden, 'code');
+
+  // A fenced block does the same.
+  const fenced = canvas.parseCanvas(base.replace(accepted, '```\n\n' + accepted + '\n\n```'));
+  assert.equal(canvas.allStatements(fenced).find((s) => s.marker === 'accepted').hidden, 'code');
+});

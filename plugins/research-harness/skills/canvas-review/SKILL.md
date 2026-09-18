@@ -13,10 +13,17 @@ checks whether the pieces fit produces a coherent canvas around a bad study.
 Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" review` and read the
 report. It lists: empty elements; open elements (proposals only); dependency
 violations; unmarked and untagged statements; conversational `[stated]`
-statements; the state of the decision log's seal chain (verified, unverifiable
-here, or broken at a named entry); acceptances whose text hash no longer
-matches; accepted statements no verified log entry accounts for; and DECISION
+statements; committed statements that the file holds but a reader of the
+rendered canvas would not see; the state of the decision log's seal chain
+(verified, unverifiable here, or broken at a named entry); acceptances whose
+text hash no longer matches; accepted statements no verified log entry accounts for; and DECISION
 entries that give no cover. Report all of it verbatim to the researcher first.
+
+A statement under "Committed but not visible" is not a parse error and not an
+attack you should assume: an HTML comment or an indented block is also how a
+researcher parks something. Report it plainly — the file and the rendered view
+disagree, here is the statement, here is why it does not show — and let them
+decide. Never silently re-expose it; that would be editing a commitment.
 
 A broken decision log is the most consequential finding on the page: name the
 entry and stop. The harness never repairs a ledger, and neither do you —

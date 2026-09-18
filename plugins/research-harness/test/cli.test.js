@@ -131,6 +131,19 @@ test('review prints the mechanical report as markdown', () => {
   assert.match(out.stdout, /## Unlogged acceptances\n[^\n]+\n1\.1/);
   assert.match(out.stdout, /## Decision log\nunverifiable: entries #1, #2, #3 predate the seal/);
   assert.match(out.stdout, /## Unverified decisions\n[^\n]+\n#3 1\.1 accepted — legacy/);
+  assert.match(out.stdout, /## Committed but not visible\n[^\n]+\nnone/);
+});
+
+test('review names a committed statement that would not render, and says which view hides it', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const accepted = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
+  const text = fs.readFileSync(file, 'utf8');
+  assert.ok(text.includes(accepted));
+  fs.writeFileSync(file, text.replace(accepted, `<!--\n\n${accepted}\n\n-->`));
+  const out = run(root, ['review']);
+  assert.equal(out.status, 0, out.stdout);
+  assert.match(out.stdout, /## Committed but not visible\n[^\n]+\n1\.1 \[accepted\] \(line \d+\): [^\n]+ — inside an HTML comment/);
 });
 
 test('review reports a verified, an unverifiable-here and a broken ledger, and names the cover an unlogged acceptance lacks', () => {

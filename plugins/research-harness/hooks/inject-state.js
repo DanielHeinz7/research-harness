@@ -82,12 +82,16 @@ function summarize(projectRoot, { seenSeq = 0 } = {}) {
         .join('; ')
     : 'none';
   const staleLine = report.staleAcceptances.length ? report.staleAcceptances.map((s) => `#${s.seq}`).join(', ') : 'none';
+  const hiddenLine = report.invisibleCommitments.length
+    ? report.invisibleCommitments.map((s) => s.question).join(', ')
+    : 'none';
 
   const text = [
     `research-harness · paper project "${fm.project || '?'}" · ${profileNote} · mode ${fm.mode || '?'}`,
     `Elements: ${statusLine}`,
     `Empty: ${list(report.empty)} · Open (proposals only): ${list(report.open)}`,
     `Dependency violations: ${violationLine} · Stale acceptances: ${staleLine} · Ledger: ${ledgerSummary(report.ledger)}`,
+    `Committed but not visible in the rendered canvas: ${hiddenLine}`,
     `Decisions not yet seen: ${unseenLine}`,
     RULES,
   ].join('\n');

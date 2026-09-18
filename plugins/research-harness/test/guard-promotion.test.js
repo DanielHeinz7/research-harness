@@ -740,3 +740,26 @@ test('canvasVerdict and bashVerdict are exported for reuse', () => {
   assert.equal(guard.bashVerdict('wc -l research/canvas.md'), null);
   assert.match(guard.bashVerdict('rm research/canvas.md'), /read-only/);
 });
+
+// SQ-20, decided: the guard does not judge visibility. Wrapping a committed
+// statement in an HTML comment (S10) or indenting it into a code block (S8)
+// leaves the commitment intact — same element, question, marker, text, tags —
+// so the set rule has nothing to object to, and it stays permitted. The review
+// reports the divergence instead. Making the parser strip comments would close
+// S10, leave S8 open, and put a statement the researcher commented out
+// themselves outside the guard's reach; that trade was refused.
+test('hiding a committed statement from the rendered view is permitted and reported, not denied', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  for (const [what, replacement] of [
+    ['an HTML comment', `<!--\n\n${ACCEPTED}\n\n-->`],
+    ['an indented code block', `    ${ACCEPTED}`],
+  ]) {
+    assert.equal(run(root, 'Edit', { file_path: file, old_string: ACCEPTED, new_string: replacement }), null, what);
+  }
+  // Same markers on one line are a different statement, because they become
+  // part of its text — that one the set rule does catch.
+  const inline = run(root, 'Edit', { file_path: file, old_string: ACCEPTED, new_string: `<!-- ${ACCEPTED} -->` });
+  assert.equal(inline.permissionDecision, 'deny');
+  assert.match(inline.permissionDecisionReason, /commitment in question 1\.1/);
+});

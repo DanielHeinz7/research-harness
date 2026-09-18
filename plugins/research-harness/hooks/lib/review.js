@@ -1,12 +1,13 @@
 'use strict';
 
-const { allStatements } = require('./canvas');
+const { allStatements, COMMITTED } = require('./canvas');
 const { textHash } = require('./hash');
 const { parseDecisions } = require('./decisions');
 const { verifyChain } = require('./seal');
 const { dependencyViolations, statusByNumber } = require('./profile');
 
 const ACCEPT_REF_RE = /^([1-9]\.\d+) accepted$/;
+const COMMITTED_MARKERS = COMMITTED;
 
 // The mechanical half of canvas-review (§5.4, items 1, 2, 5, 6, 7). The
 // judgment half — fit, refutation, manuscript support — stays in the skill.
@@ -25,6 +26,10 @@ function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
   const open = numbers.filter((n) => statuses[n].status === 'open');
   const violations = graph ? dependencyViolations(parsed, graph) : [];
   const unmarked = statements.filter((s) => s.marker === null);
+  // Committed, but not where a reader would see it (§4.3, SQ-20). Reported and
+  // never enforced: the commitment is intact, and which of the two views is
+  // the one the researcher meant is their judgment, not the parser's.
+  const invisibleCommitments = statements.filter((s) => s.hidden && COMMITTED_MARKERS.has(s.marker));
   const untagged = statements.filter((s) => s.marker !== null && s.tags.length === 0);
   const conversationalStated = untagged.filter((s) => s.marker === 'stated');
 
@@ -81,6 +86,7 @@ function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
     violations,
     unmarked,
     untagged,
+    invisibleCommitments,
     conversationalStated,
     staleAcceptances,
     unloggedAcceptances,

@@ -27,6 +27,44 @@ function normalizeText(text) {
   return String(text).normalize('NFC').replace(COLLAPSE_RE, ' ').trim();
 }
 
+// Which lines would not reach a reader of the rendered Markdown (SQ-20). The
+// parser stays blind to comments on purpose: a statement wrapped in one is
+// still a commitment and still protected, and stripping comments would put a
+// statement the researcher commented out themselves beyond the guard's reach.
+// What the harness owes them instead is the truth that the file and the eye
+// disagree, so every line gets a reason or null and `canvas-review` reports the
+// committed statements that sit on one. Indentation (S8) and a fence hide a
+// statement exactly as a comment (S10) does, which is why this is one question
+// and not two.
+function hiddenLines(lines) {
+  const reasons = new Array(lines.length).fill(null);
+  let inComment = false;
+  let inFence = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const fence = /^\s{0,3}(```|~~~)/.test(line);
+    if (fence && !inComment) {
+      reasons[i] = 'code';
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      reasons[i] = 'code';
+      continue;
+    }
+    // A comment can open and close on the same line, so the state is read off
+    // the last marker rather than toggled per line.
+    const opens = line.lastIndexOf('<!--');
+    const closes = line.lastIndexOf('-->');
+    const hasMarker = opens >= 0 || closes >= 0;
+    if (inComment || hasMarker) reasons[i] = 'comment';
+    if (opens > closes) inComment = true;
+    else if (closes > opens) inComment = false;
+    if (reasons[i] === null && /^(?: {4,}|\t)/.test(line) && line.trim() !== '') reasons[i] = 'code';
+  }
+  return reasons;
+}
+
 function parseFrontmatter(lines) {
   if (lines[0] !== '---') return { data: {}, end: 0 };
   const data = {};
@@ -95,6 +133,8 @@ function structuralProblems(elements) {
 function parseCanvas(text) {
   const lines = String(text).split('\n');
   const fm = parseFrontmatter(lines);
+  const hidden = hiddenLines(lines);
+  const hiddenAt = (index) => (index >= 0 && index < hidden.length ? hidden[index] : null);
   const result = { frontmatter: fm.data, elements: [], problems: [] };
   if (fm.unterminated) result.problems.push('frontmatter is not terminated');
 
@@ -110,16 +150,17 @@ function parseCanvas(text) {
     paragraph = [];
     paragraphStart = -1;
     if (raw.trim() === EMPTY_PLACEHOLDER) return;
+    const hidden = hiddenAt(line - 1);
     if (!question) {
       result.problems.push(`line ${line}: text outside any question`);
       return;
     }
     const group = parseMarkerGroup(raw);
     if (!group) {
-      question.statements.push({ text: normalizeText(raw), marker: null, tags: [], raw, line });
+      question.statements.push({ text: normalizeText(raw), marker: null, tags: [], raw, line, hidden });
       return;
     }
-    question.statements.push({ text: normalizeText(group.text), marker: group.marker, tags: group.tags, raw, line });
+    question.statements.push({ text: normalizeText(group.text), marker: group.marker, tags: group.tags, raw, line, hidden });
   };
 
   for (let i = fm.end; i < lines.length; i += 1) {
@@ -266,6 +307,7 @@ module.exports = {
   compareByCodePoint,
   parseMarkerGroup,
   parseCanvas,
+  hiddenLines,
   structuralProblems,
   canonicalCommitment,
   commitmentHash,

@@ -268,7 +268,9 @@ other.
 
 **Acceptance is bound to the text it was given for.** When a statement is
 promoted to `[accepted]`, the approval path appends a `DECISION` entry to
-`decisions.md` carrying a short hash of the accepted text. `canvas-review`
+`decisions.md` carrying an 8-hex SHA-256 prefix of the accepted text,
+computed after whitespace normalization so a reflow does not invalidate an
+acceptance while any wording change does. `canvas-review`
 recomputes it: if the statement has since been reworded, the acceptance no
 longer covers it and is reported as stale. The guard already prevents the model
 from doing that; the hash also catches a human edit, a merge, or a co-author.
@@ -373,7 +375,7 @@ the one it supersedes.
 ```markdown
 # Decision log — junior-gap
 
-## [#12] 2026-09-15 · DECISION · 3.1 accepted · text a3f1c9
+## [#12] 2026-09-15 · DECISION · 3.1 accepted · text a3f1c9d2
 The question targets the transition, not the outcome. [accepted]
 **Why:** ...
 **Rejected:** ...

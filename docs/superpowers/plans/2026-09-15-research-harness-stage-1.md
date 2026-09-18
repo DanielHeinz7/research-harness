@@ -3045,7 +3045,7 @@ Toolshed's board skill reaches its store.
 
 **Files:**
 - Create: `plugins/research-harness/README.md`
-- Modify: `docs/superpowers/specs/2026-09-15-research-harness-mvp-design.md` (§3 table: add `RESEARCH_HARNESS_STATE_DIR`; §4.7 example: 8-hex hash; §5: note that shared code lives in `hooks/lib/`)
+- Modify: `docs/superpowers/specs/2026-09-15-research-harness-mvp-design.md` (§3 table: add `RESEARCH_HARNESS_STATE_DIR`; §5: note that shared code lives in `hooks/lib/`)
 - Modify: `README.md` (repo root — link the plugin README, add the install line)
 
 **Interfaces:**
@@ -3146,7 +3146,7 @@ In `docs/superpowers/specs/2026-09-15-research-harness-mvp-design.md`:
 
 1. In the §3 table, after the `Library override` row, add:
    `| Session-ledger override | `RESEARCH_HARNESS_STATE_DIR` (transient, tests only) |`
-2. In §4.7, change the example heading `· text a3f1c9` to `· text a3f1c9d2` and the sentence "carrying a short hash of the accepted text" in §4.4 to "carrying an 8-hex SHA-256 prefix of the accepted text".
+2. ~~§4.7 hash width~~ — already applied while Task 3 was in flight, because three later tasks read §4.7 and the 6-hex example contradicted the implementation. Nothing to do.
 3. In §5, after "No `package.json`, no build step, no `lib/`", change to: "No `package.json`, no build step. Shared code lives in `hooks/lib/` — the layout `codebase-mapper` uses — and `bin/` requires it by relative path."
 
 - [ ] **Step 3: Update the repo README**

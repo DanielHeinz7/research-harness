@@ -124,3 +124,9 @@ those texts ships with the plugin.
 
 Plain Node, no dependencies, no build. Shared code is in `hooks/lib/`; both
 hooks and the CLI require it by relative path.
+
+When developing the plugin inside Claude Code, the guard deliberately refuses
+`NAME=value` before a harness invocation. Run the command without the leading
+assignment, or work from a shell outside Claude Code. This friction falls on
+plugin contributors; researchers do not need the assignment because Claude Code
+sets `CLAUDE_PLUGIN_ROOT`.

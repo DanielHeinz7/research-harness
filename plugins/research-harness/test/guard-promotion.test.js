@@ -618,6 +618,12 @@ test('Bash: reads over the state and ordinary work elsewhere are not refused', (
   }
 });
 
+test('Bash: a CLI-named path operand does not imply harness invocation', () => {
+  const root = makeProject();
+  const pathOperand = path.join(path.dirname(root), 'research-harness');
+  assert.equal(run(root, 'Bash', { command: `mkdir -p ${pathOperand}` }), null);
+});
+
 test('Bash: accept is the researcher\'s act however it is spelled', () => {
   const root = makeProject();
   for (const cmd of [
@@ -626,6 +632,7 @@ test('Bash: accept is the researcher\'s act however it is spelled', () => {
     'S=accept; node bin/research-harness.js $S 1.2',
     'cp bin/research-harness.js rh.js && node rh.js accept 1.2',
     'npx research-harness accept 1.2',
+    'xargs research-harness accept 1.2',
   ]) {
     const out = run(root, 'Bash', { command: cmd });
     assert.equal(out && out.permissionDecision, 'deny', cmd);

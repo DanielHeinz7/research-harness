@@ -604,6 +604,17 @@ function harnessInvocation(args) {
     const k = skipFlags(1);
     return { harness: true, sub: k < args.length ? args[k] : null, rest: args.slice(k + 1) };
   }
+  if (baseNameOf(args[0].text) === 'xargs') {
+    const commandAt = skipFlags(1);
+    if (commandAt >= args.length) return null;
+    const command = args[commandAt];
+    const subAt = skipFlags(commandAt + 1);
+    return {
+      harness: !command.opaque && CLI_NAMES.has(baseNameOf(command.text)),
+      sub: subAt < args.length ? args[subAt] : null,
+      rest: args.slice(subAt + 1),
+    };
+  }
   if (!RUNNERS.has(baseNameOf(args[0].text))) return null;
   const scriptAt = skipFlags(1);
   if (scriptAt >= args.length) return null;
@@ -740,7 +751,6 @@ function bashVerdict(command, projectRoot) {
     if (base === null) touches = true;
     for (const w of sc.words) {
       if (wordTouchesState(w, base, stateParts, stateNames)) touches = true;
-      if (!w.opaque && CLI_NAMES.has(baseNameOf(w.text))) touches = true;
     }
     for (const redirect of sc.redirects) {
       if (!redirect.target || redirect.heredoc) continue;

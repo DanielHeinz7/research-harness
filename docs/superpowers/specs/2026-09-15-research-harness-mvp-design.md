@@ -787,7 +787,9 @@ the guard does not verify, and an entry that does not verify logs nothing.
 
 **The approval path is not a model tool call.** `accept` is the researcher's
 act. The guard denies every invocation of the approval CLI it can see, by
-whatever name or route it is reached (SQ-22).
+whatever name or route it is reached (SQ-22). A CLI-named basename implies an
+invocation only when it is a command directly, through a runner, or as
+`xargs`' target command; an ordinary path operand does not imply one.
 
 **The harness's own state is not the project's state.** The sealing key of §4.7
 lives under `RESEARCH_HARNESS_STATE_DIR`, or `~/.claude/research-harness` by

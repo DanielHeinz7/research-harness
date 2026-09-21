@@ -801,6 +801,9 @@ reads its configuration from the session, and a changed home or state directory
 would seal the decision log with a key of the model's choosing, leaving the
 researcher's log reading as broken at that entry (SQ-27).
 
+The guard refuses every leading assignment because it cannot tell which variable
+redirects the key; that cost falls on the plugin's contributors, not researchers.
+
 **Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
 mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that
 rule'"), but that doctrine is about context injection. A permission guard that

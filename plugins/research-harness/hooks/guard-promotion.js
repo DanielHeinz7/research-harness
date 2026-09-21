@@ -212,6 +212,10 @@ const EXP_RE = /\u0000([A-Za-z0-9_]*)\u0001/g;
 const RUNNERS = new Set(['node', 'nodejs', 'npx', 'bun', 'deno', 'pnpm', 'yarn']);
 const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
 const CLI_READ_SUBS = new Set(['status', 'review', 'init']);
+const XARGS_VALUE_FLAGS = new Set([
+  '-a', '-d', '-E', '-I', '-J', '-L', '-n', '-P', '-s', '-S',
+  '--arg-file', '--delimiter', '--eof', '--replace', '--max-lines', '--max-args', '--max-procs', '--max-chars',
+]);
 // `log` is the harness's own append path (§4.7): it seals what it writes, and
 // it is open to the model for these two kinds only. A DECISION is the
 // approval path's alone, and a kind the guard cannot read is judged as one.
@@ -605,7 +609,18 @@ function harnessInvocation(args) {
     return { harness: true, sub: k < args.length ? args[k] : null, rest: args.slice(k + 1) };
   }
   if (baseNameOf(args[0].text) === 'xargs') {
-    const commandAt = skipFlags(1);
+    let commandAt = 1;
+    while (commandAt < args.length) {
+      const option = args[commandAt];
+      if (option.opaque) return null;
+      if (option.text === '--') {
+        commandAt += 1;
+        break;
+      }
+      if (option.text === '-' || !option.text.startsWith('-')) break;
+      if (XARGS_VALUE_FLAGS.has(option.text)) commandAt += 1;
+      commandAt += 1;
+    }
     if (commandAt >= args.length) return null;
     const command = args[commandAt];
     const subAt = skipFlags(commandAt + 1);

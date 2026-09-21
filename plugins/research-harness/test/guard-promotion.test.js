@@ -633,6 +633,8 @@ test('Bash: accept is the researcher\'s act however it is spelled', () => {
     'cp bin/research-harness.js rh.js && node rh.js accept 1.2',
     'npx research-harness accept 1.2',
     'xargs research-harness accept 1.2',
+    'xargs -n 1 research-harness accept 1.2',
+    'xargs --max-args 1 research-harness accept 1.2',
   ]) {
     const out = run(root, 'Bash', { command: cmd });
     assert.equal(out && out.permissionDecision, 'deny', cmd);

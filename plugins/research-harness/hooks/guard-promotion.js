@@ -535,6 +535,16 @@ function componentMatches(pattern, literal) {
   }
 }
 
+// Shared by the plain spelling comparison and the resolved-path comparison
+// below: true when the leading components of `parts` spell `stateParts`.
+function partsMatchState(parts, stateParts) {
+  if (parts.length < stateParts.length) return false;
+  for (let k = 0; k < stateParts.length; k += 1) {
+    if (!componentMatches(parts[k], stateParts[k])) return false;
+  }
+  return true;
+}
+
 // True when the path could name the state directory or anything below it. A
 // word that is only an ancestor (`.`, `..`) does not count: catching those
 // would refuse `git add .`, and this is a promotion guard, not a sandbox
@@ -547,12 +557,7 @@ function denotesState(candidate, base, stateParts) {
   } catch (_) {
     return false;
   }
-  const parts = resolved.split(path.sep).filter(Boolean);
-  if (parts.length < stateParts.length) return false;
-  for (let k = 0; k < stateParts.length; k += 1) {
-    if (!componentMatches(parts[k], stateParts[k])) return false;
-  }
-  return true;
+  return partsMatchState(resolved.split(path.sep).filter(Boolean), stateParts);
 }
 
 // The harness state root, as words on a command line can spell it: resolved,
@@ -578,18 +583,78 @@ function expandTilde(candidate) {
   return candidate;
 }
 
-function wordTouchesHarness(w, base, harness) {
+// Where a candidate word actually lands: `links` is every `ln -s TARGET NAME`
+// this same command already made (§ trackSymlink) — the shell has not run it
+// yet, but the guard can still tell where NAME would point, the same way it
+// already tracks `cd` across statements. `canonical` then resolves whatever
+// is left through the real filesystem, exactly as the file-tool path does
+// (landingOf/canonical): a symlink prepared before this command runs, or
+// sitting anywhere above the state dir, is caught there.
+function resolveThroughLinks(base, candidate, links) {
+  let resolved;
+  try {
+    resolved = path.resolve(base, candidate);
+  } catch (_) {
+    return null;
+  }
+  for (const [from, to] of links) {
+    if (resolved === from) { resolved = to; break; }
+    const prefix = from + path.sep;
+    if (resolved.startsWith(prefix)) { resolved = path.join(to, resolved.slice(prefix.length)); break; }
+  }
+  return canonical(resolved, 0);
+}
+
+const NO_LINKS = new Map();
+
+function wordTouchesHarness(w, base, harness, links) {
   if (w.opaque) {
     const literal = w.text.replace(EXP_RE, '');
     if (harness.tail && literal.includes(harness.tail)) return true;
     return opaqueNamesState(w.text, harness.names);
   }
-  return pathCandidates(w.text).some((candidate) => harness.parts.some((parts) => denotesState(expandTilde(candidate), base || os.homedir(), parts)));
+  const resolvedBase = base || os.homedir();
+  return pathCandidates(w.text).some((candidate) => {
+    const expanded = expandTilde(candidate);
+    if (harness.parts.some((parts) => denotesState(expanded, resolvedBase, parts))) return true;
+    if (!expanded || expanded.startsWith('~') || expanded.includes(EXP_OPEN)) return false;
+    const landed = resolveThroughLinks(resolvedBase, expanded, links || NO_LINKS);
+    if (!landed) return false;
+    const parts = landed.split(path.sep).filter(Boolean);
+    return harness.parts.some((stateParts) => partsMatchState(parts, stateParts));
+  });
 }
 
 // A word the guard could not fully expand is judged on the literal parts it
 // still has: a path it cannot resolve but that names the state dir or one of
 // its files is treated as touching it.
+// `ln -s TARGET LINKNAME` inside the same command aliases LINKNAME to wherever
+// TARGET already resolves, before the shell has made anything: the guard does
+// not need the link to exist on disk to know where it will point the moment
+// this command runs. Only the plain two-operand form is tracked; anything
+// odder (missing/extra operands, an opaque operand) is left alone rather than
+// guessed at.
+function trackSymlink(argv, base, links) {
+  if (base === null || !argv.length || argv[0].opaque || baseNameOf(argv[0].text) !== 'ln') return;
+  const flags = [];
+  const positional = [];
+  for (const w of argv.slice(1)) {
+    if (w.opaque) return; // cannot read this operand; do not guess
+    if (w.text.startsWith('-') && w.text !== '-') flags.push(w.text);
+    else positional.push(w.text);
+  }
+  if (positional.length !== 2) return;
+  const symbolic = flags.some((f) => (f.startsWith('--') ? f === '--symbolic' : /s/.test(f.slice(1))));
+  if (!symbolic) return;
+  let target;
+  try {
+    target = canonical(path.resolve(base, positional[0]), 0);
+  } catch (_) {
+    return;
+  }
+  links.set(path.resolve(base, positional[1]), target);
+}
+
 function opaqueNamesState(text, stateNames) {
   for (const fragment of text.replace(EXP_RE, ' ').split(FRAGMENT_SPLIT)) {
     for (const part of fragment.split('/')) {
@@ -844,6 +909,7 @@ function bashVerdict(command, projectRoot) {
 
   const values = new Map();
   const harness = harnessRoot();
+  const links = new Map();
   let base = root;
   let touches = false;
   let acceptAttempt = false;
@@ -862,10 +928,10 @@ function bashVerdict(command, projectRoot) {
 
     // The harness state directory admits no form at all, read-only or not.
     for (const w of sc.words) {
-      if (wordTouchesHarness(w, base, harness)) return harnessStateDenial('this shell command');
+      if (wordTouchesHarness(w, base, harness, links)) return harnessStateDenial('this shell command');
     }
     for (const redirect of sc.redirects) {
-      if (redirect.target && !redirect.heredoc && wordTouchesHarness(redirect.target, base, harness)) return harnessStateDenial('this shell command');
+      if (redirect.target && !redirect.heredoc && wordTouchesHarness(redirect.target, base, harness, links)) return harnessStateDenial('this shell command');
     }
 
     if (base === null) touches = true;
@@ -898,6 +964,10 @@ function bashVerdict(command, projectRoot) {
         ? null
         : path.resolve(base, operand.text);
     }
+    // A link this statement made is visible to the words that follow it, in
+    // this statement and any later one in the same command (M9b: `ln -sfn .
+    // h && cat h/…`) — the same reason `cd` above keeps mutating `base`.
+    trackSymlink(argv, base, links);
   }
 
   if (acceptAttempt) return ACCEPT_DENIAL;

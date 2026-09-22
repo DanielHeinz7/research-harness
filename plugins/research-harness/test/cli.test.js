@@ -113,6 +113,7 @@ test('status prints the same summary the session hook injects', () => {
   const out = run(root, ['status']);
   assert.equal(out.status, 0);
   assert.match(out.stdout, /paper project "voice-uptake"/);
+  assert.match(out.stdout, /Elements: 1 stated \(\+1 proposal\) · 2 open \(1 proposal\) · 3 stated/);
   assert.match(out.stdout, /Empty: 4, 6, 7, 8, 9/);
   const none = run(makeProject(false), ['status']);
   assert.equal(none.status, 1);

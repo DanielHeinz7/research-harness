@@ -53,6 +53,10 @@ test('with a canvas the hook injects a summary under 4 KiB naming empties, open 
   assert.match(text, /voice-uptake/);
   assert.match(text, /profile is-qualitative/);
   assert.match(text, /mode seed/);
+  // Element 1 has a committed statement plus one proposal; element 2 holds
+  // only a proposal. The two cases must not read as the same phrase twice.
+  assert.match(text, /Elements: 1 stated \(\+1 proposal\) · 2 open \(1 proposal\) · 3 stated · 4 empty · 5 stated/);
+  assert.doesNotMatch(text, /open \(\+1 open\)/);
   assert.match(text, /Empty: 4, 6, 7, 8, 9/);
   assert.match(text, /Open \(proposals only\): 2/);
   assert.match(text, /Decisions not yet seen: #1 CONSTRAINT 5 Research Setting; #2 DISCOVERY 1 Puzzle; #3 DECISION 1\.1 accepted/);

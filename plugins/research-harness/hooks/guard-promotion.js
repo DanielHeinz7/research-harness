@@ -216,6 +216,22 @@ const XARGS_VALUE_FLAGS = new Set([
   '-a', '-d', '-E', '-I', '-J', '-L', '-n', '-P', '-s', '-S',
   '--arg-file', '--delimiter', '--eof', '--replace', '--max-lines', '--max-args', '--max-procs', '--max-chars',
 ]);
+// Two routes reach the CLI without it standing in the command slot, and the
+// inference follows both (§5.3). A wrapper runs the command that follows it, so
+// the words after it are read as a command line of their own. A program text is
+// a language this lexer cannot read at all, so it is judged by what it names.
+// Neither route infers the CLI from a bare word in argument position: that was
+// SQ-32's over-denial of `cd research-harness && npm test`, and it stays gone.
+const WRAPPERS = new Set(['env', 'command', 'exec', 'nice', 'time', 'nohup', 'sudo']);
+// The wrapper options that take a separate value word, so the value is not
+// mistaken for the command (`env -u NAME node …`, `sudo -u someone node …`).
+const WRAPPER_VALUE_FLAGS = new Set([
+  '-u', '--unset', '-C', '--chdir', '-S', '--split-string',
+  '-n', '--adjustment', '-g', '--group', '-f', '--format', '-o', '--output',
+]);
+const OPAQUE_SHELLS = new Set(['sh', 'bash', 'zsh']);
+const SHELL_COMMAND_FLAG_RE = /^-[A-Za-z]*c$/;
+const RUNNER_EVAL_FLAGS = new Set(['-e', '--eval', '-p', '--print', '--input-type']);
 // `log` is the harness's own append path (§4.7): it seals what it writes, and
 // it is open to the model for these two kinds only. A DECISION is the
 // approval path's alone, and a kind the guard cannot read is judged as one.
@@ -597,18 +613,77 @@ function assembledTarget(text) {
   return literal.includes('/') || /\.[A-Za-z0-9]+$/.test(literal);
 }
 
-function harnessInvocation(args) {
-  if (!args.length || args[0].opaque) return null;
+function flagName(text) {
+  const eq = text.indexOf('=');
+  return eq < 0 ? text : text.slice(0, eq);
+}
+
+// The first word after a wrapper's own assignments and options: the command it
+// launches. A word the guard cannot read where the command should stand ends
+// the walk, the same way an opaque command name does.
+function wrapperCommandAt(args, from) {
+  let k = from;
+  while (k < args.length) {
+    const { text } = args[k];
+    if (ASSIGNMENT_RE.test(text)) { k += 1; continue; }
+    if (args[k].opaque) return args.length;
+    if (text === '--') return k + 1;
+    if (text !== '-' && text.startsWith('-')) {
+      if (WRAPPER_VALUE_FLAGS.has(flagName(text))) k += 1;
+      k += 1;
+      continue;
+    }
+    return k;
+  }
+  return args.length;
+}
+
+// What a program text the lexer cannot read names: 'accept' when the word is in
+// there, 'cli' when it names the CLI as a path component or a require target,
+// and null when it names neither — `node -e 'console.log(1)'` is ordinary work
+// and stays outside the harness.
+function programNames(text) {
+  let cli = false;
+  for (const fragment of text.replace(EXP_RE, ' ').split(FRAGMENT_SPLIT)) {
+    if (!fragment) continue;
+    if (fragment === 'accept') return 'accept';
+    if (!cli) {
+      for (const part of fragment.split('/')) {
+        if (CLI_NAMES.has(part)) cli = true;
+      }
+    }
+  }
+  return cli ? 'cli' : null;
+}
+
+// A program text that reaches the CLI is a harness invocation with a subcommand
+// the guard cannot read: `accept` where the text says so, unreadable otherwise.
+// Both are judged as the researcher's act, as `research-harness "$SUB"` already
+// is — the guard cannot lex the program, so it cannot see the read-only form.
+function opaqueProgram(word) {
+  const names = programNames(word.text);
+  if (!names) return null;
+  const sub = names === 'accept' ? { text: 'accept', opaque: false } : { text: word.text, opaque: true };
+  return { harness: true, sub, rest: [] };
+}
+
+function harnessInvocation(args, depth = 0) {
+  if (!args.length || args[0].opaque || depth > MAX_SUBSTITUTION_DEPTH) return null;
   const skipFlags = (from) => {
     let k = from;
     while (k < args.length && args[k].text.startsWith('-')) k += 1;
     return k;
   };
-  if (CLI_NAMES.has(baseNameOf(args[0].text))) {
+  const name = baseNameOf(args[0].text);
+  if (CLI_NAMES.has(name)) {
     const k = skipFlags(1);
     return { harness: true, sub: k < args.length ? args[k] : null, rest: args.slice(k + 1) };
   }
-  if (baseNameOf(args[0].text) === 'xargs') {
+  if (WRAPPERS.has(name)) {
+    const commandAt = wrapperCommandAt(args, 1);
+    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1) : null;
+  }
+  if (name === 'xargs') {
     let commandAt = 1;
     while (commandAt < args.length) {
       const option = args[commandAt];
@@ -621,17 +696,47 @@ function harnessInvocation(args) {
       if (XARGS_VALUE_FLAGS.has(option.text)) commandAt += 1;
       commandAt += 1;
     }
-    if (commandAt >= args.length) return null;
-    const command = args[commandAt];
-    const subAt = skipFlags(commandAt + 1);
-    return {
-      harness: !command.opaque && CLI_NAMES.has(baseNameOf(command.text)),
-      sub: subAt < args.length ? args[subAt] : null,
-      rest: args.slice(subAt + 1),
-    };
+    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1) : null;
   }
-  if (!RUNNERS.has(baseNameOf(args[0].text))) return null;
+  if (name === 'find') {
+    const execAt = args.findIndex((w, k) => k > 0 && !w.opaque && (w.text === '-exec' || w.text === '-execdir'));
+    if (execAt < 0) return null;
+    let end = execAt + 1;
+    while (end < args.length && args[end].text !== ';' && args[end].text !== '+') end += 1;
+    const action = harnessInvocation(args.slice(execAt + 1, end), depth + 1);
+    // `find` is not a launcher the way `env` is: it searches, and it can carry
+    // more than one action. So the inference reads the action it was given
+    // without vouching for the search around it, which keeps `find`'s own
+    // refusal for being told to run a command at all.
+    return action ? { ...action, action: true } : null;
+  }
+  if (OPAQUE_SHELLS.has(name)) {
+    let k = 1;
+    let carries = false;
+    while (k < args.length && !args[k].opaque && args[k].text !== '-' && args[k].text.startsWith('-')) {
+      if (SHELL_COMMAND_FLAG_RE.test(args[k].text)) carries = true;
+      k += 1;
+    }
+    return carries && k < args.length ? opaqueProgram(args[k]) : null;
+  }
+  if (name === 'eval') {
+    for (const w of args.slice(1)) {
+      const program = opaqueProgram(w);
+      if (program) return program;
+    }
+    return null;
+  }
+  if (!RUNNERS.has(name)) return null;
   const scriptAt = skipFlags(1);
+  // `-e`, `--eval` and `-p` turn the word after the flags from a script path
+  // into program text, so there is no script name left to recognise.
+  const evalFlag = args.slice(1, scriptAt).find((w) => RUNNER_EVAL_FLAGS.has(flagName(w.text)));
+  if (evalFlag) {
+    const eq = evalFlag.text.indexOf('=');
+    const inline = eq < 0 ? null : opaqueProgram({ text: evalFlag.text.slice(eq + 1), opaque: evalFlag.opaque });
+    if (inline) return inline;
+    return scriptAt < args.length ? opaqueProgram(args[scriptAt]) : null;
+  }
   if (scriptAt >= args.length) return null;
   const script = args[scriptAt];
   const subAt = skipFlags(scriptAt + 1);
@@ -664,7 +769,7 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
   }
   if (!args.length) return null;
   const invocation = harnessInvocation(args);
-  if (invocation && invocation.harness) {
+  if (invocation && invocation.harness && !invocation.action) {
     if (!invocation.sub) return null;
     if (invocation.sub.opaque) return 'the CLI is being run with a subcommand that is not status, review, init or log';
     if (invocation.sub.text === 'log') {

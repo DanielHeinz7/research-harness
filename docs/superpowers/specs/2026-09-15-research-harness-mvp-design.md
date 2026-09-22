@@ -791,6 +791,18 @@ whatever name or route it is reached (SQ-22). A CLI-named basename implies an
 invocation only when it is a command directly, through a runner, or as
 `xargs`' target command; an ordinary path operand does not imply one.
 
+The inference reaches that command slot along two routes, and no other (SQ-52).
+A **wrapper** — `env`, `command`, `exec`, `nice`, `time`, `nohup`, `sudo`,
+`xargs`, `find -exec` — runs the command that follows it, so the words after it
+are read as a command line of their own, however many wrappers are stacked. An
+**opaque program** — `sh -c`, `bash -c`, `zsh -c`, `eval`, or a runner given
+`-e`, `--eval`, `-p`, `--print` or `--input-type` — carries text in a language
+the lexer cannot read, so it counts as an invocation when that text names the
+CLI, as a path component or as a `require`/`import` target, or names `accept`;
+`node -e 'console.log(1)'` names neither and stays outside the harness. Inside
+such a program the guard cannot see which subcommand runs, so it judges the
+whole of it as the researcher's act.
+
 **The harness's own state is not the project's state.** The sealing key of §4.7
 lives under `RESEARCH_HARNESS_STATE_DIR`, or `~/.claude/research-harness` by
 default, and the guard refuses every tool call that reaches into that directory,

@@ -647,6 +647,72 @@ test('Bash: accept is the researcher\'s act however it is spelled', () => {
   }
 });
 
+// The probe set from SQ-29 (verification/SQ-29/cli.txt B1–B9, B13–B14 and
+// perimeter.txt M14–M15). The inference read three launcher shapes and nothing
+// else, so `accept` reached the CLI in silence behind any other one. Two routes
+// close that: a wrapper is followed to the command it launches, and a program
+// text, which no lexer here can read, is judged by what it names. Each row
+// carries the negative control that keeps the route from denying ordinary work.
+const LAUNCHERS = [
+  ['env', 'env node bin/research-harness.js accept 1.2', 'env FOO=1 npm test'],
+  ['env with an option that takes a value', 'env -u FOO node bin/research-harness.js accept 1.2', 'env -u FOO npm test'],
+  ['command', 'command node bin/research-harness.js accept 1.2', 'command npm test'],
+  ['exec', 'exec node bin/research-harness.js accept 1.2', 'exec npm test'],
+  ['nice', 'nice -n 10 node bin/research-harness.js accept 1.2', 'nice -n 10 npm test'],
+  ['time', 'time node bin/research-harness.js accept 1.2', 'time npm test'],
+  ['nohup', 'nohup node bin/research-harness.js accept 1.2', 'nohup npm test'],
+  ['sudo', 'sudo node bin/research-harness.js accept 1.2', 'sudo npm test'],
+  ['wrappers in front of each other', 'env exec nice node bin/research-harness.js accept 1.2', 'env exec nice npm test'],
+  ['xargs with a runner in the command slot', 'printf x | xargs node bin/research-harness.js accept 1.2', 'printf x | xargs npm test'],
+  ['xargs after --', 'printf x | xargs -- node bin/research-harness.js accept 1.2', 'printf x | xargs -- npm test'],
+  ['find -exec', 'find . -maxdepth 0 -exec node bin/research-harness.js accept 1.2 \\;', 'find . -maxdepth 1 -exec grep -l stated {} \\;'],
+  ['find -execdir', 'find . -maxdepth 0 -execdir research-harness accept 1.2 +', 'find . -maxdepth 1 -execdir grep -l stated {} +'],
+];
+
+const PROGRAM_TEXTS = [
+  ['sh -c', 'sh -c \'node bin/research-harness.js accept 1.2\'', 'sh -c \'ls research\''],
+  ['bash -c', 'bash -c "research-harness accept 1.2"', 'bash -c "git status"'],
+  ['zsh -c', 'zsh -lc \'node bin/research-harness.js accept 1.2\'', 'zsh -lc \'npm test\''],
+  ['eval', 'eval \'node bin/research-harness.js accept 1.2\'', 'eval \'npm test\''],
+  ['node -e', 'node -e \'require("./bin/research-harness.js").main(["accept","1.2"])\'', 'node -e \'console.log(1)\''],
+  ['node --eval', 'node --eval \'require("./bin/research-harness.js").main(["accept","1.2"])\'', 'node --eval \'console.log(1)\''],
+  ['node --eval=', 'node --eval=\'require("./bin/research-harness.js").main(["accept","1.2"])\'', 'node --eval=\'console.log(1)\''],
+  ['node -p', 'node -p \'require("./bin/research-harness.js").main(["accept","1.2"])\'', 'node -p \'1 + 1\''],
+];
+
+test('Bash: a wrapper is followed to the command it launches', () => {
+  const root = makeProject();
+  for (const [launcher, denied] of LAUNCHERS) {
+    const out = run(root, 'Bash', { command: denied });
+    assert.equal(out && out.permissionDecision, 'deny', `${launcher}: ${denied}`);
+    assert.match(out.permissionDecisionReason, /researcher's act/, launcher);
+  }
+});
+
+test('Bash: a program text that names the CLI or accept is a harness invocation', () => {
+  const root = makeProject();
+  for (const [form, denied] of PROGRAM_TEXTS) {
+    const out = run(root, 'Bash', { command: denied });
+    assert.equal(out && out.permissionDecision, 'deny', `${form}: ${denied}`);
+    assert.match(out.permissionDecisionReason, /researcher's act/, form);
+  }
+  // The read-only form is no different: inside a program text the guard cannot
+  // see which subcommand runs, and an unreadable subcommand is judged as an
+  // acceptance, the same way `research-harness "$SUB"` is.
+  const out = run(root, 'Bash', { command: 'sh -c \'research-harness status\'' });
+  assert.equal(out && out.permissionDecision, 'deny');
+});
+
+test('Bash: neither route denies ordinary work', () => {
+  const root = makeProject();
+  for (const [launcher, , allowed] of [...LAUNCHERS, ...PROGRAM_TEXTS]) {
+    assert.equal(run(root, 'Bash', { command: allowed }), null, `${launcher}: ${allowed}`);
+  }
+  // SQ-32's contract: a bare word whose basename is a CLI name is an operand,
+  // not an invocation, and the two routes above do not bring that inference back.
+  assert.equal(run(root, 'Bash', { command: 'cd research-harness && npm test' }), null);
+});
+
 test('Bash: a command the lexer cannot read is denied only when it names the state', () => {
   const root = makeProject();
   const huge = `echo ${'a'.repeat(70000)}`;

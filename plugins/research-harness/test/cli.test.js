@@ -268,3 +268,25 @@ test('nothing is written to stderr, so a skill can embed the output through a `!
     assert.ok(out.stdout.length > 0, `${args.join(' ') || '<no command>'} printed nothing`);
   }
 });
+
+// readIfExists tells "absent" from "unreadable" (SQ-23); the CLI has to say
+// which one it hit. A root user reads a mode-000 file anyway, so the check
+// cannot run there.
+test('a canvas that exists but cannot be read is reported on one line with the file and the code, not as a stack trace', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () => {
+  const root = makeProject();
+  // The CLI names the file as the process sees it, under the real cwd, which
+  // on macOS is /private/var rather than the /var the tmpdir was handed out as.
+  const canvasFile = path.join(fs.realpathSync(root), 'research', 'canvas.md');
+  fs.chmodSync(canvasFile, 0o000);
+  try {
+    for (const args of [['status'], ['review']]) {
+      const out = run(root, args);
+      assert.equal(out.status, 1, `${args[0]} exit code`);
+      assert.equal(out.stderr, '', `${args[0]} wrote to stderr`);
+      assert.equal(out.stdout, `Cannot read ${canvasFile} (EACCES). Restore access to the file and run the command again.\n`);
+      assert.doesNotMatch(out.stdout, /not a paper project/);
+    }
+  } finally {
+    fs.chmodSync(canvasFile, 0o644);
+  }
+});

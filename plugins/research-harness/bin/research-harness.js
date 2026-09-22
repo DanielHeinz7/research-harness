@@ -307,6 +307,25 @@ function main(argv) {
   }
 }
 
-if (require.main === module) process.exitCode = main(process.argv.slice(2));
+// readIfExists lets every error but ENOENT through, so a canvas that exists but
+// cannot be read (EACCES, EISDIR, ELOOP, ...) reaches this point as the
+// operating system's error. That is the right answer and it belongs on one
+// line, not in a stack trace: the researcher needs the file and the code, and
+// "not a paper project" would be a lie. Anything that is not a filesystem
+// error is a bug and keeps its trace. EISDIR arrives from `read`, not `open`,
+// and carries no path; the state directory is the closest name there is.
+function run(argv) {
+  try {
+    return main(argv);
+  } catch (err) {
+    if (err && err.code && err.syscall) {
+      const where = err.path || `a state file in ${project.stateDir(project.projectDir({}))}`;
+      return fail(`Cannot read ${where} (${err.code}). Restore access to the file and run the command again.`);
+    }
+    throw err;
+  }
+}
+
+if (require.main === module) process.exitCode = run(process.argv.slice(2));
 
 module.exports = { main, replaceMarker };

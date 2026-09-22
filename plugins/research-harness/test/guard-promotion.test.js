@@ -11,6 +11,10 @@ const pluginRoot = path.resolve(__dirname, '..');
 const script = path.join(pluginRoot, 'hooks', 'guard-promotion.js');
 const fixtureDir = path.join(__dirname, 'fixtures', 'voice-uptake', 'research');
 const guard = require('../hooks/guard-promotion');
+// The exported verdicts resolve the profile through CLAUDE_PLUGIN_ROOT in this
+// process. A runner launched from another plugin's process carries that plugin's
+// root, so the in-process calls below would load the wrong profile set.
+process.env.CLAUDE_PLUGIN_ROOT = pluginRoot;
 
 const canvasText = fs.readFileSync(path.join(fixtureDir, 'canvas.md'), 'utf8');
 const decisionsText = fs.readFileSync(path.join(fixtureDir, 'decisions.md'), 'utf8');

@@ -124,6 +124,9 @@ test('review prints the mechanical report as markdown', () => {
   const root = makeProject();
   const out = run(root, ['review']);
   assert.equal(out.status, 0);
+  // Same wording as the session summary: proposals are counted as proposals,
+  // and an open element takes no plus sign (SQ-30, SQ-33).
+  assert.match(out.stdout, /## Element status\n1 Puzzle: stated \(\+1 proposal\)\n2 [^\n]+: open \(1 proposal\)\n/);
   assert.match(out.stdout, /## Empty elements\n4, 6, 7, 8, 9/);
   assert.match(out.stdout, /## Open elements \(proposals only\)\n2/);
   assert.match(out.stdout, /## Untagged statements/);

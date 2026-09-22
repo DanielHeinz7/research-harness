@@ -70,7 +70,11 @@ function summarize(projectRoot, { seenSeq = 0 } = {}) {
   const statusLine = parsed.elements
     .map((e) => {
       const s = report.statuses[e.number];
-      return `${e.number} ${s.status}${s.open ? ` (+${s.open} open)` : ''}`;
+      // The count names what it counts. An open element holds only proposals,
+      // so its count is not "in addition to" anything and takes no plus sign;
+      // `1 open (+1 open)` read as two different words for the same thing.
+      const proposals = s.open ? ` (${s.status === 'open' ? '' : '+'}${s.open} proposal${s.open === 1 ? '' : 's'})` : '';
+      return `${e.number} ${s.status}${proposals}`;
     })
     .join(' · ');
   const list = (arr) => (arr.length ? arr.join(', ') : 'none');

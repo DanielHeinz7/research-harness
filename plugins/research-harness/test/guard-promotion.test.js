@@ -476,6 +476,33 @@ test('the harness state directory is off-limits to every tool, and a harness inv
   assert.equal(run(root, 'Read', { file_path: path.join(root, 'research', 'canvas.md') }, env), null);
 });
 
+test('Bash: a symlinked ancestor of the state root, on disk or made by an earlier statement, is still denied', (t) => {
+  const root = makeProject();
+  if (!canSymlink(root)) return t.skip('this platform does not allow symlinks');
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+  const env = { RESEARCH_HARNESS_STATE_DIR: stateRoot };
+  const keyDir = path.join(stateRoot, 'abc');
+  fs.mkdirSync(keyDir);
+  fs.writeFileSync(path.join(keyDir, 'seal.key'), '00');
+
+  // A symlink that already exists on disk and only spells the state root
+  // through an ancestor: the Bash closure has to resolve it, not just
+  // compare spellings, the same way the file-tool path already does.
+  const link = path.join(root, 'shortcut');
+  fs.symlinkSync(stateRoot, link);
+  assert.equal(run(root, 'Bash', { command: `cat ${link}/*/seal.key` }, env).permissionDecision, 'deny');
+
+  // A symlink the command itself creates, earlier in the same compound
+  // command, before the shell has run anything: the guard has to track it
+  // the way it already tracks `cd` across statements.
+  const madeCmd = `ln -sfn ${path.dirname(stateRoot)} h && cat h/${path.basename(stateRoot)}/*/seal.key`;
+  assert.equal(run(root, 'Bash', { command: madeCmd }, env).permissionDecision, 'deny');
+
+  // Control: the same made-in-command link pointed at ordinary project
+  // files stays open, so the new check does not widen the closure.
+  assert.equal(run(root, 'Bash', { command: 'ln -sfn . h && cat h/research/canvas.md' }, env), null);
+});
+
 test('the default harness state directory under the home directory is protected without any environment set', () => {
   const root = makeProject();
   const { RESEARCH_HARNESS_STATE_DIR: _state, ...rest } = process.env;

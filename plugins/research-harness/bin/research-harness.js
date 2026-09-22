@@ -177,7 +177,15 @@ function review() {
   if (state.profileError) lines.push(`> ${state.profileError}; dependencies not checked.`, '');
   if (state.keyError) lines.push(`> ${state.keyError}; the ledger is judged as if there were none.`, '');
   if (report.problems.length) lines.push('## Parse problems', ...report.problems, '');
-  lines.push('## Element status', ...state.parsed.elements.map((e) => `${e.number} ${e.title}: ${report.statuses[e.number].status}${report.statuses[e.number].open ? ` (+${report.statuses[e.number].open} open)` : ''}`), '');
+  // Same wording as the session summary in hooks/inject-state.js: the count
+  // names proposals, and an open element takes no plus sign because there is
+  // nothing committed to add to.
+  const status = (e) => {
+    const s = report.statuses[e.number];
+    const proposals = s.open ? ` (${s.status === 'open' ? '' : '+'}${s.open} proposal${s.open === 1 ? '' : 's'})` : '';
+    return `${e.number} ${e.title}: ${s.status}${proposals}`;
+  };
+  lines.push('## Element status', ...state.parsed.elements.map(status), '');
   lines.push('## Empty elements', list(report.empty), '');
   lines.push('## Open elements (proposals only)', list(report.open), '');
   lines.push('## Dependency violations', ...(report.violations.length ? report.violations.map((v) => `element ${v.element} is accepted but ${v.missing.map((m) => `element ${m.element} is ${m.status}`).join(', ')}`) : ['none']), '');

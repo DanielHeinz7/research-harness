@@ -246,6 +246,17 @@ const READ_ONLY = new Set([
   'basename', 'dirname', 'md5sum', 'shasum', 'sha1sum', 'sha256sum', 'cksum',
   'echo', 'printf', 'pwd', 'cd', 'true', 'false', 'test', '[', '[[', 'date', 'sed', 'git',
 ]);
+// SQ-68: verbs that never act on an operand as a file. An argument here is a
+// value the command computes with, not a landing place for the state, so an
+// unresolved substitution in one is not an unknown write target (the fail-closed
+// reading below). Every verb not named here keeps that reading.
+const NON_FILE_VERBS = new Set([
+  '[', 'test', 'true', 'false', // decide on their operands; they create and change nothing
+  'echo', 'printf', // send text to a stream; a named file only ever comes from a redirect, judged on its own
+  'date', // prints the clock; an argument is a format string
+  'sleep', // takes a duration, not a path
+  'mkdir', // only creates a directory: every form on a path that already exists fails (EEXIST or ENOTDIR), so an existing state file keeps its bytes, mode and mtime
+]);
 // `add` and `commit` stage and record; neither rewrites a tracked file, and
 // leaving them out would refuse `git commit -m "update research/canvas.md"`
 // for naming the path. `checkout`, `restore`, `stash` and `clean` do rewrite.
@@ -1128,9 +1139,14 @@ function bashVerdict(command, projectRoot) {
     // command substitution the guard could not resolve to a literal is an
     // unknown target: `readOnlyRefusal` below still allows it through when
     // the command is read-only, but a non-read-only command with such an
-    // argument is denied rather than silently let through (SQ-57).
-    for (const w of argv.slice(1)) {
-      if (hasUnknownSubstitution(w.text)) touches = true;
+    // argument is denied rather than silently let through (SQ-57). A verb
+    // whose operand is never a file it writes is the exception (SQ-68): the
+    // argument is a value, not a landing place for the state.
+    const verbName = argv.length && !argv[0].opaque ? baseNameOf(argv[0].text) : null;
+    if (!NON_FILE_VERBS.has(verbName)) {
+      for (const w of argv.slice(1)) {
+        if (hasUnknownSubstitution(w.text)) touches = true;
+      }
     }
 
     const invocation = harnessInvocation(argv);

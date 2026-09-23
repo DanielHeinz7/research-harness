@@ -1041,6 +1041,64 @@ test('Bash: neither route denies ordinary work', () => {
   assert.equal(run(root, 'Bash', { command: 'cd research-harness && npm test' }), null);
 });
 
+// SQ-61, cli.txt B10. The inference read the command word first, and an opaque
+// one ended the walk there: the CLI name and `accept` behind it were never
+// looked at, so the invocation ran unseen. An opaque word is read the way an
+// unknown wrapper is — its command slot is walked, and what stands there is
+// judged as the invocation it would have been. `$(echo node)` beside it is
+// already denied since SQ-57 resolved it to the literal `node`.
+test('SQ-61: an opaque command word does not hide the invocation behind it', () => {
+  const root = makeProject();
+  for (const command of [
+    'R=$(cat x); $R bin/research-harness.js accept 1.2',
+    'R=$(date +%s); $R bin/research-harness.js accept 1.2',
+    '$R bin/research-harness.js accept 1.2',
+    '$R --no-warnings bin/research-harness.js accept 1.2',
+    'R=$(cat x); $R bin/research-harness.js log DECISION 1.2 --body x',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  // No CLI name and no `accept` behind the opaque word: there is nothing here
+  // for the inference to find, and an unknown wrapper stays ordinary work.
+  for (const command of [
+    '$CMD --version',
+    '$R echo hi',
+    'R=$(date +%s); ls research',
+    '$R npm test',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
+// SQ-61, the argument-position sibling (SQ-57's reading, closed here). An
+// assignment whose value carries a substitution the guard cannot resolve makes
+// the variable unknown, so `$x` is an unknown target where it stands: denied
+// under a verb whose operand is the file it writes, exactly as SQ-68 denies the
+// substitution written out in the argument, and still read under a read-only
+// verb. The cost, stated in the release note: `$(mktemp)` is unknown too, so
+// that one is denied inside a research project.
+test('SQ-61: an unknown variable is a write target like the substitution written out', () => {
+  const root = makeProject();
+  for (const command of [
+    'x=$(cat p.txt); rm "$x"',
+    'x=$(cat p.txt); rm "$x.md"',
+    'tmp=$(mktemp); rm "$tmp"',
+    'x=$(cat p.txt); mv notes.md "$x"',
+    'x=$(cat p.txt); touch "$x"',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  for (const command of [
+    'x=$(cat p.txt); cat "$x"',
+    'x=$(pwd); ls "$x"',
+    'x=$(cat p.txt); grep -c x "$x"',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
 test('Bash: a command the lexer cannot read is denied only when it names the state', () => {
   const root = makeProject();
   const huge = `echo ${'a'.repeat(70000)}`;

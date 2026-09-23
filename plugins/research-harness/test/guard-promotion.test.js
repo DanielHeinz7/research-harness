@@ -865,6 +865,60 @@ test('SQ-54: a pattern the guard cannot compute is refused where there is a writ
   assert.equal(glob && glob.permissionDecision, 'deny');
 });
 
+// SQ-29 finding "two rows that are neither" (verification/SQ-29/lex.txt L17,
+// L19, L20; probes at b4a7066). `[N]>&M` and `[N]<&M` duplicate a descriptor:
+// the word after `&` is an fd number or `-`, never a path. The lexer took `1`
+// as the redirect's file target, so a pure read — `cd "$HOME/…" && cat … 2>&1`
+// (L19) — was refused for redirecting into a relative path after a `cd` the
+// guard cannot follow, and `cd research && cat canvas.md 2>&1` (L20, a read
+// inside the state) for redirecting into the research state. There is no path
+// in either, so neither refusal has anything to stand on.
+test('SQ-60: a descriptor duplication is not a file redirection', () => {
+  const root = makeProject();
+  for (const command of [
+    'cd "$HOME/no-such-dir-sq60" && cat notes.txt 2>&1',
+    'cd "$HOME/no-such-dir-sq60" && grep -n x notes.txt 2>&1 | sort | uniq -c',
+    'cd research && cat canvas.md 2>&1',
+    'cd research && wc -l canvas.md 1>&2',
+    'cd "$HOME/no-such-dir-sq60" && cat notes.txt 1>&-',
+    'cd "$HOME/no-such-dir-sq60" && cat notes.txt 3<&0',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
+// The other direction, bounded so the fix is not a hole: a `>&`/`&>` target that
+// is not a digit or `-` is the file redirection bash makes of it, and a target
+// the guard cannot read (a substitution in the fd position) stays one too.
+test('SQ-60: a non-numeric `>&` target is still a file redirection', () => {
+  const root = makeProject();
+  for (const command of [
+    'echo x >& research/canvas.md',
+    'cd research && echo x >& canvas.md',
+    'cd research && cat canvas.md &>notes.md',
+    'cd "$HOME/no-such-dir-sq60" && echo x 2>&$fd',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+});
+
+// L17 and L18 are the same pipeline with and without the `2>&1`: both carry a
+// verb the guard does not read as read-only, so both stay denied — and now for
+// that reason, not for a redirect that has no path. (The ticket read the L17
+// refusal as the whole denial; it was the first refusal in the chain.)
+test('SQ-60: the `2>&1` does not excuse a verb the guard otherwise holds', () => {
+  const root = makeProject();
+  for (const command of [
+    'cd "$HOME/no-such-dir-sq60" && node bin/tool.js help 2>&1 | grep -n x',
+    'cd "$HOME/no-such-dir-sq60" && node bin/tool.js help | grep -n x',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+    assert.match(out.permissionDecisionReason, /`node` is not a read-only command/, command);
+  }
+});
+
 // SQ-29 finding F6 (verification/SQ-29/lex.txt L1/L3, probes at b4a7066). The
 // lexer skipped a heredoc body wholesale, which is right for a quoted delimiter
 // and wrong for an unquoted one: bash expands `$(...)` and backticks in that

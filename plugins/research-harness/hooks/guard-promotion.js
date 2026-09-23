@@ -349,6 +349,19 @@ function lexBash(text, depth) {
     if (!word) return;
     word.opaque = word.text.includes(EXP_OPEN);
     if (pending) {
+      // SQ-60: after `>&` or `<&`, a target that is only digits or `-` names a
+      // file descriptor, not a file. The word is part of the redirection and
+      // carries no path, so the redirect does not write anywhere and the word is
+      // not a command argument either. Any other target — a path, or a
+      // substitution the guard cannot read (`2>&$fd`) — keeps the redirect as
+      // the file redirection it then is.
+      if (pending.dup && !word.opaque && (word.text === '-' || /^[0-9]+$/.test(word.text))) {
+        pending.write = false;
+        pending.dup = false;
+        pending = null;
+        word = null;
+        return;
+      }
       pending.target = word;
       if (pending.heredoc) heredocs.push({ redirect: pending, text: word.text, quoted: word.quoted, cmd });
       pending = null;
@@ -500,14 +513,19 @@ function lexBash(text, depth) {
     i += 1;
     let write = forced || op === '>';
     let heredoc = false;
+    // SQ-60: `[N]>&M` and `[N]<&M` duplicate a descriptor. The word that follows
+    // belongs to the redirection as an fd number or `-`, never as a path, so the
+    // form is flagged for endWord.
+    let dup = false;
     if (op === '>') {
-      if (text[i] === '>' || text[i] === '|' || text[i] === '&') i += 1;
+      if (text[i] === '>' || text[i] === '|') i += 1;
+      else if (text[i] === '&') { dup = true; i += 1; }
     } else if (text[i] === '<') {
       heredoc = true;
       i += 1;
       if (text[i] === '<') { heredoc = false; i += 1; } else if (text[i] === '-') i += 1;
-    } else if (text[i] === '>') { write = true; i += 1; } else if (text[i] === '&') i += 1;
-    pending = { write, heredoc, target: null };
+    } else if (text[i] === '>') { write = true; i += 1; } else if (text[i] === '&') { dup = true; i += 1; }
+    pending = { write, heredoc, dup, target: null };
     cmd.redirects.push(pending);
   }
 

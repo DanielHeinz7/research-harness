@@ -258,6 +258,47 @@ const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
 const VALUE_RE = /^[^=\s]+=([\s\S]+)$/;
 const FRAGMENT_SPLIT = /[^A-Za-z0-9._\-/~*?[\]+@:]+/;
 
+// Reads a `$(...)` body from `src` starting just past the opening `(`. What the
+// parenthesis opens is a command line of its own, so the quotes inside it are
+// the ordinary ones and are kept in the body as they stand. Returns the body and
+// the index just past the closing `)`, or the end of `src` with `open` set when
+// the parenthesis is never closed.
+function readParenBody(src, from) {
+  let level = 1;
+  let body = '';
+  let i = from;
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === '\\') { body += ch + (src[i + 1] || ''); i += 2; continue; }
+    if (ch === "'") {
+      const end = src.indexOf("'", i + 1);
+      const stop = end < 0 ? src.length : end + 1;
+      body += src.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < src.length && src[j] !== '"') j += src[j] === '\\' ? 2 : 1;
+      const stop = Math.min(j + 1, src.length);
+      body += src.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === '(') level += 1;
+    else if (ch === ')') {
+      level -= 1;
+      i += 1;
+      if (!level) return { body, end: i, open: false };
+      body += ch;
+      continue;
+    }
+    body += ch;
+    i += 1;
+  }
+  return { body, end: i, open: true };
+}
+
 // Splits a command line into simple commands, each carrying its words and its
 // redirections. Commands nested in `$(...)` or backticks are real commands and
 // join the list; the word that held them keeps a mark that it is unknown.
@@ -266,11 +307,14 @@ function lexBash(text, depth) {
   let cmd = { words: [], redirects: [] };
   let word = null;
   let pending = null;
+  // The heredocs whose bodies follow the newline, each with the redirect it
+  // belongs to and whether its delimiter was quoted: only an unquoted delimiter
+  // lets bash expand the body (see consumeHeredocs).
   const heredocs = [];
   let i = 0;
 
   function startWord() {
-    if (!word) word = { text: '', opaque: false };
+    if (!word) word = { text: '', opaque: false, quoted: false };
     return word;
   }
   function endWord() {
@@ -278,7 +322,7 @@ function lexBash(text, depth) {
     word.opaque = word.text.includes(EXP_OPEN);
     if (pending) {
       pending.target = word;
-      if (pending.heredoc) heredocs.push(word.text);
+      if (pending.heredoc) heredocs.push({ redirect: pending, text: word.text, quoted: word.quoted });
       pending = null;
     } else {
       cmd.words.push(word);
@@ -292,43 +336,15 @@ function lexBash(text, depth) {
     cmd = { words: [], redirects: [] };
   }
   function nest(body) {
-    if (depth >= MAX_SUBSTITUTION_DEPTH) return;
+    if (depth >= MAX_SUBSTITUTION_DEPTH) return false;
     for (const inner of lexBash(body, depth + 1)) commands.push(inner);
+    return true;
   }
 
   function readSubstitution() {
-    let level = 1;
-    let body = '';
-    while (i < text.length) {
-      const ch = text[i];
-      if (ch === '\\') { body += ch + (text[i + 1] || ''); i += 2; continue; }
-      if (ch === "'") {
-        const end = text.indexOf("'", i + 1);
-        const stop = end < 0 ? text.length : end + 1;
-        body += text.slice(i, stop);
-        i = stop;
-        continue;
-      }
-      if (ch === '"') {
-        let j = i + 1;
-        while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
-        const stop = Math.min(j + 1, text.length);
-        body += text.slice(i, stop);
-        i = stop;
-        continue;
-      }
-      if (ch === '(') level += 1;
-      else if (ch === ')') {
-        level -= 1;
-        i += 1;
-        if (!level) return body;
-        body += ch;
-        continue;
-      }
-      body += ch;
-      i += 1;
-    }
-    return body;
+    const read = readParenBody(text, i);
+    i = read.end;
+    return read.body;
   }
 
   function readBackquote(w) {
@@ -408,6 +424,42 @@ function lexBash(text, depth) {
     }
   }
 
+  // Lexes the command substitutions in the body of a heredoc whose delimiter was
+  // not quoted: bash runs `$(...)` and backticks there before the command does,
+  // so each is a nested command the way it would be in a word. The rest of the
+  // body is data that reaches the command's stdin, not a command line, so it is
+  // not lexed as one — `cat <<EOF` with `rm …` on its own line reads, and
+  // removes nothing. Quotes inside the body protect nothing either: bash expands
+  // `'$(…)'` there. Returns false when part of the body stayed unread.
+  function nestHeredocBody(body) {
+    let k = 0;
+    while (k < body.length) {
+      const ch = body[k];
+      if (ch === '\\') { k += 2; continue; }
+      if (ch === '`') {
+        let inner = '';
+        k += 1;
+        for (;;) {
+          if (k >= body.length) return false;
+          if (body[k] === '\\') { inner += body[k + 1] || ''; k += 2; continue; }
+          if (body[k] === '`') { k += 1; break; }
+          inner += body[k];
+          k += 1;
+        }
+        if (!nest(inner)) return false;
+        continue;
+      }
+      if (ch === '$' && body[k + 1] === '(') {
+        const read = readParenBody(body, k + 2);
+        if (read.open || !nest(read.body)) return false;
+        k = read.end;
+        continue;
+      }
+      k += 1;
+    }
+    return true;
+  }
+
   // `i` points at `<` or `>`; `forced` marks the `&>` form, which writes.
   function readRedirect(forced) {
     const op = text[i];
@@ -425,17 +477,27 @@ function lexBash(text, depth) {
     cmd.redirects.push(pending);
   }
 
+  // A heredoc body runs to the line that holds its delimiter alone. The body of
+  // an unquoted delimiter is expanded by bash before the command runs, so it is
+  // scanned for substitutions; any other body is literal data and is skipped.
   function consumeHeredocs() {
     while (heredocs.length) {
-      const delimiter = heredocs.shift().replace(/['"\\]/g, '').trim();
+      const heredoc = heredocs.shift();
+      const delimiter = heredoc.text.replace(/['"\\]/g, '').trim();
+      const lines = [];
       for (;;) {
-        if (i >= text.length) return;
+        if (i >= text.length) break;
         const nl = text.indexOf('\n', i);
         const line = nl < 0 ? text.slice(i) : text.slice(i, nl);
         i = nl < 0 ? text.length : nl + 1;
         if (line.trim() === delimiter) break;
-        if (nl < 0) return;
+        lines.push(line);
       }
+      if (heredoc.quoted) continue;
+      const body = lines.join('\n');
+      // A body the scan could not finish is a word the guard cannot read: the
+      // redirect carries it so the verdict can judge it as one.
+      if (!nestHeredocBody(body)) heredoc.redirect.unreadBody = { text: body, opaque: true };
     }
   }
 
@@ -445,18 +507,28 @@ function lexBash(text, depth) {
       const next = text[i + 1];
       if (next === undefined) { i += 1; continue; }
       if (next === '\n') { i += 2; continue; }
-      startWord().text += next;
+      const escaped = startWord();
+      escaped.quoted = true;
+      escaped.text += next;
       i += 2;
       continue;
     }
     if (ch === "'") {
       i += 1;
       const end = text.indexOf("'", i);
-      startWord().text += end < 0 ? text.slice(i) : text.slice(i, end);
+      const single = startWord();
+      single.quoted = true;
+      single.text += end < 0 ? text.slice(i) : text.slice(i, end);
       i = end < 0 ? text.length : end + 1;
       continue;
     }
-    if (ch === '"') { i += 1; readDoubleQuoted(startWord()); continue; }
+    if (ch === '"') {
+      i += 1;
+      const double = startWord();
+      double.quoted = true;
+      readDoubleQuoted(double);
+      continue;
+    }
     if (ch === '`') { i += 1; readBackquote(startWord()); continue; }
     if (ch === '$') { readDollar(startWord()); continue; }
     if (ch === '#' && !word) {
@@ -976,6 +1048,9 @@ function bashVerdict(command, projectRoot) {
       if (wordTouchesHarness(w, base, harness, links)) return harnessStateDenial('this shell command');
     }
     for (const redirect of sc.redirects) {
+      // A heredoc body left unread is judged the way an opaque word is: on the
+      // literal names it still spells out.
+      if (redirect.unreadBody && wordTouchesHarness(redirect.unreadBody, base, harness, links)) return harnessStateDenial('this shell command');
       if (redirect.target && !redirect.heredoc && wordTouchesHarness(redirect.target, base, harness, links)) return harnessStateDenial('this shell command');
     }
 
@@ -988,6 +1063,7 @@ function bashVerdict(command, projectRoot) {
       if (wordTouchesState(w, base, stateParts, stateNames)) touches = true;
     }
     for (const redirect of sc.redirects) {
+      if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames)) touches = true;
       if (!redirect.target || redirect.heredoc) continue;
       if (wordTouchesState(redirect.target, base, stateParts, stateNames)) touches = true;
       if (redirect.write && redirect.target.opaque && (assembledTarget(redirect.target.text) || hasUnknownSubstitution(redirect.target.text))) touches = true;

@@ -656,6 +656,55 @@ test('Bash: reads over the state and ordinary work elsewhere are not refused', (
   }
 });
 
+// SQ-68. SQ-57's fail-closed reading of an unresolved substitution in argument
+// position was asked of every verb, so it refused ordinary work in a paper
+// project: `mkdir -p "build/$(date +%F)"` and `[ "$(sysctl -n vm.loadavg)" = x ]`
+// were denied because the substitution could not be resolved, not because
+// either command names the state. The reading belongs to a verb whose operand
+// is the file it writes; `NON_FILE_VERBS` names the verbs whose operand is only
+// ever a value, and only there is it lifted. Every other verb keeps it, so the
+// write shapes in the second case still deny.
+test('SQ-68: an unresolved substitution in a non-file operand is not a write target', () => {
+  const root = makeProject();
+  for (const command of [
+    '[ "$(sysctl -n vm.loadavg)" = x ]',
+    'test "$(cat t)" = x',
+    'mkdir -p "build/$(date +%F)"',
+    'echo "$(date)" > out.log',
+    'printf "%s\\n" "$(date)"',
+    'true "$(cat t)"',
+    'false "$(cat t)"',
+    'date -r "$(cat t)"',
+    'sleep "$(cat t)"',
+    'git commit -m "$(cat msg.txt)"',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
+test('SQ-68: the same substitution stays denied where the verb writes its operand', () => {
+  const root = makeProject();
+  for (const command of [
+    'node script.js "$(git rev-parse HEAD)"',
+    'vim "$(cat t)"',
+    'chmod 000 "$(cat t)"',
+    'cp notes.md "backup/$(date +%s).md"',
+    'rm "$(cat target.txt)"',
+    'mv research/canvas.md "$(cat t)"',
+    'ln -s x "$(cat t)"',
+    'touch "$(cat t)"',
+    'truncate -s 0 "$(cat t)"',
+    'tee "$(cat t)"',
+    'dd of="$(cat t)"',
+    'sed -i "s/a/b/" "$(cat t)"',
+    'sort -o "$(cat t)" research/canvas.md',
+    'cat foo > "$(cat t)"',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+});
+
 // SQ-65. A word with no path separator is a name, not a location. The bare
 // `research` was resolved against the project root, landed on the state
 // directory and denied every tool whose payload carried the word — a profile

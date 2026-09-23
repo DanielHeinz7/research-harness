@@ -814,6 +814,23 @@ close that route: a file outside the project (`~/.zshrc`, `.envrc`,
 `CLAUDE_ENV_FILE`) is outside its perimeter, and SQ-62's review found those
 writes allowed.
 
+**What the guard cannot see, by design.** The guard judges the command in front
+of it, not what a file runs later. A script the model writes with Write and runs
+in the next call (`bash x.sh`), a build target (`make`, `npm run …`), a file the
+shell loads at startup, and a heredoc fed to an interpreter the guard does not
+know (bun, deno, php, lua) all pass. Closing that would mean refusing every
+script run in a research project, and a guard that blocks ordinary work teaches
+the model to route around it — SQ-72 recorded an executor doing exactly that.
+Daniel decided on 2026-09-23 to keep the limit and state it here. What holds
+instead: an `[accepted]` statement changed this way no longer matches the text
+hash of its `DECISION` entry and `canvas-review` reports it as stale; one planted
+this way has no entry that verifies and is reported as unlogged (§4.4); a removed
+statement or a deleted canvas shows in git. A `[stated]`, `[tentative]` or
+`[proposed]` statement changed this way carries no seal and shows only in the
+git diff. The interpreter list in `readsProgramFromStdin` covers the common
+one-step forms and is not meant to be complete; a missing interpreter is not a
+defect to be filed.
+
 **Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
 mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that
 rule'"), but that doctrine is about context injection. A permission guard that

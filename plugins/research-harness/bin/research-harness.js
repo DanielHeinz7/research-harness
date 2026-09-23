@@ -57,6 +57,21 @@ function fail(text, code = 1) {
   return code;
 }
 
+// Every free-text field a command writes into decisions.md passes through this:
+// a line that reads as an entry heading is parsed as the next entry, which
+// leaves it unsealed and breaks the chain — and a broken ledger stops the
+// researcher's own approval path, so a write the model was allowed to make
+// would cost them the accept (SQ-29 F10, chain C2/C3/C3b).
+const ENTRY_HEADING = /^## \[#/m;
+function headingRefusal(...fields) {
+  for (const field of fields) {
+    if (typeof field === 'string' && ENTRY_HEADING.test(field)) {
+      return 'The body may not contain a line that starts like an entry heading (`## [#`).';
+    }
+  }
+  return null;
+}
+
 // ---------- init ----------
 
 function init(flags) {
@@ -219,6 +234,10 @@ function accept(positional, flags) {
   if (state.error) return fail(state.error);
   const questionId = positional[0];
   if (!questionId || !/^[1-9]\.\d+$/.test(questionId)) return fail(`accept needs a question id like 3.1.\n${USAGE}`, 2);
+  const why = typeof flags.why === 'string' ? flags.why : undefined;
+  const rejected = typeof flags.rejected === 'string' ? flags.rejected : undefined;
+  const heading = headingRefusal(why, rejected);
+  if (heading) return fail(heading, 2);
   if (state.profileError) return fail(`${state.profileError}; cannot check dependencies, so nothing is accepted.`);
 
   const element = state.parsed.elements.find((e) => e.questions.some((q) => q.id === questionId));
@@ -261,8 +280,8 @@ function accept(positional, flags) {
     ref: `${questionId} accepted`,
     hash,
     body: `${target.text} [accepted${target.tags.length ? `, ${target.tags.join(', ')}` : ''}]`,
-    why: typeof flags.why === 'string' ? flags.why : undefined,
-    rejected: typeof flags.rejected === 'string' ? flags.rejected : undefined,
+    why,
+    rejected,
   }, state.key, { decision: true });
   say(`Accepted ${questionId} (was [${target.marker}]): ${target.text}`);
   say(`Logged as #${logged.seq} with text ${hash}, sealed ${logged.seal}.`);
@@ -280,7 +299,9 @@ function log(positional, flags) {
   if (typeof ref !== 'string' || !ref.trim() || /[·\n]/.test(ref)) return fail(`log needs a reference — an element number or title, or a question id like 3.1 — without a middle dot or a line break.\n${USAGE}`, 2);
   const body = typeof flags.body === 'string' ? flags.body.trim() : '';
   if (!body) return fail(`log needs --body <text>.\n${USAGE}`, 2);
-  if (/^## \[#/m.test(body)) return fail('The body may not contain a line that starts like an entry heading (`## [#`).', 2);
+  const why = typeof flags.why === 'string' ? flags.why : undefined;
+  const heading = headingRefusal(body, why);
+  if (heading) return fail(heading, 2);
   const supersedes = flags.supersedes === undefined ? undefined : Number(flags.supersedes);
   if (supersedes !== undefined && !Number.isInteger(supersedes)) return fail('--supersedes takes an entry number.', 2);
 
@@ -293,7 +314,7 @@ function log(positional, flags) {
     kind,
     ref: ref.trim(),
     body,
-    why: typeof flags.why === 'string' ? flags.why : undefined,
+    why,
     supersedes,
   }, state.key);
   say(`Logged #${logged.seq} ${kind} ${ref.trim()}, sealed ${logged.seal}.`);

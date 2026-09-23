@@ -239,6 +239,15 @@ const WRAPPER_VALUE_FLAGS = new Set([
 ]);
 const OPAQUE_SHELLS = new Set(['sh', 'bash', 'zsh']);
 const SHELL_COMMAND_FLAG_RE = /^-[A-Za-z]*c$/;
+// SQ-67: the commands that read their program from standard input when they are
+// given no inline program flag and no script file. A heredoc body fed to one of
+// these is that program, not stdin data — `bash <<EOF` runs the body, and so
+// does `bash -s <<EOF`, `node <<EOF` or `python3 <<EOF`.
+const STDIN_PROGRAM_SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'ash']);
+const STDIN_PROGRAM_INTERPRETERS = new Set(['node', 'nodejs', 'python', 'python3', 'perl', 'ruby']);
+// The flags that carry the program on the command line instead, so what follows
+// the heredoc is ordinary stdin data (`sh -c PROG`, `node -e PROG`).
+const INLINE_PROGRAM_FLAGS = new Set(['-c', '-e', '-E', '--eval', '--print', '--command']);
 const RUNNER_EVAL_FLAGS = new Set(['-e', '--eval', '-p', '--print', '--input-type']);
 // `log` is the harness's own append path (§4.7): it seals what it writes, and
 // it is open to the model for these two kinds only. A DECISION is the
@@ -341,7 +350,7 @@ function lexBash(text, depth) {
     word.opaque = word.text.includes(EXP_OPEN);
     if (pending) {
       pending.target = word;
-      if (pending.heredoc) heredocs.push({ redirect: pending, text: word.text, quoted: word.quoted });
+      if (pending.heredoc) heredocs.push({ redirect: pending, text: word.text, quoted: word.quoted, cmd });
       pending = null;
     } else {
       cmd.words.push(word);
@@ -518,8 +527,19 @@ function lexBash(text, depth) {
         if (line.trim() === delimiter) break;
         lines.push(line);
       }
-      if (heredoc.quoted) continue;
       const body = lines.join('\n');
+      // SQ-67: a body fed to a shell or interpreter that reads its program from
+      // stdin is that program, not stdin data, and quoting the delimiter does not
+      // change that — `bash <<EOF` and `bash <<'EOF'` run the body alike. It is
+      // lexed as the script it is, at the depth the substitution-scan already
+      // nests an unquoted body's `$(...)` at. The receiving command is marked so
+      // the verdict reads it as a launcher and judges what the body does.
+      if (heredoc.cmd && readsProgramFromStdin(heredoc.cmd.words)) {
+        heredoc.cmd.stdinProgram = true;
+        if (!nest(body)) heredoc.redirect.unreadBody = { text: body, opaque: true };
+        continue;
+      }
+      if (heredoc.quoted) continue;
       // A body the scan could not finish is a word the guard cannot read: the
       // redirect carries it so the verdict can judge it as one.
       if (!nestHeredocBody(body)) heredoc.redirect.unreadBody = { text: body, opaque: true };
@@ -933,6 +953,48 @@ function wrapperCommandAt(args, from) {
   return args.length;
 }
 
+// The command a chain of wrappers launches: leading assignments and wrapper
+// options are skipped to the command slot (`env -u FOO bash …`). Null when the
+// slot holds a word the guard cannot read.
+function launchedCommandAt(words) {
+  let at = 0;
+  for (;;) {
+    while (at < words.length && ASSIGNMENT_RE.test(words[at].text)) at += 1;
+    if (at >= words.length || words[at].opaque) return null;
+    const name = baseNameOf(words[at].text);
+    if (!WRAPPERS.has(name)) return { at, name };
+    const next = wrapperCommandAt(words, at + 1);
+    if (next >= words.length) return null;
+    at = next;
+  }
+}
+
+// True when this simple command reads its program from standard input, so a
+// heredoc body it is given is that program rather than data (SQ-67). The program
+// is elsewhere when an inline flag carries it (`sh -c PROG`, `node -e PROG`) or a
+// script file is named; `-` and `-s` force standard input back on.
+function readsProgramFromStdin(words) {
+  const launched = launchedCommandAt(words);
+  if (!launched) return false;
+  const shell = STDIN_PROGRAM_SHELLS.has(launched.name);
+  if (!shell && !STDIN_PROGRAM_INTERPRETERS.has(launched.name)) return false;
+  let stdinForced = false;
+  let noMoreFlags = false;
+  for (const w of words.slice(launched.at + 1)) {
+    if (w.opaque) return true; // the flags are unreadable: judge the body as the program it may be
+    const text = w.text;
+    if (!noMoreFlags && text === '--') { noMoreFlags = true; continue; }
+    if (!noMoreFlags && text === '-') { stdinForced = true; continue; }
+    if (!noMoreFlags && text.startsWith('-')) {
+      if (shell ? SHELL_COMMAND_FLAG_RE.test(text) : INLINE_PROGRAM_FLAGS.has(flagName(text))) return false;
+      if (shell && /^-[A-Za-z]*s/.test(text)) stdinForced = true;
+      continue;
+    }
+    if (!stdinForced) return false; // a script file operand: what follows the heredoc is its stdin
+  }
+  return true;
+}
+
 // What a program text the lexer cannot read names: 'accept' when the word is in
 // there, 'cli' when it names the CLI as a path component or a require target,
 // and null when it names neither — `node -e 'console.log(1)'` is ordinary work
@@ -1065,6 +1127,11 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
     if (touches) return 'it redirects into the research state';
   }
   if (!args.length) return null;
+  // SQ-67: a shell or interpreter reading its program from this heredoc is a
+  // launcher, not a verb of its own. The body was lexed as the script it is, so
+  // what runs is judged as commands in their own right — `cat research/canvas.md`
+  // under it still reads. Its own redirects were checked above.
+  if (sc.stdinProgram) return null;
   const invocation = harnessInvocation(args);
   if (invocation && invocation.harness && !invocation.action) {
     if (!invocation.sub) return null;

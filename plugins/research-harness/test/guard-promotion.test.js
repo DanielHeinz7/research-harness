@@ -901,6 +901,55 @@ test('Bash: a substitution in an unquoted heredoc body is judged, a quoted one i
   assert.match(unread.permissionDecisionReason, /read-only/);
 });
 
+// SQ-67. SQ-55 reads a heredoc body as stdin data, which is right when the
+// receiving command is `cat` and wrong when it is a shell or interpreter that
+// reads its program from stdin: `bash <<EOF … EOF` runs the body, and quoting
+// the delimiter does not change that. The body is now lexed as the script it is
+// — the nesting an unquoted body's substitutions already get — and the receiving
+// command is read as a launcher rather than a verb that refuses for not being
+// read-only, so a body that only reads the state still reads.
+test('SQ-67: a heredoc fed to a shell or interpreter is program text, not stdin data', () => {
+  const root = makeProject();
+  for (const [form, cmd] of [
+    ['bash', 'bash <<EOF\nrm research/canvas.md\nEOF'],
+    ['quoted delimiter behaves the same', "bash <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['bash -s', 'bash -s <<EOF\nrm research/canvas.md\nEOF'],
+    ['explicit stdin `-`', 'bash - <<EOF\nrm research/canvas.md\nEOF'],
+    ['sh', 'sh <<EOF\nrm research/canvas.md\nEOF'],
+    ['zsh', 'zsh <<EOF\nrm research/canvas.md\nEOF'],
+    ['dash', 'dash <<EOF\nrm research/canvas.md\nEOF'],
+    ['a wrapper in front of the shell', 'env bash <<EOF\nrm research/canvas.md\nEOF'],
+    ['the shell\'s own redirect still writes the state', 'bash > research/canvas.md <<EOF\ncat notes.md\nEOF'],
+    ['node', 'node <<EOF\nrequire("fs").unlinkSync("research/canvas.md")\nEOF'],
+    ['python3', 'python3 <<EOF\nimport os; os.remove("research/canvas.md")\nEOF'],
+    ['perl', 'perl <<EOF\nunlink "research/canvas.md";\nEOF'],
+    ['ruby', 'ruby <<EOF\nFile.delete("research/canvas.md")\nEOF'],
+    ['the body names accept', 'bash <<EOF\nnode bin/research-harness.js accept 1.2\nEOF'],
+    ['a substitution in the body', 'bash <<EOF\n$(rm research/canvas.md)\nEOF'],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+  }
+  // The here-string and the pipe hand the state name to the receiving shell as
+  // an operand word, so SQ-52's opaque-word rule already held both.
+  for (const cmd of ["bash <<< 'rm research/canvas.md'", "echo 'rm research/canvas.md' | bash"]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', cmd);
+  }
+  // The body is judged as the script it is, so a body that only reads the state
+  // reads: the receiving shell is a launcher, not a verb of its own.
+  for (const cmd of [
+    'bash <<EOF\ncat research/canvas.md\nEOF',
+    'python3 <<EOF\nprint("hello")\nEOF',
+    "sh -c 'ls research'",
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
+  }
+  // SQ-55's control: with a data receiver the same text is body text and reads.
+  assert.equal(run(root, 'Bash', { command: 'cat <<EOF\nrm research/canvas.md\nEOF\n' }), null);
+  assert.equal(run(root, 'Bash', { command: "cat <<'EOF'\nrm research/canvas.md\nEOF\n" }), null);
+});
+
 test('Bash: a CLI-named path operand does not imply harness invocation', () => {
   const root = makeProject();
   const pathOperand = path.join(path.dirname(root), 'research-harness');

@@ -311,9 +311,11 @@ says what it is on its own, in a refusal text or in the stage-2 view, without
 the reader reconstructing the grammar to find out which element it belongs to.
 
 **Canonical form.** A commitment canonicalizes to one line: the fields in the
-order of the table, separated by U+001F (`␟`, unit separator — a character the
-researcher cannot have typed into Markdown), with the evidence tags sorted by
-code point so that reordering them is not a change.
+order of the table, separated by U+001F (`␟`, unit separator), with the
+evidence tags sorted by code point so that reordering them is not a change. A
+field that itself carries U+001F or any other C0 control character would shift
+the field boundary, so a committed statement with one is a parse problem and
+the guard refuses a write that introduces it (SQ-58).
 
 ```
 3␟Research Question␟3.1␟What is the question?␟stated␟Under what meeting conditions …␟src: memo-03

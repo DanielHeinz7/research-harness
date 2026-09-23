@@ -1059,6 +1059,89 @@ test('SQ-69: a flag\'s value is not a script file operand, so the heredoc body i
   }
 });
 
+// SQ-70. SQ-69 gave every interpreter the same inline-program letters, and the
+// letters are not shared: python3's `-E` ignores PYTHON* environment variables and
+// it has no `-e`, ruby's `-E` takes an encoding, and node's `-c` is `--check`, a
+// syntax check that runs nothing. Only perl carries a program on `-E`. A flag
+// outside an interpreter's own row leaves the body judged as the program it may
+// be, which is the fail-closed answer.
+test('SQ-70: the inline-program letters belong to one interpreter, not to all of them', () => {
+  const root = makeProject();
+  // The reported rows: the flag is not this interpreter's program spelling, so the
+  // heredoc body is the program it may be.
+  for (const [form, cmd] of [
+    ['python3 -E', "python3 -E <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -Es', "python3 -Es <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['ruby -E takes an encoding', "ruby -E UTF-8 <<'EOF'\nFile.delete('research/canvas.md')\nEOF"],
+    ['ruby -E with the encoding attached', "ruby -EUTF-8 <<'EOF'\nFile.delete('research/canvas.md')\nEOF"],
+    ['python3 -W (SQ-69, unchanged)', "python3 -W ignore <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['node -c is --check', "node -c <<'EOF'\nrequire('fs').rmSync('research/canvas.md')\nEOF"],
+    ['ruby -w carries no program', "ruby -w <<'EOF'\nFile.delete('research/canvas.md')\nEOF"],
+    // A value-taking letter swallows the `c` that follows it, so the cluster does
+    // not carry a program: `python3 -Wc` is a warning filter, not `-W` plus `-c`.
+    ['python3 -Wc is one flag, not a bundle', "python3 -Wc <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -Xc is one flag, not a bundle', "python3 -Xc <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    // Perl's `-i` takes a backup suffix, so `-ie` leaves the next word as a script
+    // file name rather than a program.
+    ['perl -ie is not a bundle', "perl -ie 'print 1' <<'EOF'\nunlink 'research/canvas.md';\nEOF"],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+  }
+  // The spelling each interpreter really accepts still makes the body stdin data.
+  for (const [form, cmd] of [
+    ['perl -E carries the program', "perl -E 'say 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['perl -e attached', "perl -e'print 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['perl -ne bundle', "perl -ne 'print' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['perl -lne bundle', "perl -lne 'print' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['perl -ce compiles the program from -e', "perl -ce 'print 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['python3 -c', "python3 -c 'print(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['python3 -c attached', "python3 -c'print(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['python3 -Ic, program in the next word', "python3 -Ic 'print(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['node -pe', "node -pe 1 <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['node --eval', "node --eval 'console.log(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['node --print', "node --print 1 <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['ruby -ne', "ruby -ne 'p 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['ruby -e attached', "ruby -e'puts 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['a shell cluster is unchanged', "bash -ce 'ls research' <<'EOF'\nrm research/canvas.md\nEOF"],
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, form);
+  }
+  // SQ-70 rework. An interactive flag makes the interpreter read standard input as
+  // code once the inline program has run, so an inline flag no longer makes the
+  // body data. Probed on the binaries: `python3 -i -c 'pass'`, `python3 -ic 'pass'`
+  // and `node -i -e 1` each ran the heredoc body.
+  for (const [form, cmd] of [
+    ['python3 -i -c', "python3 -i -c 'pass' <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -ic', "python3 -ic 'pass' <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -Ii -c', "python3 -Ii -c 'pass' <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -uic', "python3 -uic 'pass' <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -Ei has no program of its own', "python3 -Ei <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -iE', "python3 -iE <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -i alone', "python3 -i <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['node -i -e', "node -i -e 1 <<'EOF'\nrequire('fs').rmSync('research/canvas.md')\nEOF"],
+    ['node -e then -i', "node -e 1 -i <<'EOF'\nrequire('fs').rmSync('research/canvas.md')\nEOF"],
+    ['node --interactive -e', "node --interactive -e 1 <<'EOF'\nrequire('fs').rmSync('research/canvas.md')\nEOF"],
+    ['node -p then -i', "node -p 1 -i <<'EOF'\nrequire('fs').rmSync('research/canvas.md')\nEOF"],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+  }
+  // The other order follows the binary. Python takes the program out of `-c`'s
+  // next word and stops reading options, so `python3 -c PROG -i` passes `-i` as an
+  // argument the program never sees and the body stays data. Perl's and ruby's `-i`
+  // is in-place editing and never reads stdin as code after `-e`.
+  for (const [form, cmd] of [
+    ['python3 -c then -i is the program\'s argument', "python3 -c 'pass' -i <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['perl -i after -e is in-place editing', "perl -e 'print 1' -i <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['perl -i before -e', "perl -i -e 'print 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['ruby -i before -e', "ruby -i -e 'puts 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['ruby -ni bundle', "ruby -ni -e 'puts 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, form);
+  }
+});
+
 test('Bash: a CLI-named path operand does not imply harness invocation', () => {
   const root = makeProject();
   const pathOperand = path.join(path.dirname(root), 'research-harness');

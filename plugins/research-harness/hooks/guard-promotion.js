@@ -238,16 +238,28 @@ const WRAPPER_VALUE_FLAGS = new Set([
   '-n', '--adjustment', '-g', '--group', '-f', '--format', '-o', '--output',
 ]);
 const OPAQUE_SHELLS = new Set(['sh', 'bash', 'zsh']);
-const SHELL_COMMAND_FLAG_RE = /^-[A-Za-z]*c$/;
-// SQ-67: the commands that read their program from standard input when they are
-// given no inline program flag and no script file. A heredoc body fed to one of
-// these is that program, not stdin data — `bash <<EOF` runs the body, and so
-// does `bash -s <<EOF`, `node <<EOF` or `python3 <<EOF`.
+// A shell's `-c` carries the program in the next word, and the flag may sit
+// anywhere in a bundle of its own letters: `bash -ec PROG`, `bash -cs PROG` and
+// `bash -ce PROG` all run PROG and never the heredoc body.
+const SHELL_COMMAND_FLAG_RE = /^-[A-Za-z]*c[A-Za-z]*$/;
+// SQ-67: the commands that read their program from standard input when no inline
+// program flag carries it. A heredoc body fed to one of these is that program,
+// not stdin data — `bash <<EOF` runs the body, and so does `bash -s <<EOF`,
+// `node <<EOF` or `python3 <<EOF`. SQ-69: a script file operand does not change
+// that; see `readsProgramFromStdin`.
 const STDIN_PROGRAM_SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'ash']);
 const STDIN_PROGRAM_INTERPRETERS = new Set(['node', 'nodejs', 'python', 'python3', 'perl', 'ruby']);
 // The flags that carry the program on the command line instead, so what follows
 // the heredoc is ordinary stdin data (`sh -c PROG`, `node -e PROG`).
 const INLINE_PROGRAM_FLAGS = new Set(['-c', '-e', '-E', '--eval', '--print', '--command']);
+// SQ-69: an interpreter's program attached to the flag letter (`python3 -c'PROG'`,
+// `perl -e'PROG'`) and a bundle of program letters with the program in the next
+// word (`node -pe PROG`, `perl -ne PROG`). Only a letter that is a program letter
+// or one of the print/loop flags it bundles with is read here; a letter outside
+// that set takes a value the guard cannot see (`-Wignore`, `-Xdev`), so the
+// cluster stays unproven and the body is judged as the program it may be.
+const INTERPRETER_ATTACHED_PROGRAM_RE = /^-[ceE]/;
+const INTERPRETER_PROGRAM_BUNDLE_RE = /^-[ceEnp]*[ceE][ceEnp]*$/;
 const RUNNER_EVAL_FLAGS = new Set(['-e', '--eval', '-p', '--print', '--input-type']);
 // `log` is the harness's own append path (§4.7): it seals what it writes, and
 // it is open to the model for these two kinds only. A DECISION is the
@@ -971,26 +983,34 @@ function launchedCommandAt(words) {
 
 // True when this simple command reads its program from standard input, so a
 // heredoc body it is given is that program rather than data (SQ-67). The program
-// is elsewhere when an inline flag carries it (`sh -c PROG`, `node -e PROG`) or a
-// script file is named; `-` and `-s` force standard input back on.
+// is elsewhere only when an inline-program flag carries it: a shell's `-c` family
+// (`sh -c PROG`, `bash -ec PROG`) or one of the interpreter spellings above
+// (`node -e PROG`, `python3 -c'PROG'`, `node -pe PROG`). Everything else is read
+// as the program, which is the fail-closed answer SQ-69 settled on. A bare word
+// after the flags may be a script file (`bash script.sh`) or a flag's value
+// (`bash -o errexit`, `python3 -W ignore`, `node -r fs`), and telling them apart
+// takes a per-interpreter table of value-taking flags that fails open for every
+// flag it misses — `errexit` stood where a script file would and the body was
+// read as its stdin data. The cost of refusing to guess: `bash script.sh <<EOF`
+// whose body names a state write is denied.
 function readsProgramFromStdin(words) {
   const launched = launchedCommandAt(words);
   if (!launched) return false;
   const shell = STDIN_PROGRAM_SHELLS.has(launched.name);
   if (!shell && !STDIN_PROGRAM_INTERPRETERS.has(launched.name)) return false;
-  let stdinForced = false;
   let noMoreFlags = false;
   for (const w of words.slice(launched.at + 1)) {
     if (w.opaque) return true; // the flags are unreadable: judge the body as the program it may be
     const text = w.text;
     if (!noMoreFlags && text === '--') { noMoreFlags = true; continue; }
-    if (!noMoreFlags && text === '-') { stdinForced = true; continue; }
     if (!noMoreFlags && text.startsWith('-')) {
-      if (shell ? SHELL_COMMAND_FLAG_RE.test(text) : INLINE_PROGRAM_FLAGS.has(flagName(text))) return false;
-      if (shell && /^-[A-Za-z]*s/.test(text)) stdinForced = true;
-      continue;
+      const inline = shell
+        ? SHELL_COMMAND_FLAG_RE.test(text)
+        : INLINE_PROGRAM_FLAGS.has(flagName(text))
+          || INTERPRETER_ATTACHED_PROGRAM_RE.test(text)
+          || INTERPRETER_PROGRAM_BUNDLE_RE.test(text);
+      if (inline) return false;
     }
-    if (!stdinForced) return false; // a script file operand: what follows the heredoc is its stdin
   }
   return true;
 }

@@ -1025,7 +1025,17 @@ function opaqueProgram(word) {
 }
 
 function harnessInvocation(args, depth = 0) {
-  if (!args.length || args[0].opaque || depth > MAX_SUBSTITUTION_DEPTH) return null;
+  if (!args.length || depth > MAX_SUBSTITUTION_DEPTH) return null;
+  if (args[0].opaque) {
+    // The command word is assembled at runtime (`$R bin/research-harness.js
+    // accept`, `R=$(cat x); $R …`), so the guard cannot read the name it
+    // stands for. That is no reason to stop: an unknown wrapper's command
+    // slot is walked the way a known wrapper's is (SQ-61). A CLI name or
+    // `accept` found there is the invocation it would have been; `$CMD
+    // --version` names neither and is left alone.
+    const commandAt = wrapperCommandAt(args, 1);
+    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1) : null;
+  }
   const skipFlags = (from) => {
     let k = from;
     while (k < args.length && args[k].text.startsWith('-')) k += 1;
@@ -1234,7 +1244,13 @@ function bashVerdict(command, projectRoot) {
     for (const w of sc.words) {
       const assignment = ASSIGNMENT_RE.exec(w.text);
       if (!assignment) break;
-      if (!assignment[2].includes(EXP_OPEN)) values.set(assignment[1], assignment[2]);
+      // A value the guard resolved to literal text is recorded. One that still
+      // carries an unresolved substitution is recorded too, as the unknown it
+      // is: `x=$(cat p.txt)` makes `$x` an unknown target, not a name the guard
+      // may read past (SQ-61). A value that is only other variables (`x=$y`) is
+      // left unrecorded, unchanged: the substitution is what makes the value
+      // unknowable here.
+      if (!assignment[2].includes(EXP_OPEN) || assignment[2].includes(EXP_UNKNOWN)) values.set(assignment[1], assignment[2]);
     }
 
     // The harness state directory admits no form at all, read-only or not.

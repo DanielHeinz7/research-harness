@@ -71,6 +71,10 @@ shellProbe('B7', 'find -exec runs the invocation', `find . -maxdepth 0 -exec ${d
 shellProbe('B8', 'xargs with the runner in the command slot (the xargs branch never recurses into RUNNERS)', `printf 'x\\n' | xargs ${direct}`);
 shellProbe('B9', 'xargs -- then the runner', `printf 'x\\n' | xargs -- ${direct}`);
 shellProbe('B10', 'the runner word is assembled at runtime, so the command name is opaque', `R=$(echo node); $R ${q(CLI)} ${ACCEPT}`);
+// SQ-61: the two forms `$(echo node)` did not cover — a substitution SQ-57
+// cannot resolve to literal text, and a variable that was never assigned.
+shellProbe('B10a', 'the runner word is assembled from a substitution the guard cannot resolve', `R=$(cat /dev/null); $R ${q(CLI)} ${ACCEPT}`);
+shellProbe('B10b', 'the runner word is a variable that was never assigned', `$R ${q(CLI)} ${ACCEPT}`);
 
 // ---- the CLI reached through a recognised runner under another name ----
 shellProbe('B11', 'a copy of the CLI under a name that is not in CLI_NAMES', (root) => {

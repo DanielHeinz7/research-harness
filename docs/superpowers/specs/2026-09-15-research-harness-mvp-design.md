@@ -6,16 +6,6 @@ This document defines the scope of the first shippable piece of the Claude Code
 plugin `research-harness`. It is the basis for an implementation plan, not the
 plan itself.
 
-> **Before this repository is made public**, strip the passages marked
-> `<!-- private: … -->`. They name the author's own unpublished studies and local
-> directory layout, which carry no argumentative weight outside this draft. Each
-> marker says what to put in its place; where a whole region is affected, it ends
-> at `<!-- /private -->`. Find them with:
->
-> ```
-> grep -rn "private:\|/private" docs/
-> ```
-
 ---
 
 ## 1 · Purpose
@@ -39,17 +29,15 @@ Three independent lines point at the same thing:
    event, two skills, a `references/` directory. It stayed alone for eight days.
    Sidequest itself started with no MCP, no dispatch, no gates; the order was
    **capture and surface → hand off → verify and lock.**
-2. **The author's own vault format.** <!-- private: replace the path with "the
-   author's project notes" --> The area notes under `~/dh-hq/vault/areas/`
+2. **The author's own vault format.** The author's project notes
    already carry `## Status`, `## Kontext`, `## Entscheidungen` (with
    *decided / why / rejected / open*) and `## Offene Fragen` — plus the markers
-   `[stated]` and `[tentative]`, documented in `CONVENTIONS.md:239-242`. That is
+   `[stated]` and `[tentative]`, documented in their conventions. That is
    the distinction between a proposal and an accepted claim, proven in daily use.
    The harness does not invent it; it moves it into the paper repo and forces the
    agent to write into it.
-3. <!-- private: replace the study name with "the qualitative study used for
-   validation below" -->
-   **Where `junior-gap` came from.** A real problem, not a literature gap —
+3. **Where the qualitative study used for validation below came from.** A real
+   problem, not a literature gap —
    phenomenon-focused problematization in the sense of the MIS Quarterly
    editorial. That is precisely the point where unharnessed AI reliably makes a
    paper mediocre: it produces an unlimited supply of plausible gaps and never a
@@ -74,10 +62,8 @@ multi-author model, no journal search.
 ### The contract
 
 The plugin's contract is **"a paper project repo."** Where that repo lives is
-configuration. <!-- private: drop the concrete root; the sentence works as "the
-author's local convention must appear nowhere in the plugin" -->
-`~/dh-research/` is the author's local convention and must appear
-nowhere in the plugin. The only root a hook knows is `${CLAUDE_PLUGIN_ROOT}`; the
+configuration. The author's local convention must appear nowhere in the
+plugin. The only root a hook knows is `${CLAUDE_PLUGIN_ROOT}`; the
 project directory comes from the chain
 `process.env.CLAUDE_PROJECT_DIR || data.cwd || process.cwd()`.
 
@@ -148,11 +134,9 @@ question set in `references/canvas-elements.md`.
 
 ### 4.2 `research/canvas.md`
 
-<!-- private: the example uses a real project name; any placeholder will do -->
-
 ```markdown
 ---
-project: junior-gap
+project: validation-study
 outlet: MIS Quarterly
 profile: is-qualitative
 created: 2026-09-15
@@ -553,10 +537,8 @@ A hypothetico-deductive profile would restore the canvas's presentation order �
 Append-only. History is never edited; a correction appends a new entry and names
 the one it supersedes.
 
-<!-- private: the example uses a real project name; any placeholder will do -->
-
 ```markdown
-# Decision log — junior-gap
+# Decision log — validation-study
 
 ## [#12] 2026-09-15 · DECISION · 3.1 accepted · text a3f1c9d2 · seal 5e8c11ab4f2d7c90
 The question targets the transition, not the outcome. [accepted]
@@ -996,13 +978,9 @@ HTTP server, a CLI, and a self-contained dashboard HTML file).
 
 ---
 
-<!-- private: this whole section names two unpublished projects. Before
-publication, rename them to "the qualitative study" and "the conceptual paper",
-and drop the `_raw/` path at the end. The argument survives the rename. -->
+## 9 · Validation on the qualitative study
 
-## 9 · Validation on `junior-gap`
-
-The same study in two states. `research-harness-paper` is ruled out as a canvas
+The same study in two states. The conceptual paper is ruled out as a canvas
 test case: the AMJ canvas is built for **empirical** management research, and a
 conceptual design-science paper leaves half the elements unfilled or fills them
 only metaphorically.
@@ -1019,7 +997,7 @@ framing that differs substantively from the current one. Better or worse — bot
 are informative.
 
 **The comparison of the two runs is the finding**, and it is simultaneously the
-artifact `research-harness-paper` needs for the *Organization Science* call ("a
+artifact the conceptual paper needs for the *Organization Science* call ("a
 prototype or equivalent research artifact"). A harness that ran on a live study
 in two modes and compares the resulting framings is stronger evidence than one
 applied to itself.
@@ -1033,8 +1011,6 @@ cite a source through an `src:` tag and must not quote from it. The canvas is a
 record of framing, and it travels — to a co-author, into a supplement, onto a
 meeting screen. Anything quotable belongs in the manuscript, where the study's
 consent terms already govern it.
-
-<!-- /private -->
 
 ---
 
@@ -1058,24 +1034,6 @@ redesign, or abandon the approach."
 ---
 
 ## 11 · Open questions
-
-<!-- private: the two paragraphs below name internal paths of other
-repositories. Before publication, cut them entirely — they are working notes for
-the author's own board, not part of the design. -->
-
-**For SQ-6 (survey of the three rule collections) — sharpened brief:** do not
-survey openly; **test against this design.** Does the question set carry the rules
-in `junior-gap/material/misq-research-note/`? Does the marker axis contradict the
-oracle gate in `research-harness-paper/AGENTS.md`? Of the rules that appear twice
-across the three drifting `AGENTS.md` files, which fall under this MVP, and which
-only under the writing craft or the evidence machinery?
-
-**For SQ-7 (fixture strategy) — unblocked:** the fixture for this MVP is a
-synthetic canvas plus an invented manuscript. No personal data, no consent
-question. The transcript question stays open and must be answered before the
-evidence machinery is built, but it no longer holds up the MVP.
-
-<!-- /private -->
 
 **Raised by SQ-6 and now decided:**
 

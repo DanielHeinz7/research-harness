@@ -27,6 +27,11 @@ function makeProject() {
   return root;
 }
 
+// A checkout that is not a paper project: nowhere in it is there research state.
+function makeBareProject() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'rh-bare-'));
+}
+
 function run(projectRoot, toolName, toolInput, env = {}) {
   const { CLAUDE_PROJECT_DIR: _project, RESEARCH_HARNESS_DIR: _dir, ...ambient } = process.env;
   const out = childProcess.spawnSync(process.execPath, [script], {
@@ -648,6 +653,57 @@ test('Bash: reads over the state and ordinary work elsewhere are not refused', (
   const root = makeProject();
   for (const cmd of BASH_ALLOWED) {
     assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
+  }
+});
+
+// SQ-65. A word with no path separator is a name, not a location. The bare
+// `research` was resolved against the project root, landed on the state
+// directory and denied every tool whose payload carried the word — a profile
+// id, a topic, a title — in a vault or a skills checkout exactly as in a paper
+// project, and the shell path read `python3 x.py research` the same way. The
+// name no longer counts as the directory; every spelling that does carry a
+// location still counts, and the guard is inert for the bare word only where
+// there is no state directory to name.
+test('SQ-65: a bare state-directory name in a payload is a name, not the state directory', () => {
+  const root = makeProject();
+  assert.equal(run(root, 'mcp__plugin_sidequest_board__profile_get', { profile: 'research' }), null);
+  // The same word in every spelling that spells a location is still the state.
+  for (const spelling of ['./research', 'research/', 'research/canvas.md', path.join(root, 'research')]) {
+    const out = run(root, 'MultiEdit', { file_path: spelling, edits: [] });
+    assert.equal(out && out.permissionDecision, 'deny', spelling);
+  }
+});
+
+test('SQ-65: without research state the bare word is left alone, a spelled path is not', () => {
+  const bare = makeBareProject();
+  for (const command of ['python3 x.py research', 'node research', 'rm -rf research', 'ln -s research r']) {
+    assert.equal(run(bare, 'Bash', { command }), null, command);
+  }
+  assert.equal(run(bare, 'mcp__plugin_sidequest_board__profile_get', { profile: 'research' }), null);
+  const write = run(bare, 'MultiEdit', { file_path: 'research/canvas.md', edits: [] });
+  assert.equal(write && write.permissionDecision, 'deny');
+  // A command that creates the state is still judged: the path it spells is a
+  // location whether or not there is anything there yet.
+  for (const command of ['cat > research/canvas.md', 'git checkout HEAD -- research/']) {
+    const out = run(bare, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+});
+
+test('SQ-65: with the state directory there the same words still deny', () => {
+  const root = makeProject();
+  for (const command of [
+    'python3 x.py research',
+    'rm -rf research',
+    'ln -s research r',
+    'git checkout HEAD -- research',
+    'cd research && rm -rf notes.md',
+    // A pattern is not a name the shell fails to find: the glob expands onto
+    // the state directory that is right there (verification/SQ-29/lex.txt L30).
+    'rm -rf resea[r]ch',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
   }
 });
 

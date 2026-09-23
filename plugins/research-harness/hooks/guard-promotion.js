@@ -250,16 +250,60 @@ const SHELL_COMMAND_FLAG_RE = /^-[A-Za-z]*c[A-Za-z]*$/;
 const STDIN_PROGRAM_SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'ash']);
 const STDIN_PROGRAM_INTERPRETERS = new Set(['node', 'nodejs', 'python', 'python3', 'perl', 'ruby']);
 // The flags that carry the program on the command line instead, so what follows
-// the heredoc is ordinary stdin data (`sh -c PROG`, `node -e PROG`).
-const INLINE_PROGRAM_FLAGS = new Set(['-c', '-e', '-E', '--eval', '--print', '--command']);
-// SQ-69: an interpreter's program attached to the flag letter (`python3 -c'PROG'`,
-// `perl -e'PROG'`) and a bundle of program letters with the program in the next
-// word (`node -pe PROG`, `perl -ne PROG`). Only a letter that is a program letter
-// or one of the print/loop flags it bundles with is read here; a letter outside
-// that set takes a value the guard cannot see (`-Wignore`, `-Xdev`), so the
-// cluster stays unproven and the body is judged as the program it may be.
-const INTERPRETER_ATTACHED_PROGRAM_RE = /^-[ceE]/;
-const INTERPRETER_PROGRAM_BUNDLE_RE = /^-[ceEnp]*[ceE][ceEnp]*$/;
+// the heredoc is ordinary stdin data (`sh -c PROG`, `node -e PROG`). SQ-70: the
+// spelling is per interpreter, because the letters are not shared — python's `-E`
+// ignores PYTHON* environment variables and it has no `-e`, ruby's `-E` takes an
+// encoding, and node's `-c` is `--check`, a syntax check that runs nothing. Only
+// perl carries a program on `-E`. A flag outside an interpreter's row leaves the
+// body judged as the program it may be, the fail-closed answer. The rows were read
+// off the installed binaries (python3 3.14.7 `--help`, node v24.16.0 `--help`,
+// perl 5.40.2, ruby 2.6.10) and each cluster form confirmed by feeding a body to
+// the binary with and without the flag; the probes are the ticket's evidence
+// (verification/SQ-70/probe-interpreter-flags.js).
+const INTERPRETER_INLINE_PROGRAM_RE = new Map([
+  // `-c` carries the program — bare (`python3 -c PROG`), attached (`-cPROG`, so
+  // `-cE` runs the program `E`) or closing a cluster of boolean letters
+  // (`python3 -Ic PROG`). `-W`, `-X` and `-m` take a value that swallows a trailing
+  // `c` (`python3 -Wc` reads its program from stdin), so their letters are not
+  // bundleable, and `-E`, `-Es` carry no program at all.
+  ['python', /^-[bBdEhiIOPqSsuvVx]*c/],
+  ['python3', /^-[bBdEhiIOPqSsuvVx]*c/],
+  // `-e` and `-E` carry the program — bare, attached (`perl -e'PROG'`) or closing a
+  // bundle of loop and formatting letters (`perl -ne PROG`, `perl -lne PROG`).
+  // Perl's `-i` takes a backup suffix, so `perl -ie PROG` runs `PROG` as a script
+  // file name: `i` is not bundleable.
+  ['perl', /^-[nplc]*[eE]/],
+  // Ruby's `-e` alone carries the program (`ruby -ne PROG`, `ruby -ce PROG`); its
+  // `-E` takes the encoding, so `ruby -E UTF-8` reads the program from stdin.
+  ['ruby', /^-[nplc]*e/],
+  // `node -e PROG`, `node -p PROG`, `node -pe PROG`, `--eval PROG` and
+  // `--print PROG`. Node takes no program attached to the letter (`node -ePROG` is
+  // a bad option), and its `-c` is `--check`.
+  ['node', /^-(e|p|pe)$|^--(eval|print)$/],
+  ['nodejs', /^-(e|p|pe)$|^--(eval|print)$/],
+]);
+// SQ-70: the flags that make the interpreter read standard input as code *after*
+// the inline program, so an inline flag does not make the heredoc body data.
+// Python's `i` sits in the same boolean cluster as its other flags (`-i`, `-ic`,
+// `-Ii`, `-Ei`), and node spells it `-i` or `--interactive`. Probed against the
+// binaries: `python3 -i -c 'pass'`, `python3 -ic 'pass'` and `node -i -e 1` each
+// ran the heredoc body; perl's and ruby's `-i` is in-place editing and never reads
+// stdin as code (`perl -e PROG -i` and `ruby -ne PROG` left the body as data), so
+// those two have no row and the fail-closed reading below stands for them.
+const INTERPRETER_INTERACTIVE_PROGRAM_RE = new Map([
+  // The literal `i` may only be a cluster letter, never the character before a
+  // closing `c`: `-ci` attaches `i` as `-c`'s program text and runs it, so it is
+  // not an interactive flag.
+  ['python', /^-[bBdEhiIOPqSsuvVx]*i[bBdEhiIOPqSsuvVx]*c?$/],
+  ['python3', /^-[bBdEhiIOPqSsuvVx]*i[bBdEhiIOPqSsuvVx]*c?$/],
+  ['node', /^(?:-i|--interactive)$/],
+  ['nodejs', /^(?:-i|--interactive)$/],
+]);
+// Python stops reading options at `-c`'s program word, so a flag after it is an
+// argument, not a flag: `python3 -c PROG -i` runs PROG and never enters the
+// interpreter, leaving the heredoc body as data. Node and perl keep reading
+// options, so `node -e 1 -i` and `perl -e PROG -i` do see the later flag.
+const INTERPRETER_PROGRAM_ENDS_OPTIONS = new Set(['python', 'python3']);
 const RUNNER_EVAL_FLAGS = new Set(['-e', '--eval', '-p', '--print', '--input-type']);
 // `log` is the harness's own append path (§4.7): it seals what it writes, and
 // it is open to the model for these two kinds only. A DECISION is the
@@ -1003,7 +1047,10 @@ function launchedCommandAt(words) {
 // heredoc body it is given is that program rather than data (SQ-67). The program
 // is elsewhere only when an inline-program flag carries it: a shell's `-c` family
 // (`sh -c PROG`, `bash -ec PROG`) or one of the interpreter spellings above
-// (`node -e PROG`, `python3 -c'PROG'`, `node -pe PROG`). Everything else is read
+// (`node -e PROG`, `python3 -c'PROG'`, `node -pe PROG`). SQ-70: an interactive
+// flag is not one of them — python's `i` in a boolean cluster and node's `-i` or
+// `--interactive` make the interpreter read the body as code once the inline
+// program has run, so the body stays the program. Everything else is read
 // as the program, which is the fail-closed answer SQ-69 settled on. A bare word
 // after the flags may be a script file (`bash script.sh`) or a flag's value
 // (`bash -o errexit`, `python3 -W ignore`, `node -r fs`), and telling them apart
@@ -1016,21 +1063,34 @@ function readsProgramFromStdin(words) {
   if (!launched) return false;
   const shell = STDIN_PROGRAM_SHELLS.has(launched.name);
   if (!shell && !STDIN_PROGRAM_INTERPRETERS.has(launched.name)) return false;
+  // The interpreter's own inline-program spellings (SQ-70). A name without a row
+  // keeps the fail-closed reading below: its body is judged as the program.
+  const programRe = shell ? null : INTERPRETER_INLINE_PROGRAM_RE.get(launched.name);
+  const interactiveRe = shell ? null : INTERPRETER_INTERACTIVE_PROGRAM_RE.get(launched.name);
   let noMoreFlags = false;
+  let inline = false;
   for (const w of words.slice(launched.at + 1)) {
     if (w.opaque) return true; // the flags are unreadable: judge the body as the program it may be
     const text = w.text;
     if (!noMoreFlags && text === '--') { noMoreFlags = true; continue; }
     if (!noMoreFlags && text.startsWith('-')) {
-      const inline = shell
-        ? SHELL_COMMAND_FLAG_RE.test(text)
-        : INLINE_PROGRAM_FLAGS.has(flagName(text))
-          || INTERPRETER_ATTACHED_PROGRAM_RE.test(text)
-          || INTERPRETER_PROGRAM_BUNDLE_RE.test(text);
-      if (inline) return false;
+      if (shell) {
+        if (SHELL_COMMAND_FLAG_RE.test(text)) return false;
+        continue;
+      }
+      const flag = flagName(text);
+      // An interactive flag keeps standard input as code beside any inline
+      // program, so the body stays the program (SQ-70).
+      if (interactiveRe && interactiveRe.test(flag)) return true;
+      if (programRe && programRe.test(flag)) {
+        // Python read the program out of the next word and then stopped reading
+        // options, so a later `-i` is an argument and the body is data.
+        if (INTERPRETER_PROGRAM_ENDS_OPTIONS.has(launched.name)) return false;
+        inline = true;
+      }
     }
   }
-  return true;
+  return !inline;
 }
 
 // What a program text the lexer cannot read names: 'accept' when the word is in

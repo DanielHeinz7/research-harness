@@ -91,6 +91,18 @@ test('a verified DECISION whose hash matches no accepted statement is a stale ac
   assert.deepEqual(report.unloggedAcceptances.map((s) => [s.question, s.coveredBy]), [['1.1', null]]);
 });
 
+// SQ-29 F9: U+001F cannot survive inside a field of a commitment, and the rule
+// lives with the canonical line, so `parseCanvas` reports it and the CLI's
+// `review` names the same statement the guard's refusal does.
+test('a control character in a commitment field is reported as a parse problem', () => {
+  const sep = String.fromCharCode(0x1f);
+  const crafted = canvasText.replace('[accepted]', `[accepted, src: interview-07${sep}memo-02]`);
+  assert.deepEqual(reviewOf(canvasText, legacyLog, KEY).problems, []);
+  const report = reviewOf(crafted, legacyLog, KEY);
+  assert.equal(report.problems.length, 1);
+  assert.match(report.problems[0], /line 14: the \[accepted\] statement in question 1\.1 carries the control character U\+001F/);
+});
+
 // SQ-20: visibility is reported, never enforced. The guard permits the write —
 // the commitment is intact — and the review tells the researcher that the file
 // and the rendered view disagree.

@@ -199,6 +199,7 @@ function parseCanvas(text) {
   }
   flush();
   result.problems.push(...structuralProblems(result.elements));
+  result.problems.push(...controlCharacterProblems(result.elements));
   return result;
 }
 
@@ -222,9 +223,32 @@ function compareByCodePoint(a, b) {
 // evidence tags free to change underneath it — every structural hole SQ-21
 // found went through one of those, leaving the key identical.
 //
-// Fields in the order of §4.3.1's table, separated by U+001F, with the evidence
-// tags sorted so that reordering them is not a change.
-function canonicalCommitment(element, question, statement) {
+// The separator's whole justification is that a field cannot carry one (§4.3.1:
+// "a character the researcher cannot have typed into Markdown"), and that
+// justification is false — it can be pasted, and a model can write it. A field
+// holding U+001F reproduces the boundary between two fields of the canonical
+// line, so content crosses that boundary with the joined string unchanged and
+// `committedSet` reads a re-cut commitment as the one it replaced (SQ-29's
+// F9, K3/K4/K7/K8). Every other C0 control character does the same job one
+// boundary over, so a committed statement whose fields carry one has no
+// canonical form at all. Tab, CR and LF never reach a field: normalizeText
+// collapses them first, which is why ordinary multi-line and tab-indented
+// canvas content stays judgeable.
+const CONTROL_CHAR_RE = /[\u0000-\u001f]/;
+const CONTROL_FIELDS = [
+  'the element number',
+  'the element title',
+  'the question id',
+  'the question text',
+  'the marker',
+  'the statement text',
+  'an evidence tag',
+];
+
+// Fields in the order of §4.3.1's table, with the evidence tags sorted so that
+// reordering them is not a change. Built as a list, not joined here, so that
+// the join and the control-character rule below read the same seven fields.
+function canonicalFields(element, question, statement) {
   const tags = statement.tags.map(normalizeText).filter(Boolean).sort(compareByCodePoint);
   return [
     String(element.number),
@@ -234,7 +258,43 @@ function canonicalCommitment(element, question, statement) {
     statement.marker,
     normalizeText(statement.text),
     tags.join(', '),
-  ].join(COMMIT_SEP);
+  ];
+}
+
+function canonicalCommitment(element, question, statement) {
+  return canonicalFields(element, question, statement).join(COMMIT_SEP);
+}
+
+// Which field of a commitment carries a C0 control character, as the field's
+// name and the character, or null. `parseCanvas` reports it as a problem, so
+// the CLI's `review` prints it and the guard refuses the write that produced it
+// — one rule, one place, both readers (§4.3.1, SQ-29 F9).
+function controlCharacterField(element, question, statement) {
+  const fields = canonicalFields(element, question, statement);
+  for (let i = 0; i < fields.length; i += 1) {
+    const found = CONTROL_CHAR_RE.exec(fields[i]);
+    if (!found) continue;
+    const code = found[0].codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+    return { where: CONTROL_FIELDS[i], char: `U+${code}` };
+  }
+  return null;
+}
+
+// One problem per commitment that has no canonical form, in the shape the
+// parser's other problems take: the line the researcher can go to.
+function controlCharacterProblems(elements) {
+  const problems = [];
+  for (const el of elements) {
+    for (const q of el.questions) {
+      for (const s of q.statements) {
+        if (!COMMITTED.has(s.marker)) continue;
+        const bad = controlCharacterField(el, q, s);
+        if (!bad) continue;
+        problems.push(`line ${s.line}: the [${s.marker}] statement in question ${q.id} carries the control character ${bad.char} in ${bad.where}, and a field of a canonical commitment may not: it reproduces the U+001F separator the commitment is built from, so the commitment cannot be judged until the character is removed`);
+      }
+    }
+  }
+  return problems;
 }
 
 // How a commitment is named where it must be named compactly — a refusal text,
@@ -310,6 +370,8 @@ module.exports = {
   hiddenLines,
   structuralProblems,
   canonicalCommitment,
+  controlCharacterField,
+  controlCharacterProblems,
   commitmentHash,
   committedSet,
   elementStatus,

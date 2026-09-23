@@ -115,6 +115,14 @@ function canvasVerdict(beforeText, afterText) {
   const after = canvas.parseCanvas(afterText || '');
   const existed = String(beforeText || '').trim() !== '';
 
+  // §4.3.1's U+001F separator cannot survive inside a field (SQ-29 F9): a field
+  // carrying one reproduces a boundary of the canonical line, so a commitment
+  // can be re-cut with its identity unchanged. The rule lives with the canonical
+  // line, and `parseCanvas` reports it there too, so the CLI's `review` and this
+  // refusal name the same statement. It comes before the structural check
+  // because the remedy is to remove a character, not to restore a heading.
+  const unjudgeable = canvas.controlCharacterProblems(after.elements);
+  if (unjudgeable.length) return cannotJudge(unjudgeable[0]);
   if (after.problems.length) {
     return cannotJudge(`${after.problems[0]}. Keep the canvas structure — frontmatter, "# N · Title", "## N.M question", statements ending in a marker group`);
   }

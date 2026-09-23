@@ -800,6 +800,18 @@ researcher's log reading as broken at that entry (SQ-27).
 The guard refuses every leading assignment because it cannot tell which variable
 redirects the key; that cost falls on the plugin's contributors, not researchers.
 
+**An unknown operand is judged like a literal one, with one exception.** A
+variable assigned from something the guard cannot resolve (`x=$(cat p); rm
+"$x"`, `x="$1"; rm "$x"`) could name the research state, so a write to it is
+denied (SQ-61). A variable the command never assigns (`rm "$TMPDIR/x"`, `rm
+"$F"`) is allowed: it comes from the environment the session started with.
+Claude Code starts every shell call fresh, so the model cannot set a variable in
+one call and use it in the next, and a variable set in the same command is
+tracked. Denying these would refuse `rm "$TMPDIR/…"`, `cp x "$HOME/…"` and the
+like in every research project to close a route the model can take only by
+writing an `export` into a file the shell loads at startup. That route is
+closed where the file is written, not at every expansion.
+
 **Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
 mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that
 rule'"), but that doctrine is about context injection. A permission guard that

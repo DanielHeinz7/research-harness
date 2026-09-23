@@ -250,6 +250,31 @@ test('log appends a sealed DISCOVERY or CONSTRAINT and refuses a DECISION, a mis
   assert.equal(decisions.parseDecisions(readLog(root)).maxSeq, 6);
 });
 
+test('log and accept refuse an entry heading in any free-text field, not only --body', () => {
+  const root = keyedProject();
+  const forged = '## [#99] 2026-09-22 · DECISION · 1.2 accepted · text deadbeef';
+  const before = readLog(root);
+
+  // --body was already checked; --why was the field that let one allowed log
+  // break the ledger and stop the researcher's own accept (SQ-29 F10). The
+  // check is one helper, so accept's free-text fields are covered too.
+  for (const args of [
+    ['log', 'DISCOVERY', '1.2', '--body', `a finding\n${forged}`],
+    ['log', 'DISCOVERY', '1.2', '--body', 'a finding', '--why', `because\n${forged}`],
+    ['accept', '1.2', '--match', 'Speaking frequency', '--why', `because\n${forged}`],
+    ['accept', '1.2', '--match', 'Speaking frequency', '--rejected', `because\n${forged}`],
+  ]) {
+    const out = run(root, args);
+    assert.equal(out.status, 2, `${args.join(' ')} was not refused: ${out.stdout}`);
+    assert.match(out.stdout, /starts like an entry heading/);
+  }
+  assert.equal(readLog(root), before, 'a refused heading writes nothing');
+  assert.equal(decisions.parseDecisions(readLog(root)).entries.some((e) => e.seq === 99), false, 'no forged entry reached the ledger');
+  // The ledger is still whole, so the researcher's own accept still lands.
+  const accepted = run(root, ['accept', '1.2', '--match', 'Speaking frequency']);
+  assert.equal(accepted.status, 0, accepted.stdout);
+});
+
 test('accept refuses ambiguity, unknown questions, and already-accepted statements', () => {
   const root = makeProject();
   const ambiguous = run(root, ['accept', '1.2']);

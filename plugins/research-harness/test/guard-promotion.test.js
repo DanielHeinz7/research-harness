@@ -787,6 +787,35 @@ test('Bash: a command the lexer cannot read is denied only when it names the sta
   assert.match(out.permissionDecisionReason, /could not read/);
 });
 
+// SQ-29 F7 (lex.txt L8): nine nested substitutions put the body — and the `rm`
+// in it — past MAX_SUBSTITUTION_DEPTH, so nothing below the limit was ever
+// lexed. A line whose nesting is that deep is unreadable in full, not a line
+// the guard read and judged harmless.
+test('Bash: nesting past the substitution depth limit makes the command unreadable', () => {
+  const root = makeProject();
+  const nest = (levels) => {
+    let inner = 'rm research/canvas.md';
+    for (let k = 0; k < levels; k += 1) inner = `echo $(${inner})`;
+    return inner;
+  };
+  // Seven and eight levels stay within the limit, so the `rm` at the bottom is
+  // a real command the guard reads and refuses as one.
+  for (const levels of [7, 8]) {
+    const out = run(root, 'Bash', { command: nest(levels) });
+    assert.equal(out && out.permissionDecision, 'deny', `${levels} levels`);
+    assert.match(out.permissionDecisionReason, /read-only/, `${levels} levels`);
+  }
+  const deep = run(root, 'Bash', { command: nest(9) });
+  assert.equal(deep && deep.permissionDecision, 'deny');
+  assert.match(deep.permissionDecisionReason, /could not read/);
+  assert.match(deep.permissionDecisionReason, /8-deep/);
+  // The rule is the same one an unreadable line already follows: it is refused
+  // for naming the state, and left alone when it names nothing there.
+  let benign = 'echo hi';
+  for (let k = 0; k < 9; k += 1) benign = `echo $(${benign})`;
+  assert.equal(run(root, 'Bash', { command: benign }), null);
+});
+
 // ---------- tool coverage ----------
 
 // The probe set from SQ-21 (verification/SQ-21/path-and-tool.txt) reached the

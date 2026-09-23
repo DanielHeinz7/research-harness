@@ -335,8 +335,14 @@ function lexBash(text, depth) {
     if (cmd.words.length || cmd.redirects.length) commands.push(cmd);
     cmd = { words: [], redirects: [] };
   }
+  // A body past MAX_SUBSTITUTION_DEPTH is not lexed at all: everything below it
+  // stays unseen, so a word standing in for it would be a guess. The line is
+  // marked unreadable instead, and the verdict refuses it as one (SQ-29 F7).
   function nest(body) {
-    if (depth >= MAX_SUBSTITUTION_DEPTH) return false;
+    if (depth >= MAX_SUBSTITUTION_DEPTH) {
+      commands.push({ unreadable: true, words: [], redirects: [] });
+      return false;
+    }
     for (const inner of lexBash(body, depth + 1)) commands.push(inner);
     return true;
   }
@@ -1016,12 +1022,16 @@ function bashVerdict(command, projectRoot) {
       commands = null;
     }
   }
-  if (!commands) {
+  // A body past MAX_SUBSTITUTION_DEPTH leaves every nesting below it unread, so
+  // the words above it stand for commands the guard never saw (SQ-29 F7): the
+  // line is unreadable in full, not a line it read and judged harmless.
+  const tooDeep = !!commands && commands.some((sc) => sc.unreadable);
+  if (!commands || tooDeep) {
     // Unreadable is not the same as harmless: judge it if it names the state.
     const names = [...stateNames].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-    return new RegExp(`${names}|research-harness`).test(cmd)
-      ? 'research-harness could not read this shell command well enough to judge it, and it names the research state, so it is denied. Split it into separate, simpler commands, or use the Edit tool.'
-      : null;
+    if (!new RegExp(`${names}|research-harness`).test(cmd)) return null;
+    const cause = tooDeep ? `: its command substitutions nest past the ${MAX_SUBSTITUTION_DEPTH}-deep limit` : '';
+    return `research-harness could not read this shell command well enough to judge it${cause}, and it names the research state, so it is denied. Split it into separate, simpler commands, or use the Edit tool.`;
   }
 
   const values = new Map();

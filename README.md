@@ -27,7 +27,8 @@ that root. Toolshed stands in the same relationship to its own author's
 directories.
 
 A repository counts as a paper project when it contains `research/canvas.md`.
-Nothing else. In any other repository the plugin stays silent.
+Nothing else. In any other repository the plugin stays silent, except that a
+command or tool call naming the `research/` location is still judged there.
 
 ## What it does
 

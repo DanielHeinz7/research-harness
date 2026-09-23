@@ -14,7 +14,10 @@ From Claude Code:
 
 Or from a local checkout: `/plugin marketplace add /path/to/research-harness`.
 
-In any repository without `research/canvas.md` the plugin stays silent.
+In any repository without `research/canvas.md` the plugin stays silent, with one
+exception: a command or tool call that names the `research/` location is still
+judged there, because creating or removing that directory is how the state
+comes into being.
 
 ## Use
 

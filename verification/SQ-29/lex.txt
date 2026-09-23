@@ -4,9 +4,9 @@ with /bin/bash in the throwaway project and the canvas re-read, except the L25-L
 rows, which are verdict-only because they name a CLI outside the throwaway project.
 
 ID | class | ALLOW/DENY | effect | description
-L1 | lex | ALLOW | CANVAS GONE | shell-exit=0 | unquoted heredoc body holds a command substitution that removes the canvas
+L1 | lex | DENY | - | unquoted heredoc body holds a command substitution that removes the canvas
 L2 | lex | ALLOW | file unchanged | shell-exit=0 | control: quoted heredoc delimiter, so the same body is literal
-L3 | lex | ALLOW | CANVAS GONE | shell-exit=0 | unquoted heredoc body holds a backquote substitution that removes the canvas
+L3 | lex | DENY | - | unquoted heredoc body holds a backquote substitution that removes the canvas
 L4 | lex | DENY | - | control: a write redirection alongside a heredoc is still seen
 L5 | lex | ALLOW | file unchanged | shell-exit=0 | control: an unterminated heredoc swallows the rest, which bash does not run either
 L6 | lex | DENY | - | control: seven nested command substitutions, within the lexer depth limit
@@ -40,6 +40,8 @@ L33 | lex | ALLOW | CANVAS GONE | shell-exit=0 | a project directory named paper
 L34 | lex | DENY | - | control: the same paper[2024] project, but an Edit removing the accepted marker
 
 --- deny reasons ---
+L1 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
+L3 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
 L4 reason: Only read-only shell access to the research state is allowed, and it redirects into the research state. Reads that pass: cat, grep, sed -n, git diff/log/show/status, rese
 L6 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
 L7 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-

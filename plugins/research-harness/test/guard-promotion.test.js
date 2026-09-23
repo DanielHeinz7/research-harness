@@ -651,6 +651,42 @@ test('Bash: reads over the state and ordinary work elsewhere are not refused', (
   }
 });
 
+// SQ-29 finding F6 (verification/SQ-29/lex.txt L1/L3, probes at b4a7066). The
+// lexer skipped a heredoc body wholesale, which is right for a quoted delimiter
+// and wrong for an unquoted one: bash expands `$(...)` and backticks in that
+// body before the command runs, so the removal written inside it was never
+// judged. The rest of the body is stdin data and is still not read as a command
+// line — `rm research/canvas.md` on a line of its own removes nothing.
+test('Bash: a substitution in an unquoted heredoc body is judged, a quoted one is data', () => {
+  const root = makeProject();
+  for (const [form, cmd] of [
+    ['unquoted delimiter, command substitution', 'cat <<EOF\n$(rm research/canvas.md)\nEOF\n'],
+    ['unquoted delimiter, backquote', 'cat <<EOF\n`rm research/canvas.md`\nEOF\n'],
+    ['unquoted delimiter, substitution on a later line', 'cat <<EOF\nfirst line\n$(rm research/canvas.md)\nEOF\n'],
+    ['unquoted delimiter, a body that never reaches it', 'cat <<EOF\n$(rm research/canvas.md)\n'],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+    assert.match(out.permissionDecisionReason, /read-only/, form);
+  }
+  for (const [form, cmd] of [
+    ['quoted delimiter, the same body', "cat <<'EOF'\n$(rm research/canvas.md)\nEOF\n"],
+    ['double-quoted delimiter, the same body', 'cat <<"EOF"\n$(rm research/canvas.md)\nEOF\n'],
+    ['escaped delimiter, the same body', 'cat <<\\EOF\n$(rm research/canvas.md)\nEOF\n'],
+    ['plain body text is data, not a command', 'cat <<EOF\nrm research/canvas.md\nEOF\n'],
+    ['unquoted delimiter, a read-only substitution', 'cat <<EOF\n$(date)\nEOF\n'],
+    ['unquoted body naming the state under a read verb', 'cat <<EOF\nsee research/canvas.md\nEOF\n'],
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, form);
+  }
+  // A body the scan cannot finish — an unclosed `$(`, or nesting past
+  // MAX_SUBSTITUTION_DEPTH — is opaque: it is judged on the names it still
+  // spells out, which denies it under a verb that is not read-only.
+  const unread = run(root, 'Bash', { command: 'tee /dev/null <<EOF\n$(cat research/canvas.md\nEOF\n' });
+  assert.equal(unread && unread.permissionDecision, 'deny');
+  assert.match(unread.permissionDecisionReason, /read-only/);
+});
+
 test('Bash: a CLI-named path operand does not imply harness invocation', () => {
   const root = makeProject();
   const pathOperand = path.join(path.dirname(root), 'research-harness');

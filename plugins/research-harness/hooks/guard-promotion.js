@@ -652,34 +652,64 @@ function globToRegExp(component) {
   return new RegExp(`^${source}$`);
 }
 
-// The characters that make a component a pattern rather than a name. One
-// definition, so "matches the state directory by glob" and "is a name, not a
-// pattern" cannot drift apart.
+// The characters that can make a component a pattern rather than a name. On
+// its own a `[` is not enough: `isPattern` asks whether it opens a class.
 const GLOB_META_RE = /[*?[]/;
 
+// A component is a pattern when the shell would expand it: a `*`, a `?`, or a
+// `[…]` class that is really one. The brackets are where this has to be
+// careful, because plenty of ordinary words carry them. `["SQ-28","SQ-30"]` in
+// a `node -e` body and `[sidequest-route model=a]` in a quoted body are
+// punctuation and quotes around a name; the class they spell is not one the
+// engine accepts, and bash leaves the word alone, so the word is a name and is
+// compared as one. One definition, so "matches the state directory by glob" and
+// "is a name, not a pattern" cannot drift apart.
+function isPattern(text) {
+  if (!GLOB_META_RE.test(text)) return false;
+  if (/[*?]/.test(text)) return true;
+  try {
+    globToRegExp(text);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function componentMatches(pattern, literal) {
-  if (!GLOB_META_RE.test(pattern)) return pattern === literal;
+  // A component that spells the state's own name is that name: the state path
+  // is built from real directories, and one of them can carry brackets itself.
+  // Read as a class, `paper[2024]` failed to match the very directory it names
+  // and the guard stopped recognising its own state (SQ-29 F5: lex L33, M10).
+  if (pattern === literal) return true;
+  if (!isPattern(pattern)) return false;
   try {
     return globToRegExp(pattern).test(literal);
   } catch (_) {
-    return true;
+    // A `*` or `?` word whose class the engine refuses is a pattern the guard
+    // cannot compute: what it expands onto is unknown, which is neither a match
+    // nor a miss. The callers deny it rather than read it as one.
+    return null;
   }
 }
 
 // Shared by the plain spelling comparison and the resolved-path comparison
-// below: true when the leading components of `parts` spell `stateParts`.
+// below: true when the leading components of `parts` spell `stateParts`, null
+// when one of them is a pattern the guard cannot compute.
 function partsMatchState(parts, stateParts) {
   if (parts.length < stateParts.length) return false;
   for (let k = 0; k < stateParts.length; k += 1) {
-    if (!componentMatches(parts[k], stateParts[k])) return false;
+    const matched = componentMatches(parts[k], stateParts[k]);
+    if (matched === null) return null;
+    if (!matched) return false;
   }
   return true;
 }
 
-// True when the path could name the state directory or anything below it. A
-// word that is only an ancestor (`.`, `..`) does not count: catching those
-// would refuse `git add .`, and this is a promotion guard, not a sandbox
-// against a command that destroys the whole project.
+// True when the path could name the state directory or anything below it, null
+// when a component of it is a pattern the guard cannot compute. A word that is
+// only an ancestor (`.`, `..`) does not count: catching those would refuse
+// `git add .`, and this is a promotion guard, not a sandbox against a command
+// that destroys the whole project.
 function denotesState(candidate, base, stateParts) {
   if (!candidate || candidate.startsWith('~') || candidate.includes(EXP_OPEN)) return false;
   let resolved;
@@ -747,12 +777,15 @@ function wordTouchesHarness(w, base, harness, links) {
   const resolvedBase = base || os.homedir();
   return pathCandidates(w.text).some((candidate) => {
     const expanded = expandTilde(candidate);
-    if (harness.parts.some((parts) => denotesState(expanded, resolvedBase, parts))) return true;
+    // `!== false`, not truthiness: a pattern the guard cannot compute counts as
+    // touching here. This is the directory that holds the sealing key, and it
+    // admits no spelling at all, read-only or not.
+    if (harness.parts.some((parts) => denotesState(expanded, resolvedBase, parts) !== false)) return true;
     if (!expanded || expanded.startsWith('~') || expanded.includes(EXP_OPEN)) return false;
     const landed = resolveThroughLinks(resolvedBase, expanded, links || NO_LINKS);
     if (!landed) return false;
     const parts = landed.split(path.sep).filter(Boolean);
-    return harness.parts.some((stateParts) => partsMatchState(parts, stateParts));
+    return harness.parts.some((stateParts) => partsMatchState(parts, stateParts) !== false);
   });
 }
 
@@ -816,12 +849,13 @@ function hasPathSeparator(text) {
 // is therefore still judged, and fail-closed (§5.3) holds for every project
 // that has the directory.
 //
-// Only a literal name is let go. A word with a pattern in it is not a name the
+// Only a literal name is let go. A word that is a pattern is not a name the
 // shell fails to find: `rm -rf resea[r]ch` is expanded onto the state directory
-// that is right there, and a JS array literal in a `node -e` body is matched as
-// a pattern for the same reason. Both are judged.
+// that is right there, and is judged. A word whose brackets are not a class at
+// all (`["SQ-28","SQ-30"]` in a `node -e` body) is a name, and is let go where
+// it names nothing.
 function namesAbsentStateDir(candidate, base, stateParts) {
-  if (hasPathSeparator(candidate) || GLOB_META_RE.test(candidate)) return false;
+  if (hasPathSeparator(candidate) || isPattern(candidate)) return false;
   let resolved;
   try {
     resolved = path.resolve(base, candidate);
@@ -834,12 +868,20 @@ function namesAbsentStateDir(candidate, base, stateParts) {
   return parts.length === stateParts.length && !fs.existsSync(resolved);
 }
 
+// True when the word names the state, null when the pattern in it is one the
+// guard cannot compute, false when it names something else. The null is the
+// caller's to weigh: a word in a write position is denied on it, because a
+// pattern whose expansion is unknown can land on the state.
 function wordTouchesState(w, base, stateParts, stateNames) {
   if (w.opaque) return opaqueNamesState(w.text, stateNames);
   if (base === null) return false;
-  return pathCandidates(w.text).some(
-    (candidate) => denotesState(candidate, base, stateParts) && !namesAbsentStateDir(candidate, base, stateParts),
-  );
+  let unjudgeable = false;
+  for (const candidate of pathCandidates(w.text)) {
+    const denotes = denotesState(candidate, base, stateParts);
+    if (denotes === null) unjudgeable = true;
+    else if (denotes && !namesAbsentStateDir(candidate, base, stateParts)) return true;
+  }
+  return unjudgeable ? null : false;
 }
 
 // A redirection target built at runtime (`>> "$f.md"`, `>> "$(…)"`) is the
@@ -1010,7 +1052,9 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
     const target = redirect.target;
     if (!target || target.opaque) return 'it redirects into a path assembled at runtime';
     if (base === null && !target.text.startsWith('/')) return 'it redirects into a relative path after a `cd` this guard cannot follow';
-    if (wordTouchesState(target, base, stateParts, stateNames)) return 'it redirects into the research state';
+    const touches = wordTouchesState(target, base, stateParts, stateNames);
+    if (touches === null) return UNCOMPUTABLE_PATTERN_WHY;
+    if (touches) return 'it redirects into the research state';
   }
   if (!args.length) return null;
   const invocation = harnessInvocation(args);
@@ -1046,6 +1090,13 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
 function bashDenial(why) {
   return `Only read-only shell access to the research state is allowed, and ${why}. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-harness status/review/init, and research-harness log DISCOVERY|CONSTRAINT to record a finding. Use the Edit tool for [proposed] and [tentative] statements; acceptance is the researcher's act via /research-harness:accept.`;
 }
+
+// SQ-29 F5. A `*` or `?` word whose character class the engine refuses is a
+// pattern the guard cannot compute, so whether it reaches the research state is
+// unknown — neither a match nor a miss. It is denied where there is a write to
+// refuse, the way an unreadable command line is: under a read-only verb the same
+// word is read as the name it spells.
+const UNCOMPUTABLE_PATTERN_WHY = 'it carries a pattern this guard cannot compute, so whether it reaches the research state is unknown';
 
 // Acceptance is the researcher's act wherever it is invoked from: running it
 // from the shell would be the model declaring a commitment (§4.3).
@@ -1096,6 +1147,7 @@ function bashVerdict(command, projectRoot) {
   const links = new Map();
   let base = root;
   let touches = false;
+  let uncomputable = false;
   let acceptAttempt = false;
   let decisionAttempt = false;
   let envAttempt = false;
@@ -1127,12 +1179,17 @@ function bashVerdict(command, projectRoot) {
 
     if (base === null) touches = true;
     for (const w of sc.words) {
-      if (wordTouchesState(w, base, stateParts, stateNames)) touches = true;
+      const verdict = wordTouchesState(w, base, stateParts, stateNames);
+      if (verdict === null) uncomputable = true;
+      else if (verdict) touches = true;
     }
     for (const redirect of sc.redirects) {
       if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames)) touches = true;
       if (!redirect.target || redirect.heredoc) continue;
-      if (wordTouchesState(redirect.target, base, stateParts, stateNames)) touches = true;
+      // A redirect target is a write position, so a pattern there the guard
+      // cannot compute counts as touching: `readOnlyRefusal` below supplies the
+      // reason.
+      if (wordTouchesState(redirect.target, base, stateParts, stateNames) !== false) touches = true;
       if (redirect.write && redirect.target.opaque && (assembledTarget(redirect.target.text) || hasUnknownSubstitution(redirect.target.text))) touches = true;
     }
     // A word in argument position that is wholly or partly the output of a
@@ -1175,6 +1232,7 @@ function bashVerdict(command, projectRoot) {
   if (acceptAttempt) return ACCEPT_DENIAL;
   if (decisionAttempt) return LOG_DECISION_DENIAL;
   if (envAttempt) return ENV_DENIAL;
+  if (uncomputable && refusal) return bashDenial(UNCOMPUTABLE_PATTERN_WHY);
   if (!touches || !refusal) return null;
   return bashDenial(refusal);
 }

@@ -32,6 +32,17 @@ function makeBareProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'rh-bare-'));
 }
 
+// A paper project whose own directory name holds brackets. The guard builds the
+// state path out of real directories, and one of them spells a character class.
+function makeBracketProject() {
+  const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-bracket-')), 'paper[2024]');
+  fs.mkdirSync(root);
+  fs.mkdirSync(path.join(root, 'research'));
+  fs.writeFileSync(path.join(root, 'research', 'canvas.md'), canvasText);
+  fs.writeFileSync(path.join(root, 'research', 'decisions.md'), decisionsText);
+  return root;
+}
+
 function run(projectRoot, toolName, toolInput, env = {}) {
   const { CLAUDE_PROJECT_DIR: _project, RESEARCH_HARNESS_DIR: _dir, ...ambient } = process.env;
   const out = childProcess.spawnSync(process.execPath, [script], {
@@ -748,12 +759,72 @@ test('SQ-65: with the state directory there the same words still deny', () => {
     'git checkout HEAD -- research',
     'cd research && rm -rf notes.md',
     // A pattern is not a name the shell fails to find: the glob expands onto
-    // the state directory that is right there (verification/SQ-29/lex.txt L30).
+    // the state directory that is right there. SQ-54 keeps this true by
+    // compiling the class before it calls a word a pattern at all.
     'rm -rf resea[r]ch',
   ]) {
     const out = run(root, 'Bash', { command });
     assert.equal(out && out.permissionDecision, 'deny', command);
   }
+});
+
+// SQ-29 finding F5, first face (verification/SQ-29/lex.txt L30, L26). A `[…]`
+// run in a word made every word a glob, and a pattern the regex engine refused
+// was answered "matches": an ordinary `node -e` whose JavaScript held an array
+// literal named the state directory and was denied for the verb, not for
+// anything it did. A bracket body that does not compile as a class is not a
+// class — the word is the literal it spells, and a literal that names no
+// location is none of the guard's business.
+test('SQ-54: a bracketed literal in a word is a literal, not a glob onto the state', () => {
+  const root = makeProject();
+  for (const command of [
+    `node -e 'const r=["SQ-28","SQ-30"];console.log(r)'`,
+    `curl -d '[sidequest-route model=a effort=high]' http://127.0.0.1/`,
+    `node -e 'const t={files:["a"],readonly:["b"]};console.log(t)'`,
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+  // The read-only verb that made the same word visible in the first place is
+  // unaffected: it never refused anything.
+  assert.equal(run(root, 'Bash', { command: 'grep -n "[Qa-]" README.md' }), null);
+});
+
+// SQ-29 finding F5, second face (verification/SQ-29/lex.txt L33,
+// perimeter.txt M10). The comparison read the candidate as a pattern and the
+// state's own component as the literal, so a project (or state root) whose name
+// holds brackets never matched itself: the guard stopped recognising its own
+// state directory and a removal inside it was allowed. The name spelled exactly
+// is that name, whatever brackets are in it.
+test('SQ-54: a state directory whose own name holds brackets is still the state', () => {
+  const root = makeBracketProject();
+  const removal = run(root, 'Bash', { command: 'rm research/canvas.md' });
+  assert.equal(removal && removal.permissionDecision, 'deny');
+  // Not a blanket refusal: the same project, read-only.
+  assert.equal(run(root, 'Bash', { command: 'cat research/canvas.md' }), null);
+  assert.equal(run(root, 'Bash', { command: 'sed -n 1,2p research/canvas.md' }), null);
+});
+
+// SQ-29 finding F5, the part neither face above fixes: a word that really is a
+// pattern (`*` or `?`) whose class the engine refuses says nothing about what
+// the shell expands it onto. Where there is a write to refuse, that unknown is
+// denied rather than read as a match or a miss; under a read-only verb nothing
+// is written, so the same word stays the name it spells.
+test('SQ-54: a pattern the guard cannot compute is refused where there is a write', () => {
+  const root = makeProject();
+  for (const command of [
+    `node -e 'a[Q-2]*'`,
+    `cat notes.txt > 'a[Q-2]*'`,
+    `rm 'a[Q-2]*'`,
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+    assert.match(out.permissionDecisionReason, /cannot compute/, command);
+  }
+  // A read position writes nothing, so the word is read as the name it spells.
+  assert.equal(run(root, 'Bash', { command: `grep -n 'a[Q-2]*' README.md` }), null);
+  // And a class that does compile is still a glob onto the state (SQ-65).
+  const glob = run(root, 'Bash', { command: 'rm -rf resea[r]ch' });
+  assert.equal(glob && glob.permissionDecision, 'deny');
 });
 
 // SQ-29 finding F6 (verification/SQ-29/lex.txt L1/L3, probes at b4a7066). The

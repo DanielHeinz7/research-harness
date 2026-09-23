@@ -151,6 +151,51 @@ test('normalizeText collapses only the four reflow characters', () => {
   assert.notEqual(canvas.normalizeText('½'), canvas.normalizeText('1⁄2'));
 });
 
+// SQ-29 F9. §4.3.1 justifies U+001F as "a character the researcher cannot have
+// typed into Markdown", and that is false: a field holding one reproduces a
+// boundary of the canonical line, so a commitment's text and tags can be re-cut
+// with the joined line unchanged and `committedSet` reads the re-cut commitment
+// as the one it replaced. Any C0 control character does the same job one
+// boundary over, so such a commitment has no canonical form at all, and the
+// parser says so where `review` and the guard both read it.
+test('a control character reaching a commitment field leaves it without a canonical form', () => {
+  const sep = String.fromCharCode(0x1f);
+  const crafted = fixture.replace('[accepted]', `[accepted, src: interview-07${sep}memo-02]`);
+  const parsed = canvas.parseCanvas(crafted);
+  assert.equal(parsed.problems.length, 1);
+  assert.match(parsed.problems[0], /line 14: the \[accepted\] statement in question 1\.1 carries the control character U\+001F in an evidence tag/);
+
+  // The cut the separator exists to allow: the same content re-cut across the
+  // text/tags boundary moves which field carries it without changing the join.
+  const el = parsed.elements[0];
+  const q = el.questions[0];
+  const statement = q.statements[0];
+  assert.equal(canvas.controlCharacterField(el, q, statement).where, 'an evidence tag');
+  const moved = { ...statement, text: `${statement.text}${sep}src: interview-07`, tags: ['memo-02'] };
+  assert.equal(canvas.controlCharacterField(el, q, moved).where, 'the statement text');
+  assert.equal(
+    canvas.canonicalCommitment(el, q, statement),
+    canvas.canonicalCommitment(el, q, moved),
+    'the canonical line survives the cut, which is why the field may not carry the separator',
+  );
+
+  // A clean commitment is untouched, and the field is named rather than the file.
+  assert.deepEqual(canvas.parseCanvas(fixture).problems, []);
+  assert.equal(canvas.controlCharacterField(el, q, canvas.parseCanvas(fixture).elements[0].questions[0].statements[0]), null);
+});
+
+// Reflow is space, tab, CR and LF, and it is collapsed before a statement's
+// fields are read, so ordinary multi-line and tab-carrying content never
+// reaches a field as a control character.
+test('a tab and a line break in a statement are reflow, not a control character', () => {
+  const stated = 'Speaking frequency is well documented; whether a proposal is taken up is not. [stated]';
+  const reflowed = fixture.replace(stated, 'Speaking\tfrequency  is\nwell documented. [stated]');
+  assert.notEqual(reflowed, fixture);
+  const parsed = canvas.parseCanvas(reflowed);
+  assert.deepEqual(parsed.problems, []);
+  assert.equal(parsed.elements[0].questions[1].statements[0].text, 'Speaking frequency is well documented.');
+});
+
 test('committedSet is a set: duplicates collapse, proposals are not members', () => {
   const parsed = canvas.parseCanvas(fixture);
   const set = canvas.committedSet(parsed);

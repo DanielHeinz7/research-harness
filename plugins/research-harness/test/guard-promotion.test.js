@@ -243,6 +243,44 @@ test('pushing U+00A0 or U+FEFF into a committed statement is denied (D5b, D5c)',
   }
 });
 
+// SQ-29 F9. The canonical line joins its seven fields with U+001F, and a field
+// holding one reproduces a boundary between them, so a commitment can be re-cut
+// with its identity unchanged. A C0 control character in a commitment's field is
+// refused at whichever write would leave one, which is the two writes K7/K8
+// needed: first the crafted tag, then the re-cut.
+test('a control character in a commitment field is denied, at either write', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const sep = String.fromCharCode(0x1f);
+  const plant = `${STATED.replace(/ \[stated\]$/, '')} and the planted tag. [stated, alpha${sep}beta]`;
+
+  const first = run(root, 'Edit', { file_path: file, old_string: STATED, new_string: `${STATED}\n\n${plant}` });
+  assert.equal(first.permissionDecision, 'deny');
+  assert.match(first.permissionDecisionReason, /control character U\+001F in an evidence tag/);
+
+  // The re-cut, on a canvas that already carries the crafted tag: the joined
+  // line is identical, and the write is still refused.
+  fs.writeFileSync(file, canvasText.replace(STATED, `${STATED}\n\n${plant}`));
+  const shifted = plant.replace(` [stated, alpha${sep}beta]`, `${sep}alpha [stated, beta]`);
+  const second = run(root, 'Edit', { file_path: file, old_string: plant, new_string: shifted });
+  assert.equal(second.permissionDecision, 'deny');
+  assert.match(second.permissionDecisionReason, /control character U\+001F in the statement text/);
+
+  // And on the accepted statement, in both directions (K3, K4).
+  const craftedTag = `[accepted, src: interview-07${sep}memo-02]`;
+  fs.writeFileSync(file, canvasText.replace('[accepted]', craftedTag));
+  const out = run(root, 'Edit', { file_path: file, old_string: craftedTag, new_string: `${sep}src: interview-07 [accepted, memo-02]` });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /control character U\+001F/);
+});
+
+test('a tab and a line break in a statement are reflow, not a control character', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const added = 'The researcher\tlogged every meeting over\n\ttwo terms. [stated]';
+  assert.equal(run(root, 'Edit', { file_path: file, old_string: STATED, new_string: `${STATED}\n\n${added}` }), null);
+});
+
 test('Write is judged as a whole file; removing a heading is denied', () => {
   const root = makeProject();
   const file = path.join(root, 'research', 'canvas.md');

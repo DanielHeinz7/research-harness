@@ -950,6 +950,61 @@ test('SQ-67: a heredoc fed to a shell or interpreter is program text, not stdin 
   assert.equal(run(root, 'Bash', { command: "cat <<'EOF'\nrm research/canvas.md\nEOF\n" }), null);
 });
 
+// SQ-69. SQ-67 left one word unread: a flag that takes a value. The receiver was
+// recognised as reading its program from stdin unless a script file operand
+// stood in front of the heredoc — and a flag's value (`errexit`, `ignore`,
+// `dev/null`, `fs`) is a bare word, so it was taken for that operand and the body
+// was read as its stdin data. Telling a flag's value from a script file takes a
+// per-interpreter table of value-taking flags that fails open for every flag it
+// misses, so the operand is gone: a shell or interpreter that receives a heredoc
+// reads its program from stdin unless an inline-program flag carries it.
+test('SQ-69: a flag\'s value is not a script file operand, so the heredoc body is still the program', () => {
+  const root = makeProject();
+  for (const [form, cmd] of [
+    ['shell -o', "bash -o errexit <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['shell --rcfile', "bash --rcfile /dev/null <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['python3 -W', "python3 -W ignore <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['python3 -X', "python3 -X utf8 <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF"],
+    ['node -r', "node -r fs <<'EOF'\nrequire('fs').rmSync('research/canvas.md')\nEOF"],
+    ['the cost: a script file operand proves nothing', 'bash script.sh <<EOF\nrm research/canvas.md\nEOF'],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+  }
+  // The inline-program spellings still make the body stdin data: a bundle with
+  // the program in the next word (`node -pe PROG`), a program attached to the
+  // flag letter (`python3 -c'PROG'`), and a shell's `-c` not last in the bundle.
+  for (const cmd of [
+    "python3 -c'print(1)' <<'EOF'\nrm research/canvas.md\nEOF",
+    "python3 -c 'print(1)' <<'EOF'\nrm research/canvas.md\nEOF",
+    "perl -e'print 1' <<'EOF'\nrm research/canvas.md\nEOF",
+    "node -pe '1+1' <<'EOF'\nrm research/canvas.md\nEOF",
+    "perl -ne 'print' <<'EOF'\nrm research/canvas.md\nEOF",
+    "bash -ce 'ls research' <<'EOF'\nrm research/canvas.md\nEOF",
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
+  }
+  // A flag whose value the guard cannot see is not read as a program flag: the
+  // body stays the program it may be.
+  for (const cmd of [
+    "python3 -Wdev <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF",
+    "python3 -Xdev <<'EOF'\nimport os; os.remove('research/canvas.md')\nEOF",
+    "python3 -m json.tool <<'EOF'\nrm research/canvas.md\nEOF",
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', cmd);
+  }
+  // The data receiver of SQ-55 and the read controls of SQ-67 are unchanged.
+  for (const cmd of [
+    "cat <<'EOF'\nrm research/canvas.md\nEOF\n",
+    "python3 <<EOF\nprint('hi')\nEOF\n",
+    'bash <<EOF\ncat research/canvas.md\nEOF\n',
+    "sh -c 'ls research' <<EOF\nrm research/canvas.md\nEOF\n",
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
+  }
+});
+
 test('Bash: a CLI-named path operand does not imply harness invocation', () => {
   const root = makeProject();
   const pathOperand = path.join(path.dirname(root), 'research-harness');

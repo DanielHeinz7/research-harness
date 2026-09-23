@@ -641,8 +641,13 @@ function globToRegExp(component) {
   return new RegExp(`^${source}$`);
 }
 
+// The characters that make a component a pattern rather than a name. One
+// definition, so "matches the state directory by glob" and "is a name, not a
+// pattern" cannot drift apart.
+const GLOB_META_RE = /[*?[]/;
+
 function componentMatches(pattern, literal) {
-  if (!/[*?[]/.test(pattern)) return pattern === literal;
+  if (!GLOB_META_RE.test(pattern)) return pattern === literal;
   try {
     return globToRegExp(pattern).test(literal);
   } catch (_) {
@@ -779,10 +784,51 @@ function opaqueNamesState(text, stateNames) {
   return false;
 }
 
+// `/` and `\` both separate path components: a path written on Windows spells
+// the same location.
+const PATH_SEPARATOR_RE = /[\\/]/;
+
+function hasPathSeparator(text) {
+  return PATH_SEPARATOR_RE.test(text);
+}
+
+// The shell resolves a bare word as a path of its own, so `rm -rf research`
+// really removes the state directory and is judged as one while it is there.
+// In a repository that is not a paper project there is no such directory, and
+// then the same word names nothing: the guard is inert for it, which is the
+// false deny SQ-65 reports from a vault and a skills checkout (README: the
+// plugin stays silent there). Only the word that *is* the state directory is
+// let go this way — a word one level below it (`rm -rf notes.md` after `cd
+// research`), and anything that spells a location at all (`research/canvas.md`,
+// `./research`, an absolute path, a path through a symlinked ancestor), is
+// judged whether or not the directory exists. A command that creates the state
+// is therefore still judged, and fail-closed (§5.3) holds for every project
+// that has the directory.
+//
+// Only a literal name is let go. A word with a pattern in it is not a name the
+// shell fails to find: `rm -rf resea[r]ch` is expanded onto the state directory
+// that is right there, and a JS array literal in a `node -e` body is matched as
+// a pattern for the same reason. Both are judged.
+function namesAbsentStateDir(candidate, base, stateParts) {
+  if (hasPathSeparator(candidate) || GLOB_META_RE.test(candidate)) return false;
+  let resolved;
+  try {
+    resolved = path.resolve(base, candidate);
+  } catch (_) {
+    return false;
+  }
+  // Equal length means the word is the state directory itself, not a path
+  // reaching into it; denotesState has already matched every component.
+  const parts = resolved.split(path.sep).filter(Boolean);
+  return parts.length === stateParts.length && !fs.existsSync(resolved);
+}
+
 function wordTouchesState(w, base, stateParts, stateNames) {
   if (w.opaque) return opaqueNamesState(w.text, stateNames);
   if (base === null) return false;
-  return pathCandidates(w.text).some((candidate) => denotesState(candidate, base, stateParts));
+  return pathCandidates(w.text).some(
+    (candidate) => denotesState(candidate, base, stateParts) && !namesAbsentStateDir(candidate, base, stateParts),
+  );
 }
 
 // A redirection target built at runtime (`>> "$f.md"`, `>> "$(…)"`) is the
@@ -1284,13 +1330,21 @@ function shortName(projectRoot, file) {
 // A prose string is not a path: only a value that resolves, whole, into the
 // state counts. `see research/canvas.md for the wording` resolves to a file of
 // that unlikely name beside the project, and is nobody's business.
+// A payload value with no separator at all is a name, not a location: the
+// `research` in a profile id, a topic or a title is not the state directory,
+// and reading it as one denied any tool whose payload happened to carry the
+// word, in every repository (SQ-65). A name still counts when it names a state
+// file — with RESEARCH_HARNESS_DIR=. the canvas sits at the project root and
+// `canvas.md` is that file — and everything that spells a location
+// (`research/canvas.md`, `./research`, an absolute path, a path through a
+// symlinked ancestor) is judged whether or not it exists.
 function unknownToolVerdict(projectRoot, toolName, toolInput) {
   const states = stateFiles(projectRoot);
   const stateRoot = canonical(project.stateDir(projectRoot), 0);
   for (const candidate of payloadStrings(toolInput, [], 0)) {
     const landing = landingOf(projectRoot, candidate);
     const hit = stateFileAt(landing, states);
-    if (!hit && !underState(landing.canonicalPath, stateRoot)) continue;
+    if (!hit && !(hasPathSeparator(candidate) && underState(landing.canonicalPath, stateRoot))) continue;
     const label = toolName ? `\`${toolName.slice(0, 40)}\`` : 'an unnamed tool';
     const name = shortName(projectRoot, hit ? hit.file : landing.canonicalPath);
     return `research-harness cannot judge what ${label} would do to ${name}, so it is denied: it reads Edit, Write and Bash well enough to tell a proposal from a promotion, and nothing else. Read the file with Read, cat or grep; change it with the Edit or Write tool. ${NEXT_STEP}`;

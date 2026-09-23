@@ -809,8 +809,10 @@ Claude Code starts every shell call fresh, so the model cannot set a variable in
 one call and use it in the next, and a variable set in the same command is
 tracked. Denying these would refuse `rm "$TMPDIR/…"`, `cp x "$HOME/…"` and the
 like in every research project to close a route the model can take only by
-writing an `export` into a file the shell loads at startup. That route is
-closed where the file is written, not at every expansion.
+writing an `export` into a file the shell loads at startup. The guard does not
+close that route: a file outside the project (`~/.zshrc`, `.envrc`,
+`CLAUDE_ENV_FILE`) is outside its perimeter, and SQ-62's review found those
+writes allowed.
 
 **Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
 mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that

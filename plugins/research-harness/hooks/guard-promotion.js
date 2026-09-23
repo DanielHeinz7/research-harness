@@ -951,13 +951,17 @@ function hasPathSeparator(text) {
 // is therefore still judged, and fail-closed (§5.3) holds for every project
 // that has the directory.
 //
-// Only a literal name is let go. A word that is a pattern is not a name the
-// shell fails to find: `rm -rf resea[r]ch` is expanded onto the state directory
-// that is right there, and is judged. A word whose brackets are not a class at
-// all (`["SQ-28","SQ-30"]` in a `node -e` body) is a name, and is let go where
-// it names nothing.
-function namesAbsentStateDir(candidate, base, stateParts) {
-  if (hasPathSeparator(candidate) || isPattern(candidate)) return false;
+// A bare name is let go, and so is a pattern: `rm -rf resea[r]ch` is judged
+// while the state directory is right there, because the glob expands onto it,
+// and in a project whose state directory holds neither the canvas nor the
+// decision log there is nothing for it to land on, so `for d in */` names
+// nothing either (SQ-71). A word whose brackets are not a class at all
+// (`["SQ-28","SQ-30"]` in a `node -e` body) is a name, and is let go where it
+// names nothing. A word that spells a location literally (`research/canvas.md`,
+// `./research`, an absolute path) is never let go this way: that is the word
+// that would create the state, and SQ-65 judges it whether or not it exists.
+function namesAbsentStateDir(candidate, base, stateParts, hasState) {
+  if (hasPathSeparator(candidate) && !isPattern(candidate)) return false;
   let resolved;
   try {
     resolved = path.resolve(base, candidate);
@@ -967,21 +971,21 @@ function namesAbsentStateDir(candidate, base, stateParts) {
   // Equal length means the word is the state directory itself, not a path
   // reaching into it; denotesState has already matched every component.
   const parts = resolved.split(path.sep).filter(Boolean);
-  return parts.length === stateParts.length && !fs.existsSync(resolved);
+  return parts.length === stateParts.length && !hasState;
 }
 
 // True when the word names the state, null when the pattern in it is one the
 // guard cannot compute, false when it names something else. The null is the
 // caller's to weigh: a word in a write position is denied on it, because a
 // pattern whose expansion is unknown can land on the state.
-function wordTouchesState(w, base, stateParts, stateNames) {
+function wordTouchesState(w, base, stateParts, stateNames, hasState) {
   if (w.opaque) return opaqueNamesState(w.text, stateNames);
   if (base === null) return false;
   let unjudgeable = false;
   for (const candidate of pathCandidates(w.text)) {
     const denotes = denotesState(candidate, base, stateParts);
     if (denotes === null) unjudgeable = true;
-    else if (denotes && !namesAbsentStateDir(candidate, base, stateParts)) return true;
+    else if (denotes && !namesAbsentStateDir(candidate, base, stateParts, hasState)) return true;
   }
   return unjudgeable ? null : false;
 }
@@ -1224,13 +1228,13 @@ function logKindOf(invocation) {
 
 // Returns null when the simple command is a named read-only form, or the
 // reason it is not.
-function readOnlyRefusal(sc, args, base, stateParts, stateNames) {
+function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState) {
   for (const redirect of sc.redirects) {
     if (!redirect.write) continue;
     const target = redirect.target;
     if (!target || target.opaque) return 'it redirects into a path assembled at runtime';
     if (base === null && !target.text.startsWith('/')) return 'it redirects into a relative path after a `cd` this guard cannot follow';
-    const touches = wordTouchesState(target, base, stateParts, stateNames);
+    const touches = wordTouchesState(target, base, stateParts, stateNames, hasState);
     if (touches === null) return UNCOMPUTABLE_PATTERN_WHY;
     if (touches) return 'it redirects into the research state';
   }
@@ -1297,6 +1301,15 @@ function harnessStateDenial(label) {
   return `research-harness cannot let ${label} touch the harness state directory (${ledger.stateRoot()}): it holds the sealing key of the decision log, and a key the model can read or replace seals nothing. Nothing there is part of the paper; read the research state with Read, cat or grep instead.`;
 }
 
+// The research state is the canvas and the decision log. A state directory that
+// holds neither — `mkdir research` on its own — is not state: there is nothing
+// there to read and nothing to promote, so the read-only rule has nothing to
+// refuse (SQ-71).
+function statePresent(stateDir) {
+  return fs.existsSync(path.join(stateDir, project.CANVAS_FILE))
+    || fs.existsSync(path.join(stateDir, project.DECISIONS_FILE));
+}
+
 function bashVerdict(command, projectRoot) {
   const cmd = String(command || '');
   if (!cmd.trim()) return null;
@@ -1304,6 +1317,12 @@ function bashVerdict(command, projectRoot) {
   const stateDir = project.stateDir(root);
   const stateParts = stateDir.split(path.sep).filter(Boolean);
   const stateNames = new Set([project.CANVAS_FILE, project.DECISIONS_FILE, path.basename(stateDir)]);
+  // SQ-71: state that is not there cannot be touched. A word the guard cannot
+  // read — an unknown substitution, a pattern it cannot compute, a `cd` it
+  // cannot follow — is speculation about where the state might be, and in a
+  // project that holds no research state there is nowhere for it to land. Only
+  // a word that spells the state's location is judged, as SQ-65 already has it.
+  const hasState = statePresent(stateDir);
 
   let commands = null;
   if (cmd.length <= MAX_COMMAND_LENGTH) {
@@ -1366,20 +1385,25 @@ function bashVerdict(command, projectRoot) {
     const verbAt = sc.words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
     const argv = verbAt < 0 ? [] : sc.words.slice(verbAt);
 
-    if (base === null) touches = true;
+    // SQ-71: only a project that holds state can have its state touched. Where
+    // there is none, an unfollowable `cd`, an operand the guard cannot read and
+    // a word whose expansion is unknown are speculation with nowhere to land.
+    // A word that spells the state's location is still judged (SQ-65).
+    const touched = (verdict) => verdict === true || (verdict !== false && hasState);
+    if (base === null && hasState) touches = true;
     for (const w of sc.words) {
-      const verdict = wordTouchesState(w, base, stateParts, stateNames);
-      if (verdict === null) uncomputable = true;
+      const verdict = wordTouchesState(w, base, stateParts, stateNames, hasState);
+      if (verdict === null && hasState) uncomputable = true;
       else if (verdict) touches = true;
     }
     for (const redirect of sc.redirects) {
-      if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames)) touches = true;
+      if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames, hasState)) touches = true;
       if (!redirect.target || redirect.heredoc) continue;
       // A redirect target is a write position, so a pattern there the guard
       // cannot compute counts as touching: `readOnlyRefusal` below supplies the
       // reason.
-      if (wordTouchesState(redirect.target, base, stateParts, stateNames) !== false) touches = true;
-      if (redirect.write && redirect.target.opaque && (assembledTarget(redirect.target.text) || hasUnknownSubstitution(redirect.target.text))) touches = true;
+      if (touched(wordTouchesState(redirect.target, base, stateParts, stateNames, hasState))) touches = true;
+      if (hasState && redirect.write && redirect.target.opaque && (assembledTarget(redirect.target.text) || hasUnknownSubstitution(redirect.target.text))) touches = true;
     }
     // A word in argument position that is wholly or partly the output of a
     // command substitution the guard could not resolve to a literal is an
@@ -1391,7 +1415,7 @@ function bashVerdict(command, projectRoot) {
     const verbName = argv.length && !argv[0].opaque ? baseNameOf(argv[0].text) : null;
     if (!NON_FILE_VERBS.has(verbName)) {
       for (const w of argv.slice(1)) {
-        if (hasUnknownSubstitution(w.text)) touches = true;
+        if (hasState && hasUnknownSubstitution(w.text)) touches = true;
       }
     }
 
@@ -1404,7 +1428,7 @@ function bashVerdict(command, projectRoot) {
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
     }
 
-    if (!refusal) refusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames);
+    if (!refusal) refusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState);
 
     if (argv.length && !argv[0].opaque && baseNameOf(argv[0].text) === 'cd') {
       const operand = argv.slice(1).find((w) => !w.text.startsWith('-'));

@@ -788,6 +788,93 @@ test('SQ-65: without research state the bare word is left alone, a spelled path 
   }
 });
 
+// SQ-71: a command cannot touch research state that is not there. The state is
+// the canvas and the decision log, so a project whose state directory holds
+// neither has nothing to refuse: an ordinary line — a loop whose body reads a
+// substitution, an `rm "$x"` whose value the guard never read — is speculation
+// about where the state might be, and there is nowhere for it to land. The
+// words that spell a location are still judged (SQ-65), the harness state
+// directory is still off-limits (SQ-27), and the CLI's own refusals do not
+// depend on state at all.
+test('SQ-71: without research state ordinary shell commands are not the guard\'s business', () => {
+  const bare = makeBareProject();
+  for (const command of [
+    'for d in */; do echo "$d"; done',
+    'while true; do l=$(sysctl -n vm.loadavg); echo "$l"; sleep 30; done',
+    'x=$(cat a); rm "$x"',
+    'l=$(sysctl -n vm.loadavg); echo "$l"',
+    'VAR=x node --test t.mjs > /private/tmp/sq71/log 2>&1',
+    // A pattern the guard cannot compute is refused because it can land on the
+    // state; with no state there is nothing for it to land on.
+    'rm -rf resea[r]ch',
+    // The state is read once, where the command stands: a line that creates it
+    // and removes it in the same breath is judged on entry, and is left alone.
+    'mkdir research && rm -rf */',
+    // SQ-72, folded in: the same speculation one statement later — a `cd` the
+    // guard cannot follow makes `base` null, and every word after it counted as
+    // touching a state that is not there. Ordinary build and tool lines were
+    // denied this way in a repo that never had a `research/`.
+    'docker stop x',
+    'for p in 3100 3111; do lsof -i :$p; done',
+    'npm run gates > gate.log 2>&1',
+    'cd "$HOME/x" && docker stop x',
+    'cd "$HOME/x" && for p in 3100 3111; do lsof -i :$p; done',
+    'cd "$HOME/x" && npm run build > build.log 2>&1',
+  ]) {
+    assert.equal(run(bare, 'Bash', { command }), null, command);
+  }
+  // Creating the state stays allowed — the guard watches creation, it does not
+  // forbid it.
+  assert.equal(run(bare, 'Bash', { command: 'research-harness init' }), null);
+  assert.equal(run(bare, 'Bash', { command: 'mkdir -p research' }), null);
+  // What still holds: a path that spells the location (SQ-65), the harness
+  // state directory (SQ-27), and accepting a statement, which is the
+  // researcher's act whether or not there is state to accept into.
+  for (const command of ['cat > research/canvas.md', 'git checkout HEAD -- research/']) {
+    const out = run(bare, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  const harnessRead = run(bare, 'Bash', { command: 'cat ~/.claude/research-harness/abc/seal.key' });
+  assert.equal(harnessRead && harnessRead.permissionDecision, 'deny');
+  for (const command of ['research-harness accept 1.2', `node "${path.join(pluginRoot, 'bin', 'research-harness.js')}" accept 1.2`]) {
+    const out = run(bare, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  assert.equal(run(bare, 'Bash', { command: `node "${path.join(pluginRoot, 'bin', 'research-harness.js')}" status` }), null);
+});
+
+// An empty state directory holds neither the canvas nor the decision log, so it
+// is no state either (SQ-71). The bare name and the glob are let go; the
+// spelled path is still judged, because that is the word that would create the
+// state SQ-65 keeps watching.
+test('SQ-71: an empty state directory is no state', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-empty-'));
+  fs.mkdirSync(path.join(root, 'research'));
+  for (const command of ['rm -rf research', 'for d in */; do echo "$d"; done']) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+  const write = run(root, 'Bash', { command: 'cat > research/canvas.md' });
+  assert.equal(write && write.permissionDecision, 'deny');
+});
+
+// The control for the narrowing above: the same rows still deny in a project
+// that holds state, which is the rule SQ-71 narrowed and did not remove.
+test('SQ-71: with research state the same rows still deny', () => {
+  const root = makeProject();
+  for (const command of [
+    'for d in */; do echo "$d"; done',
+    'while true; do l=$(sysctl -n vm.loadavg); echo "$l"; sleep 30; done',
+    'x=$(cat a); rm "$x"',
+    'rm -rf resea[r]ch',
+    // A `cd` the guard cannot follow still counts here: with state present the
+    // words after it can land on it, which is what SQ-71 narrowed, not removed.
+    'cd "$HOME/x" && docker stop x',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+});
+
 test('SQ-65: with the state directory there the same words still deny', () => {
   const root = makeProject();
   for (const command of [

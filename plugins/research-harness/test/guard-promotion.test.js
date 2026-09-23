@@ -580,6 +580,7 @@ const BASH_EVASIONS = [
   ['interpreter naming the file in its program text', 'node -e \'require("fs").appendFileSync("research/canvas.md","x")\''],
   ['restoring the file out of git', 'git checkout HEAD -- research/'],
   ['permissions', 'chmod 000 research/*.md'],
+  ['command substitution, no literal part survives either substitution', 'rm "$(printf %s resear)$(printf %s ch/canvas.md)"'],
 ];
 
 // Commands the guard already held. They stay denied: the new shape must not
@@ -623,6 +624,7 @@ const BASH_ALLOWED = [
   'npm test',
   'mkdir -p docs/research-notes',
   'rm -rf node_modules',
+  'cat "$(printf %s resear)$(printf %s ch/canvas.md)"',
 ];
 
 test('Bash: every evasion family in the probe set is denied', () => {

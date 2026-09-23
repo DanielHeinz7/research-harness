@@ -18,7 +18,7 @@ L11 | lex | DENY | - | control: here-string carrying a substitution
 L12 | lex | DENY | - | control: ANSI-C quoting around the path
 L13 | lex | DENY | - | control: brace expansion over the state directory
 L14 | lex | DENY | - | control: two recorded assignments concatenated into the path
-L15 | lex | ALLOW | CANVAS GONE | shell-exit=0 | the path is assembled from two command substitutions, so no word keeps a literal part of it
+L15 | lex | DENY | - | the path is assembled from two command substitutions, so no word keeps a literal part of it
 L16 | lex | DENY | - | control: the same assembly, but the file name is left literal
 L17 | lex | DENY | - | seed: unresolvable cd then a pipeline with 2>&1 and no path at all
 L18 | lex | DENY | - | the same pipeline without the 2>&1
@@ -49,6 +49,7 @@ L11 reason: Only read-only shell access to the research state is allowed, and `r
 L12 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
 L13 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
 L14 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
+L15 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
 L16 reason: Only read-only shell access to the research state is allowed, and `rm` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, research-
 L17 reason: Only read-only shell access to the research state is allowed, and it redirects into a relative path after a `cd` this guard cannot follow. Reads that pass: cat, grep, sed
 L18 reason: Only read-only shell access to the research state is allowed, and `node` is not a read-only command. Reads that pass: cat, grep, sed -n, git diff/log/show/status, researc

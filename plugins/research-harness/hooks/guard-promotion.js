@@ -340,7 +340,8 @@ function lexBash(text, depth) {
       body += ch;
       i += 1;
     }
-    w.text += EXP_UNKNOWN;
+    const literal = literalSubstitutionValue(body, depth);
+    w.text += literal === null ? EXP_UNKNOWN : literal;
     nest(body);
   }
 
@@ -349,7 +350,8 @@ function lexBash(text, depth) {
     if (next === '(') {
       i += 2;
       const body = readSubstitution();
-      w.text += EXP_UNKNOWN;
+      const literal = literalSubstitutionValue(body, depth);
+      w.text += literal === null ? EXP_UNKNOWN : literal;
       nest(body);
       return;
     }
@@ -490,6 +492,41 @@ function lexBash(text, depth) {
 function baseNameOf(text) {
   const cut = text.lastIndexOf('/');
   return cut < 0 ? text : text.slice(cut + 1);
+}
+
+// When a `$(...)`/backtick body is nothing but a literal `echo` or `printf`
+// of a constant, its output is knowable without running it: splice that
+// output into the word as literal text instead of leaving an opaque mark, so
+// a path built from several such substitutions still reads as one literal
+// (SQ-57).
+function literalSubstitutionValue(body, depth) {
+  if (depth >= MAX_SUBSTITUTION_DEPTH) return null;
+  let commands;
+  try {
+    commands = lexBash(body, depth + 1);
+  } catch (_) {
+    return null;
+  }
+  if (commands.length !== 1) return null;
+  const [sc] = commands;
+  if (sc.redirects.length || !sc.words.length) return null;
+  if (sc.words.some((w) => w.opaque)) return null;
+  const verb = baseNameOf(sc.words[0].text);
+  const args = sc.words.slice(1).map((w) => w.text);
+  if (verb === 'echo') {
+    if (args.some((a) => a.startsWith('-'))) return null; // flags can change output; do not guess
+    return args.join(' ');
+  }
+  if (verb === 'printf') {
+    if (!args.length) return null;
+    const [format, ...rest] = args;
+    if (format.includes('\\') || /%(?!s)/.test(format)) return null;
+    const slots = (format.match(/%s/g) || []).length;
+    if (slots === 0) return rest.length ? null : format;
+    if (slots === 1 && rest.length === 1) return format.replace('%s', rest[0]);
+    return null;
+  }
+  return null;
 }
 
 function substitute(w, values) {
@@ -676,6 +713,14 @@ function wordTouchesState(w, base, stateParts, stateNames) {
 function assembledTarget(text) {
   const literal = text.replace(EXP_RE, '');
   return literal.includes('/') || /\.[A-Za-z0-9]+$/.test(literal);
+}
+
+// A mark with no name is a substitution (or another expansion this guard
+// cannot resolve) rather than a variable reference — `"$LOG"` carries a
+// name and is excluded, but `"$(date)"` is not.
+function hasUnknownSubstitution(text) {
+  const matches = text.match(EXP_RE);
+  return !!matches && matches.some((m) => m === EXP_UNKNOWN);
 }
 
 function flagName(text) {
@@ -934,6 +979,10 @@ function bashVerdict(command, projectRoot) {
       if (redirect.target && !redirect.heredoc && wordTouchesHarness(redirect.target, base, harness, links)) return harnessStateDenial('this shell command');
     }
 
+    // Leading `NAME=value` words are assignments, not the command.
+    const verbAt = sc.words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
+    const argv = verbAt < 0 ? [] : sc.words.slice(verbAt);
+
     if (base === null) touches = true;
     for (const w of sc.words) {
       if (wordTouchesState(w, base, stateParts, stateNames)) touches = true;
@@ -941,12 +990,17 @@ function bashVerdict(command, projectRoot) {
     for (const redirect of sc.redirects) {
       if (!redirect.target || redirect.heredoc) continue;
       if (wordTouchesState(redirect.target, base, stateParts, stateNames)) touches = true;
-      if (redirect.write && redirect.target.opaque && assembledTarget(redirect.target.text)) touches = true;
+      if (redirect.write && redirect.target.opaque && (assembledTarget(redirect.target.text) || hasUnknownSubstitution(redirect.target.text))) touches = true;
+    }
+    // A word in argument position that is wholly or partly the output of a
+    // command substitution the guard could not resolve to a literal is an
+    // unknown target: `readOnlyRefusal` below still allows it through when
+    // the command is read-only, but a non-read-only command with such an
+    // argument is denied rather than silently let through (SQ-57).
+    for (const w of argv.slice(1)) {
+      if (hasUnknownSubstitution(w.text)) touches = true;
     }
 
-    // Leading `NAME=value` words are assignments, not the command.
-    const verbAt = sc.words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
-    const argv = verbAt < 0 ? [] : sc.words.slice(verbAt);
     const invocation = harnessInvocation(argv);
     if (invocation) {
       if (invocation.harness) touches = true;

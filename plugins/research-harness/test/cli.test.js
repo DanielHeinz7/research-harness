@@ -91,6 +91,40 @@ test('init creates canvas.md from the template and an empty decision log; refuse
   assert.equal(bad.status, 2);
 });
 
+test('--help and -h print the usage and exit 0, with a subcommand and without one', () => {
+  const root = makeProject(false);
+  for (const args of [['--help'], ['-h'], ['init', '--help'], ['init', '-h'], ['status', '--help'], ['accept', '1.1', '-h'], []]) {
+    const label = args.join(' ') || '<no command>';
+    const out = run(root, args);
+    assert.equal(out.status, 0, `${label}: ${out.stdout}${out.stderr}`);
+    assert.equal(out.stderr, '', `${label} wrote to stderr`);
+    assert.match(out.stdout, /^research-harness init --project <slug>/, label);
+    assert.match(out.stdout, /research-harness serve \[--no-open\]/, label);
+  }
+  assert.equal(fs.existsSync(path.join(root, 'research')), false, 'a help call writes nothing');
+});
+
+test('init quotes the frontmatter values that are the researcher\'s own text, so ": " and a quote survive a real YAML reader', () => {
+  const root = makeProject(false);
+  const outlet = 'open: ISR / MISQ / ETP ("special issue")';
+  const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'import', '--outlet', outlet]);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  const text = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+  const parsed = canvas.parseCanvas(text);
+  assert.deepEqual(parsed.problems, [], 'the frontmatter must still parse');
+  assert.equal(parsed.frontmatter.outlet, outlet, 'the value reads back unchanged, with no quotes left on it');
+  assert.equal(parsed.frontmatter.project, 'voice-uptake');
+  // The line pandoc refused as bare in the pilot (SQ-73) is now a double-quoted
+  // scalar whose escaping is JSON's, which YAML reads too.
+  assert.ok(text.includes(`outlet: ${JSON.stringify(outlet)}\n`), text.split('\n').slice(0, 8).join('\n'));
+  // Quoting must not change the ordinary shapes: an outlet left off, and a slug.
+  const bare = makeProject(false);
+  assert.equal(run(bare, ['init', '--project', 'x', '--mode', 'seed']).status, 0);
+  const bareParsed = canvas.parseCanvas(fs.readFileSync(path.join(bare, 'research', 'canvas.md'), 'utf8'));
+  assert.equal(bareParsed.frontmatter.outlet, '');
+  assert.equal(bareParsed.frontmatter.project, 'x');
+});
+
 test('init on an existing project only creates the missing key, and never replaces one', () => {
   const root = makeProject();
   const canvasBefore = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');

@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research harness — canvas</title>
+<style>
+  :root {
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #000;
+    background: #fff;
+    line-height: 1.4;
+  }
+  h1, h2, h3, h4 { line-height: 1.2; }
+  #notice {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #000;
+    color: #fff;
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 1rem;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+  #notice[hidden] { display: none; }
+  #notice:not([hidden]) { display: flex; }
+  #notice button {
+    background: #fff;
+    color: #000;
+    border: 1px solid #fff;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+  }
+  .notices {
+    border: 2px solid #000;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .notices p { margin: 0.25rem 0; }
+  .page-section {
+    margin-bottom: 2rem;
+  }
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0;
+    list-style: none;
+  }
+  .toc a { color: #000; }
+  .grid3x3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+  .cell {
+    border: 2px solid #000;
+    padding: 0.75rem;
+    min-height: 8rem;
+  }
+  .cell.open { border-style: dashed; }
+  .cell.accent { outline: 3px solid #000; background: #efefef; }
+  .cell-head { font-weight: bold; margin-bottom: 0.4rem; }
+  .cell-num { margin-right: 0.35rem; }
+  .cell-counts { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+  .cell-blank {
+    border: 1px dashed #666;
+    height: 1.6em;
+    margin: 0.6em 0 0.3em;
+  }
+  .cell-state { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.03em; }
+  .accent-badge {
+    display: inline-block;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border: 1px solid #000;
+    padding: 0.05em 0.4em;
+    margin-top: 0.35em;
+  }
+  .question { margin: 0.75rem 0; }
+  .question h4 { margin-bottom: 0.25rem; }
+  .statements { padding-left: 1.25rem; }
+  .statement { margin-bottom: 0.5rem; }
+  .empty-note { color: #444; font-style: italic; }
+  .statement-actions { margin-top: 0.3rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .action-btn {
+    font: inherit;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid #000;
+    background: #fff;
+    cursor: pointer;
+  }
+  .action-btn:disabled { color: #666; border-color: #999; cursor: not-allowed; }
+  .why-label { font-size: 0.85em; }
+  .why-label input { font: inherit; }
+  .source-key { font-size: 0.9em; border-top: 1px solid #000; padding-top: 0.5rem; margin-top: 0.75rem; }
+  .comment-form { margin-top: 1rem; border-top: 1px solid #000; padding-top: 0.75rem; }
+  .comment-form textarea { width: 100%; max-width: 40rem; min-height: 4rem; font: inherit; }
+  .comment-form label { display: block; margin-bottom: 0.4rem; }
+  .agenda-list, .decision-list { padding-left: 1.25rem; }
+  .decision-entry { margin-bottom: 0.75rem; }
+  .seal-badge {
+    display: inline-block;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    border: 1px solid #000;
+    padding: 0.05em 0.4em;
+    margin-right: 0.4em;
+  }
+  .decision-body { margin-top: 0.2rem; }
+  footer { border-top: 2px solid #000; padding-top: 0.75rem; font-size: 0.9em; }
+
+  @media print {
+    #notice { display: none; }
+    .action-btn, .comment-form, .why-label, .statement-actions, .toc { display: none !important; }
+    .cell.accent { background: #fff; }
+  }
+  @page { size: A4; margin: 2cm; }
+  @page figure { size: A4 landscape; margin: 1.5cm; }
+  .page-section { break-before: page; }
+  #grid { page: figure; }
+</style>
+</head>
+<body>
+<div id="notice" role="alert" hidden>
+  <span id="notice-text"></span>
+  <button type="button" id="notice-dismiss">Dismiss</button>
+</div>
+<div id="app">
+  <p>Loading…</p>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  // Static copy of the shipped `is-qualitative` profile's dependency graph
+  // (plugins/research-harness/references/profiles/is-qualitative.md, "##
+  // Dependency graph"). /api/state does not expose a graph field
+  // (bin/canvas-serve.js's viewState only uses it server-side to compute
+  // `violations`); SQ-83's recon derives the accent cell from this same
+  // static profile file directly, not from an API call, so mirroring it here
+  // is the documented derivation, not a workaround. `is-qualitative` is the
+  // only profile shipped with the MVP; an unknown profile id simply gets no
+  // accent cell.
+  var PROFILE_GRAPHS = {
+    'is-qualitative': { 1: [], 2: [1, 3], 3: [1], 4: [2, 7], 5: [3, 9], 6: [5], 7: [6], 8: [2, 4, 7], 9: [1, 3] }
+  };
+
+  var qs = new URLSearchParams(location.search);
+  var fixturePath = qs.get('fixture');
+  var fixtureMode = !!fixturePath;
+
+  var token = null;
+  if (!fixtureMode) {
+    var m = /(?:^|[#&])t=([0-9a-f]+)/.exec(location.hash);
+    token = m ? m[1] : null;
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+
+  var state = null;
+  var app = document.getElementById('app');
+  var noticeBox = document.getElementById('notice');
+  var noticeText = document.getElementById('notice-text');
+  document.getElementById('notice-dismiss').addEventListener('click', function () { noticeBox.hidden = true; });
+
+  function showNotice(msg) {
+    noticeText.textContent = msg;
+    noticeBox.hidden = false;
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function basename(p) {
+    var parts = String(p).split('/');
+    return parts[parts.length - 1];
+  }
+
+  // reflow.py's footnote rule (SQ-83 recon c_mumwggjj_ed1628), ported with
+  // the ticket's simpler source-name policy: basename + anchor, not a
+  // hand-curated DOCS map.
+  function footnoteText(statement) {
+    var parts = [];
+    if (statement.marker && statement.marker !== 'proposed') {
+      parts.push('Marked ' + statement.marker + '.');
+    }
+    (statement.tags || []).forEach(function (tag) {
+      if (tag === 'unverified') {
+        parts.push('No source found; unverified.');
+      } else if (tag.indexOf('src:') === 0) {
+        var value = tag.slice(4).trim();
+        var hashIdx = value.indexOf('#');
+        var filePath = hashIdx === -1 ? value : value.slice(0, hashIdx);
+        var anchor = hashIdx === -1 ? '' : value.slice(hashIdx + 1);
+        var name = basename(filePath);
+        parts.push(anchor ? (name + ', ' + anchor + '.') : (name + '.'));
+      } else if (tag) {
+        parts.push(tag + '.');
+      }
+    });
+    return parts.join(' ');
+  }
+
+  function markerCounts(element) {
+    var counts = { proposed: 0, tentative: 0, stated: 0, accepted: 0 };
+    element.questions.forEach(function (q) {
+      q.statements.forEach(function (s) {
+        if (s.marker && Object.prototype.hasOwnProperty.call(counts, s.marker)) counts[s.marker] += 1;
+      });
+    });
+    return counts;
+  }
+
+  // The open element most others depend on, transitively, per SQ-83's
+  // recon: combine open/closed status with the profile's dependency graph
+  // and pick the open element with the largest transitive dependent set.
+  function computeAccent(elements, graph) {
+    if (!graph) return null;
+    var reverse = {};
+    Object.keys(graph).forEach(function (n) { reverse[n] = reverse[n] || []; });
+    Object.keys(graph).forEach(function (n) {
+      graph[n].forEach(function (dep) {
+        reverse[dep] = reverse[dep] || [];
+        reverse[dep].push(Number(n));
+      });
+    });
+    function transitiveDependents(n) {
+      var seen = new Set();
+      var stack = (reverse[n] || []).slice();
+      while (stack.length) {
+        var cur = stack.pop();
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        (reverse[cur] || []).forEach(function (x) { if (!seen.has(x)) stack.push(x); });
+      }
+      return seen.size;
+    }
+    var best = null;
+    var bestCount = 0;
+    elements.forEach(function (e) {
+      if (e.status.status === 'accepted') return;
+      var c = transitiveDependents(e.number);
+      if (c > bestCount) { bestCount = c; best = e.number; }
+    });
+    return best;
+  }
+
+  function renderNotices(s) {
+    var notices = [];
+    if (s.profileError) notices.push('<p>Profile: ' + esc(s.profileError) + '</p>');
+    if (s.keyError) notices.push('<p>Sealing key: ' + esc(s.keyError) + '</p>');
+    if (!notices.length) return '';
+    return '<div class="notices" role="alert">' + notices.join('') + '</div>';
+  }
+
+  function renderGrid(s) {
+    var elements = s.elements;
+    var graph = (s.frontmatter && PROFILE_GRAPHS[s.frontmatter.profile]) || null;
+    var accent = s.profileError ? null : computeAccent(elements, graph);
+    var cells = elements.map(function (e) {
+      var mc = markerCounts(e);
+      var closed = e.status.status === 'accepted';
+      var classes = ['cell'];
+      if (!closed) classes.push('open');
+      if (accent === e.number) classes.push('accent');
+      return '<div class="' + classes.join(' ') + '">'
+        + '<div class="cell-head"><span class="cell-num">' + e.number + '</span><span class="cell-title">' + esc(e.title) + '</span></div>'
+        + '<div class="cell-counts">P ' + mc.proposed + ' &middot; T ' + mc.tentative + ' &middot; S ' + mc.stated + ' &middot; A ' + mc.accepted + '</div>'
+        + (closed ? '' : '<div class="cell-blank" aria-hidden="true"></div>')
+        + '<div class="cell-state">' + (closed ? 'closed' : 'open') + '</div>'
+        + (accent === e.number ? '<span class="accent-badge">most depended-on</span>' : '')
+        + '</div>';
+    }).join('');
+    return '<section id="grid" class="page-section"><h2>Zoom-out</h2><div class="grid3x3">' + cells + '</div></section>';
+  }
+
+  function renderElement(e) {
+    var footnotes = [];
+    var body = e.questions.map(function (q) {
+      var stmts = q.statements.map(function (s) {
+        var num = null;
+        if (s.marker) {
+          footnotes.push(footnoteText(s));
+          num = footnotes.length;
+        }
+        var actions = [];
+        if (!fixtureMode) {
+          if (['proposed', 'tentative', 'stated'].indexOf(s.marker) !== -1) {
+            actions.push('<button type="button" class="action-btn" data-action="accept" data-question="' + esc(q.id) + '" data-hash="' + esc(s.hash) + '">Accept</button>');
+            actions.push('<label class="why-label">Why (optional) <input type="text" data-why-for="accept-' + esc(q.id) + '-' + esc(s.hash) + '"></label>');
+          }
+          if (['proposed', 'tentative'].indexOf(s.marker) !== -1) {
+            actions.push('<button type="button" class="action-btn" data-action="stated" data-question="' + esc(q.id) + '" data-hash="' + esc(s.hash) + '">Set stated</button>');
+          }
+        }
+        return '<li class="statement">' + esc(s.text)
+          + (num ? ' <sup><a href="#fn-' + e.number + '-' + num + '" id="fnref-' + e.number + '-' + num + '">[' + num + ']</a></sup>' : '')
+          + (actions.length ? '<div class="statement-actions">' + actions.join('') + '</div>' : '')
+          + '</li>';
+      }).join('');
+      return '<div class="question"><h4>' + esc(q.id) + ' &middot; ' + esc(q.text) + '</h4>'
+        + (stmts ? '<ul class="statements">' + stmts + '</ul>' : '<p class="empty-note">(empty)</p>')
+        + '</div>';
+    }).join('');
+
+    var sourceKey = footnotes.length
+      ? '<ol class="source-key">' + footnotes.map(function (t, i) {
+          return '<li id="fn-' + e.number + '-' + (i + 1) + '">' + (t ? esc(t) : '—') + ' <a href="#fnref-' + e.number + '-' + (i + 1) + '">&#8617;</a></li>';
+        }).join('') + '</ol>'
+      : '';
+
+    var commentForm = fixtureMode
+      ? '<p class="empty-note">Actions are disabled in fixture mode.</p>'
+      : '<div class="comment-form">'
+        + '<label>Comment (becomes a DISCOVERY on this element)<br><textarea data-comment-body-for="' + e.number + '"></textarea></label>'
+        + '<label>Why (optional) <input type="text" data-comment-why-for="' + e.number + '"></label>'
+        + '<button type="button" class="action-btn" data-action="comment" data-element="' + e.number + '" data-element-title="' + esc(e.title) + '">Post comment</button>'
+        + '</div>';
+
+    return '<section id="element-' + e.number + '" class="page-section">'
+      + '<h3>' + e.number + ' &middot; ' + esc(e.title) + '</h3>'
+      + body + sourceKey + commentForm
+      + '</section>';
+  }
+
+  function renderElements(s) {
+    var toc = '<ul class="toc">' + s.elements.map(function (e) {
+      return '<li><a href="#element-' + e.number + '">' + e.number + ' &middot; ' + esc(e.title) + '</a></li>';
+    }).join('') + '</ul>';
+    return '<section id="elements-toc" class="page-section"><h2>Zoom-in</h2>' + toc + '</section>'
+      + s.elements.map(renderElement).join('');
+  }
+
+  function renderAgenda(s) {
+    var openElements = s.elements.filter(function (e) { return e.status.status !== 'accepted'; });
+    var discoveries = s.decisions.filter(function (d) { return d.kind === 'DISCOVERY'; });
+    function findingsFor(number) {
+      return discoveries.filter(function (d) {
+        var found = /^(\d+)/.exec(d.ref || '');
+        return found && Number(found[1]) === number;
+      });
+    }
+    var items = openElements.map(function (e) {
+      var findings = findingsFor(e.number);
+      return '<li><strong>' + e.number + ' &middot; ' + esc(e.title) + '</strong>'
+        + (findings.length
+          ? '<ul>' + findings.map(function (d) { return '<li>' + esc(d.body) + '</li>'; }).join('') + '</ul>'
+          : '<p class="empty-note">No linked findings.</p>')
+        + '</li>';
+    }).join('');
+    return '<section id="agenda" class="page-section"><h2>Agenda</h2>'
+      + (items ? '<ul class="agenda-list">' + items + '</ul>' : '<p>No open elements.</p>')
+      + '</section>';
+  }
+
+  function renderDecisionLog(s) {
+    var rows = s.decisions.map(function (d) {
+      return '<li class="decision-entry"><span class="seal-badge">' + esc(d.sealStatus) + '</span>'
+        + '#' + d.seq + ' &middot; ' + esc(d.date) + ' &middot; ' + esc(d.kind) + ' &middot; ' + esc(d.ref)
+        + '<div class="decision-body">' + esc(d.body) + '</div>'
+        + '</li>';
+    }).join('');
+    return '<section id="log" class="page-section"><h2>Decision log</h2>'
+      + (rows ? '<ol class="decision-list">' + rows + '</ol>' : '<p>No entries yet.</p>')
+      + '</section>';
+  }
+
+  function renderFooter(s) {
+    return '<footer class="page-section"><p>research-harness ' + esc(s.version || 'unknown') + ' &middot; Canvas after Dorobantu et al. 2024</p></footer>';
+  }
+
+  function render() {
+    app.innerHTML = renderNotices(state)
+      + renderGrid(state)
+      + renderElements(state)
+      + renderAgenda(state)
+      + renderDecisionLog(state)
+      + renderFooter(state);
+  }
+
+  function fetchState() {
+    var url = fixtureMode ? fixturePath : '/api/state';
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('failed to load state (' + r.status + ')');
+      return r.json();
+    });
+  }
+
+  function refreshState() {
+    return fetchState().then(function (s) { state = s; render(); });
+  }
+
+  function post(path, payload) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'X-Harness-Token': token || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (json) { return { status: r.status, json: json }; });
+    });
+  }
+
+  function doPost(path, payload) {
+    post(path, payload).then(function (res) {
+      if (res.status === 200 && res.json && res.json.ok) {
+        return refreshState();
+      }
+      if (res.status === 409) {
+        showNotice('The canvas changed since this view loaded; reloading.');
+        return refreshState();
+      }
+      showNotice((res.json && res.json.error) || ('Request failed (' + res.status + ').'));
+    }).catch(function (err) {
+      showNotice('Request failed: ' + err.message);
+    });
+  }
+
+  app.addEventListener('click', function (event) {
+    var btn = event.target.closest('button[data-action]');
+    if (!btn || fixtureMode) return;
+    var action = btn.getAttribute('data-action');
+    if (action === 'accept' || action === 'stated') {
+      var qid = btn.getAttribute('data-question');
+      var hash = btn.getAttribute('data-hash');
+      var payload = { questionId: qid, expectedHash: hash };
+      var path = action === 'accept' ? '/api/accept' : '/api/stated';
+      if (action === 'accept') {
+        var whyInput = document.querySelector('[data-why-for="accept-' + qid + '-' + hash + '"]');
+        var why = whyInput ? whyInput.value.trim() : '';
+        if (why) payload.why = why;
+      }
+      doPost(path, payload);
+    } else if (action === 'comment') {
+      var num = btn.getAttribute('data-element');
+      var title = btn.getAttribute('data-element-title');
+      var bodyInput = document.querySelector('[data-comment-body-for="' + num + '"]');
+      var whyInput2 = document.querySelector('[data-comment-why-for="' + num + '"]');
+      var body = bodyInput ? bodyInput.value.trim() : '';
+      if (!body) { showNotice('A comment needs body text.'); return; }
+      var commentPayload = { ref: num + ' ' + title, body: body };
+      var why2 = whyInput2 ? whyInput2.value.trim() : '';
+      if (why2) commentPayload.why = why2;
+      doPost('/api/comment', commentPayload);
+    }
+  });
+
+  refreshState().catch(function (err) {
+    app.innerHTML = '<p role="alert">Could not load the canvas: ' + esc(err.message) + '</p>';
+  });
+})();
+</script>
+</body>
+</html>

@@ -102,6 +102,19 @@ shellProbe('L30', 'a JS array literal in a word makes the word denote the state 
 shellProbe('L31', 'control: the same word with the brackets removed', 'node -e \'const r="SQ-28";console.log(r)\'');
 shellProbe('L32', 'control: the same mis-glob under a read-only verb, so no refusal follows it', 'grep -n "[Qa-]" README.md');
 
+// SQ-96: the same family for a bare `*`/`**` run inside a sed program or grep
+// pattern. That text is never glob-expanded, so a run in it names the state
+// only by spelling it; a shell program (`sh -c`, `eval`, `bash -c`) is expanded
+// when it runs and keeps its runs as patterns.
+shellProbe('L35', 'SQ-80 #8: a sed edit of .gitignore whose replacement is **/_raw-model-output/*', "sed -i '' 's|^_raw-model-output/\\*$|**/_raw-model-output/*|' .gitignore");
+shellProbe('L36', 'a **/ run in a sed program beside a non-read-only verb, on files outside research/', "rm -f notes.txt && sed -n 's|x|**/_raw/*|p' .gitignore");
+shellProbe('L37', 'control: a */ grep pattern under a read-only verb alone', "grep -n '*/foo' .gitignore");
+shellProbe('L38', 'bound: a quoted */foo that is the whole word stays a pattern (the word, not a run in it)', "mkdir -p scratch && grep -n '*/foo' .gitignore");
+shellProbe('L39', 'control: a run that spells research/ literally in a sed program is still the state', "sed -i '' 's|a|research/canvas.md|' .gitignore");
+shellProbe('L40', 'control: a glob in an sh -c program is expanded when it runs', "sh -c 'rm res*/canvas.md'");
+shellProbe('L41', 'control: a glob in an eval program is expanded when it runs', 'eval "sed -i s/x/y/ r*/canvas.md"');
+shellProbe('L42', 'control: a ** in a bash -c program is expanded when it runs', 'bash -c "cp x **/research/canvas.md"');
+
 // The other direction of the same comparison: `componentMatches(parts[k],
 // stateParts[k])` takes the candidate as the pattern, so a literal `[` in the
 // project path is a character class the state directory's own name cannot match.

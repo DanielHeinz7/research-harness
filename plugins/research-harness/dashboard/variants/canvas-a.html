@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research harness — canvas</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f4f4f2;
+    --sheet: #ffffff;
+    --ink: #23252f;
+    --muted: #545b6e;
+    --faint: #82889c;
+    --line: rgba(35, 37, 47, 0.20);
+    --accent: #b8481e;
+    --accent-wash: rgba(184, 72, 30, 0.07);
+    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-serif);
+    line-height: 1.55;
+  }
+  .sheet {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+  @media (max-width: 480px) {
+    .sheet { padding: 1.25rem 1rem 3rem; }
+  }
+  h1, h2, h3, h4 { line-height: 1.25; font-weight: 600; }
+
+  /* ---- notice + refusals ------------------------------------------- */
+  #notice {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0.65rem 1rem;
+    margin-bottom: 1.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.92rem;
+    border-radius: 3px;
+  }
+  #notice[hidden] { display: none; }
+  #notice:not([hidden]) { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  #notice button {
+    font-family: var(--font-sans);
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--paper);
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .notices {
+    border: 1px dashed var(--accent);
+    background: var(--accent-wash);
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.92rem;
+  }
+  .notices p { margin: 0.25rem 0; }
+
+  /* ---- masthead ------------------------------------------------------ */
+  .masthead {
+    margin-bottom: 2.25rem;
+    padding-bottom: 1.1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .masthead h1 {
+    margin: 0 0 0.4rem;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(1.5rem, 4.5vw, 2rem);
+  }
+  .masthead-byline {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  /* ---- shared section rhythm ------------------------------------------ */
+  .page-section { margin-bottom: 2.5rem; }
+  h2 { font-size: 1.35rem; margin: 0 0 1rem; }
+  .empty-note { font-style: italic; color: var(--faint); }
+
+  /* ---- table of contents ------------------------------------------- */
+  .toc { margin: 0; }
+  .toc ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.35rem 1.3rem; }
+  .toc a { font-family: var(--font-sans); font-size: 0.9rem; color: var(--ink); text-decoration: none; border-bottom: 1px solid transparent; }
+  .toc a:hover, .toc a:focus-visible { border-bottom-color: var(--ink); }
+  .toc-num { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); margin-right: 0.35em; }
+
+  /* ---- grid (zoom-out) ---------------------------------------------- */
+  .grid3x3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 720px) {
+    .grid3x3 { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 480px) {
+    .grid3x3 { grid-template-columns: 1fr; }
+  }
+  .cell {
+    display: flex;
+    flex-direction: column;
+    min-height: 9rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--sheet);
+    padding: 0.85rem 1rem 1rem;
+  }
+  .cell-empty { border-style: dashed; background: rgba(35, 37, 47, 0.015); }
+  .cell-accent { border-color: var(--accent); border-width: 1.5px; background: var(--accent-wash); }
+  .cell-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+  .cell-num { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
+  .cell-counts { font-family: var(--font-mono); font-size: 0.72rem; color: var(--faint); white-space: nowrap; }
+  .cell-title { margin: 0.35rem 0 0; font-size: 1rem; font-weight: 600; }
+  .cell-blank { margin-top: auto; padding-top: 0.4rem; border-top: 1px dashed var(--faint); }
+  .cell-blank-caption, .cell-empty-note {
+    display: block;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.85rem;
+    color: var(--faint);
+  }
+  .cell-empty-note { margin-top: auto; padding-top: 0.4rem; }
+  .cell-closed-tag {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .accent-badge {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 0.08em 0.5em;
+    border-radius: 2px;
+  }
+
+  /* ---- elements (zoom-in) -------------------------------------------- */
+  .element-section { padding-top: 1.5rem; border-top: 1px solid var(--line); }
+  .element-section h3 { font-size: 1.15rem; margin: 0 0 0.9rem; }
+  .question { margin: 1rem 0; padding-top: 0.9rem; border-top: 1px solid var(--line); }
+  .question:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .question h4 { margin: 0 0 0.4rem; font-size: 1rem; }
+  .statements { list-style: none; padding: 0; margin: 0; }
+  .statement { margin-bottom: 0.65rem; }
+  .statement:last-child { margin-bottom: 0; }
+  .statement-text { }
+  sup a { font-family: var(--font-mono); font-size: 0.75em; color: var(--muted); text-decoration: none; }
+
+  .marker-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.05em 0.4em;
+    margin-right: 0.5em;
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    line-height: 1.5;
+  }
+  .marker-proposed { border-style: dotted; color: var(--faint); border-color: var(--faint); }
+  .marker-tentative { border-style: dashed; color: var(--muted); border-color: var(--muted); }
+  .marker-stated { border-style: solid; color: var(--ink); }
+  .marker-accepted { border-style: solid; color: var(--paper); background: var(--ink); }
+
+  .statement-actions {
+    margin-top: 0.4rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    font-family: var(--font-sans);
+  }
+  .action-btn {
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .action-btn:hover { background: var(--ink); color: var(--paper); }
+  .action-btn:disabled { color: var(--faint); border-color: var(--faint); background: transparent; cursor: not-allowed; }
+  .why-label { font-family: var(--font-sans); font-size: 0.82rem; color: var(--muted); }
+  .why-label input { font-family: var(--font-sans); font-size: 0.85rem; border: 1px solid var(--line); border-radius: 3px; padding: 0.25rem 0.45rem; }
+
+  .source-key {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    border-top: 1px dashed var(--line);
+    padding: 0.6rem 0 0 1.3rem;
+    margin-top: 1rem;
+  }
+  .source-key li { margin-bottom: 0.3rem; }
+  .source-key a { color: var(--faint); text-decoration: none; margin-left: 0.3rem; }
+
+  .comment-form { margin-top: 1.2rem; border-top: 1px solid var(--line); padding-top: 0.9rem; font-family: var(--font-sans); }
+  .comment-form label { display: block; margin-bottom: 0.5rem; font-size: 0.88rem; color: var(--muted); }
+  .comment-form textarea, .comment-form input {
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.35rem 0.5rem;
+    margin-top: 0.3rem;
+  }
+  .comment-form textarea { width: 100%; max-width: 40rem; min-height: 4.5rem; display: block; }
+
+  /* ---- agenda --------------------------------------------------------- */
+  .agenda-list { list-style: none; padding: 0; margin: 0; }
+  .agenda-item { padding: 0.8rem 0; border-top: 1px solid var(--line); }
+  .agenda-item:first-child { border-top: none; padding-top: 0; }
+  .agenda-head { margin: 0 0 0.4rem; font-family: var(--font-sans); font-weight: 600; }
+  .agenda-findings { list-style: disc; margin: 0; padding-left: 1.3rem; }
+  .agenda-findings li { margin-bottom: 0.3rem; }
+
+  /* ---- decision log ---------------------------------------------------- */
+  .decision-list { list-style: none; padding: 0; margin: 0; }
+  .decision-entry { padding: 0.8rem 0; border-top: 1px solid var(--line); }
+  .decision-entry:first-child { border-top: none; padding-top: 0; }
+  .decision-meta { font-family: var(--font-mono); font-size: 0.76rem; color: var(--muted); margin-left: 0.6rem; }
+  .decision-body { margin: 0.4rem 0 0; }
+  .seal-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    padding: 0.05em 0.4em;
+  }
+  .seal-verified { border-style: solid; background: var(--ink); color: var(--paper); }
+  .seal-legacy { border-style: dashed; color: var(--muted); border-color: var(--muted); }
+  .seal-unverifiable { border-style: dotted; color: var(--faint); border-color: var(--faint); }
+  .seal-broken { border-style: double; border-width: 3px; color: var(--accent); border-color: var(--accent); }
+
+  footer {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    color: var(--faint);
+  }
+
+  @media print {
+    body { background: #fff; }
+    .sheet { max-width: none; padding: 0; }
+    #notice, .action-btn, .comment-form, .why-label, .statement-actions, .toc { display: none !important; }
+    .cell-accent { background: #fff; }
+  }
+  @page { size: A4; margin: 2cm; }
+  @page figure { size: A4 landscape; margin: 1.5cm; }
+  .page-section { break-before: page; }
+  .masthead { break-before: auto; }
+  #grid { page: figure; }
+</style>
+</head>
+<body>
+<div class="sheet">
+<div id="notice" role="alert" hidden>
+  <span id="notice-text"></span>
+  <button type="button" id="notice-dismiss">Dismiss</button>
+</div>
+<div id="app">
+  <p>Loading…</p>
+</div>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  // Static copy of the shipped `is-qualitative` profile's dependency graph
+  // (plugins/research-harness/references/profiles/is-qualitative.md, "##
+  // Dependency graph"). /api/state does not expose a graph field
+  // (bin/canvas-serve.js's viewState only uses it server-side to compute
+  // `violations`); SQ-83's recon derives the accent cell from this same
+  // static profile file directly, not from an API call, so mirroring it here
+  // is the documented derivation, not a workaround. `is-qualitative` is the
+  // only profile shipped with the MVP; an unknown profile id simply gets no
+  // accent cell.
+  var PROFILE_GRAPHS = {
+    'is-qualitative': { 1: [], 2: [1, 3], 3: [1], 4: [2, 7], 5: [3, 9], 6: [5], 7: [6], 8: [2, 4, 7], 9: [1, 3] }
+  };
+
+  var qs = new URLSearchParams(location.search);
+  var fixturePath = qs.get('fixture');
+  var fixtureMode = !!fixturePath;
+
+  // The URL carries a single-use code, not the write token. The view trades
+  // the code for the token once and keeps the token in this variable only:
+  // never in storage, never back in the URL.
+  var token = null;
+  var sessionCode = null;
+  if (!fixtureMode) {
+    var m = /(?:^|[#&])c=([0-9a-f]+)/.exec(location.hash);
+    sessionCode = m ? m[1] : null;
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  var LINK_USED = 'This session link was already used. Stop `serve` and start it again.';
+
+  var state = null;
+  var app = document.getElementById('app');
+  var noticeBox = document.getElementById('notice');
+  var noticeText = document.getElementById('notice-text');
+  document.getElementById('notice-dismiss').addEventListener('click', function () { noticeBox.hidden = true; });
+
+  function showNotice(msg) {
+    noticeText.textContent = msg;
+    noticeBox.hidden = false;
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function basename(p) {
+    var parts = String(p).split('/');
+    return parts[parts.length - 1];
+  }
+
+  // reflow.py's footnote rule (SQ-83 recon c_mumwggjj_ed1628), ported with
+  // the ticket's simpler source-name policy: basename + anchor, not a
+  // hand-curated DOCS map.
+  function footnoteText(statement) {
+    var parts = [];
+    if (statement.marker && statement.marker !== 'proposed') {
+      parts.push('Marked ' + statement.marker + '.');
+    }
+    (statement.tags || []).forEach(function (tag) {
+      if (tag === 'unverified') {
+        parts.push('No source found; unverified.');
+      } else if (tag.indexOf('src:') === 0) {
+        var value = tag.slice(4).trim();
+        var hashIdx = value.indexOf('#');
+        var filePath = hashIdx === -1 ? value : value.slice(0, hashIdx);
+        var anchor = hashIdx === -1 ? '' : value.slice(hashIdx + 1);
+        var name = basename(filePath);
+        parts.push(anchor ? (name + ', ' + anchor + '.') : (name + '.'));
+      } else if (tag) {
+        parts.push(tag + '.');
+      }
+    });
+    return parts.join(' ');
+  }
+
+  function markerCounts(element) {
+    var counts = { proposed: 0, tentative: 0, stated: 0, accepted: 0 };
+    element.questions.forEach(function (q) {
+      q.statements.forEach(function (s) {
+        if (s.marker && Object.prototype.hasOwnProperty.call(counts, s.marker)) counts[s.marker] += 1;
+      });
+    });
+    return counts;
+  }
+
+  // The open element most others depend on, transitively, per SQ-83's
+  // recon: combine open/closed status with the profile's dependency graph
+  // and pick the open element with the largest transitive dependent set.
+  function computeAccent(elements, graph) {
+    if (!graph) return null;
+    var reverse = {};
+    Object.keys(graph).forEach(function (n) { reverse[n] = reverse[n] || []; });
+    Object.keys(graph).forEach(function (n) {
+      graph[n].forEach(function (dep) {
+        reverse[dep] = reverse[dep] || [];
+        reverse[dep].push(Number(n));
+      });
+    });
+    function transitiveDependents(n) {
+      var seen = new Set();
+      var stack = (reverse[n] || []).slice();
+      while (stack.length) {
+        var cur = stack.pop();
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        (reverse[cur] || []).forEach(function (x) { if (!seen.has(x)) stack.push(x); });
+      }
+      return seen.size;
+    }
+    var best = null;
+    var bestCount = 0;
+    elements.forEach(function (e) {
+      if (e.status.status === 'accepted') return;
+      var c = transitiveDependents(e.number);
+      if (c > bestCount) { bestCount = c; best = e.number; }
+    });
+    return best;
+  }
+
+  function renderNotices(s) {
+    var notices = [];
+    if (s.profileError) notices.push('<p>Profile: ' + esc(s.profileError) + '</p>');
+    if (s.keyError) notices.push('<p>Sealing key: ' + esc(s.keyError) + '</p>');
+    if (!notices.length) return '';
+    return '<div class="notices" role="alert">' + notices.join('') + '</div>';
+  }
+
+  // A document masthead: the project this canvas belongs to and the
+  // frontmatter that says which outlet, profile and mode it runs under, so a
+  // printed copy identifies itself on its own first page.
+  function renderMasthead(s) {
+    var fm = s.frontmatter || {};
+    var bits = [];
+    if (fm.outlet) bits.push(fm.outlet);
+    if (fm.profile) bits.push(fm.profile);
+    if (fm.mode) bits.push(fm.mode);
+    if (fm.created) bits.push('opened ' + fm.created);
+    var byline = bits.length ? bits.join(' · ') : 'research canvas';
+    return '<header class="masthead page-section">'
+      + '<h1>' + esc(s.project || 'Untitled project') + '</h1>'
+      + '<p class="masthead-byline">' + esc(byline) + '</p>'
+      + '</header>';
+  }
+
+  function renderGrid(s) {
+    var elements = s.elements;
+    var graph = (s.frontmatter && PROFILE_GRAPHS[s.frontmatter.profile]) || null;
+    var accent = s.profileError ? null : computeAccent(elements, graph);
+    var cells = elements.map(function (e) {
+      var mc = markerCounts(e);
+      var st = e.status.status;
+      var closed = st === 'accepted';
+      var empty = st === 'empty';
+      var classes = ['cell', 'cell-' + st];
+      if (accent === e.number) classes.push('cell-accent');
+      var counts = 'P' + mc.proposed + ' · T' + mc.tentative + ' · S' + mc.stated + ' · A' + mc.accepted;
+      var footer;
+      if (empty) {
+        footer = '<span class="cell-empty-note">No proposals yet.</span>';
+      } else if (closed) {
+        footer = '<span class="cell-closed-tag">closed</span>';
+      } else {
+        footer = '<div class="cell-blank" aria-hidden="true"><span class="cell-blank-caption">open</span></div>';
+      }
+      return '<div class="' + classes.join(' ') + '">'
+        + '<div class="cell-head"><span class="cell-num">' + pad2(e.number) + '</span><span class="cell-counts">' + counts + '</span></div>'
+        + '<h3 class="cell-title">' + esc(e.title) + '</h3>'
+        + footer
+        + (accent === e.number ? '<span class="accent-badge">most depended-on</span>' : '')
+        + '</div>';
+    }).join('');
+    return '<section id="grid" class="page-section"><h2>Zoom-out</h2><div class="grid3x3">' + cells + '</div></section>';
+  }
+
+  function renderElement(e) {
+    var footnotes = [];
+    var body = e.questions.map(function (q) {
+      var stmts = q.statements.map(function (s) {
+        var num = null;
+        if (s.marker) {
+          footnotes.push(footnoteText(s));
+          num = footnotes.length;
+        }
+        var actions = [];
+        if (!fixtureMode) {
+          if (['proposed', 'tentative', 'stated'].indexOf(s.marker) !== -1) {
+            actions.push('<button type="button" class="action-btn" data-action="accept" data-question="' + esc(q.id) + '" data-hash="' + esc(s.hash) + '">Accept</button>');
+            actions.push('<label class="why-label">Why (optional) <input type="text" data-why-for="accept-' + esc(q.id) + '-' + esc(s.hash) + '"></label>');
+          }
+          if (['proposed', 'tentative'].indexOf(s.marker) !== -1) {
+            actions.push('<button type="button" class="action-btn" data-action="stated" data-question="' + esc(q.id) + '" data-hash="' + esc(s.hash) + '">Set stated</button>');
+          }
+        }
+        var badge = s.marker ? '<span class="marker-badge marker-' + esc(s.marker) + '">' + esc(s.marker) + '</span>' : '';
+        return '<li class="statement">' + badge + '<span class="statement-text">' + esc(s.text) + '</span>'
+          + (num ? ' <sup><a href="#fn-' + e.number + '-' + num + '" id="fnref-' + e.number + '-' + num + '">' + num + '</a></sup>' : '')
+          + (actions.length ? '<div class="statement-actions">' + actions.join('') + '</div>' : '')
+          + '</li>';
+      }).join('');
+      return '<div class="question"><h4>' + esc(q.id) + ' · ' + esc(q.text) + '</h4>'
+        + (stmts ? '<ul class="statements">' + stmts + '</ul>' : '<p class="empty-note">No statements yet.</p>')
+        + '</div>';
+    }).join('');
+
+    var sourceKey = footnotes.length
+      ? '<ol class="source-key">' + footnotes.map(function (t, i) {
+          return '<li id="fn-' + e.number + '-' + (i + 1) + '">' + (t ? esc(t) : '—') + ' <a href="#fnref-' + e.number + '-' + (i + 1) + '" aria-label="Back to text">↩</a></li>';
+        }).join('') + '</ol>'
+      : '';
+
+    var commentForm = fixtureMode
+      ? '<p class="empty-note">Actions are disabled in fixture mode.</p>'
+      : '<div class="comment-form">'
+        + '<label>Comment (becomes a DISCOVERY on this element)<br><textarea data-comment-body-for="' + e.number + '"></textarea></label>'
+        + '<label>Why (optional) <input type="text" data-comment-why-for="' + e.number + '"></label>'
+        + '<button type="button" class="action-btn" data-action="comment" data-element="' + e.number + '" data-element-title="' + esc(e.title) + '">Post comment</button>'
+        + '</div>';
+
+    return '<section id="element-' + e.number + '" class="page-section element-section">'
+      + '<h3>' + e.number + ' · ' + esc(e.title) + '</h3>'
+      + body + sourceKey + commentForm
+      + '</section>';
+  }
+
+  function renderElements(s) {
+    var toc = '<nav class="toc" aria-label="Elements"><ul>' + s.elements.map(function (e) {
+      return '<li><a href="#element-' + e.number + '"><span class="toc-num">' + pad2(e.number) + '</span>' + esc(e.title) + '</a></li>';
+    }).join('') + '</ul></nav>';
+    return '<section id="elements-toc" class="page-section"><h2>Zoom-in</h2>' + toc + '</section>'
+      + s.elements.map(renderElement).join('');
+  }
+
+  function renderAgenda(s) {
+    var openElements = s.elements.filter(function (e) { return e.status.status !== 'accepted'; });
+    var discoveries = s.decisions.filter(function (d) { return d.kind === 'DISCOVERY'; });
+    function findingsFor(number) {
+      return discoveries.filter(function (d) {
+        var found = /^(\d+)/.exec(d.ref || '');
+        return found && Number(found[1]) === number;
+      });
+    }
+    var items = openElements.map(function (e) {
+      var findings = findingsFor(e.number);
+      return '<li class="agenda-item"><p class="agenda-head">' + e.number + ' · ' + esc(e.title) + '</p>'
+        + (findings.length
+          ? '<ul class="agenda-findings">' + findings.map(function (d) { return '<li>' + esc(d.body) + '</li>'; }).join('') + '</ul>'
+          : '<p class="empty-note">No linked findings.</p>')
+        + '</li>';
+    }).join('');
+    return '<section id="agenda" class="page-section"><h2>Agenda</h2>'
+      + (items ? '<ol class="agenda-list">' + items + '</ol>' : '<p class="empty-note">No open elements.</p>')
+      + '</section>';
+  }
+
+  function renderDecisionLog(s) {
+    var rows = s.decisions.map(function (d) {
+      return '<li class="decision-entry"><span class="seal-badge seal-' + esc(d.sealStatus) + '">' + esc(d.sealStatus) + '</span>'
+        + '<span class="decision-meta">#' + d.seq + ' · ' + esc(d.date) + ' · ' + esc(d.kind) + ' · ' + esc(d.ref) + '</span>'
+        + '<p class="decision-body">' + esc(d.body) + '</p>'
+        + '</li>';
+    }).join('');
+    return '<section id="log" class="page-section"><h2>Decision log</h2>'
+      + (rows ? '<ol class="decision-list">' + rows + '</ol>' : '<p class="empty-note">No entries yet.</p>')
+      + '</section>';
+  }
+
+  function renderFooter(s) {
+    return '<footer class="page-section"><p>research-harness ' + esc(s.version || 'unknown') + ' &middot; Canvas after Dorobantu et al. 2024</p></footer>';
+  }
+
+  function render() {
+    app.innerHTML = renderMasthead(state)
+      + renderNotices(state)
+      + renderGrid(state)
+      + renderElements(state)
+      + renderAgenda(state)
+      + renderDecisionLog(state)
+      + renderFooter(state);
+  }
+
+  function fetchState() {
+    var url = fixtureMode ? fixturePath : '/api/state';
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('failed to load state (' + r.status + ')');
+      return r.json();
+    });
+  }
+
+  function refreshState() {
+    return fetchState().then(function (s) { state = s; render(); });
+  }
+
+  function post(path, payload) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'X-Harness-Token': token || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (json) { return { status: r.status, json: json }; });
+    });
+  }
+
+  // Trades the code from the URL for the write token. A refusal means someone
+  // else redeemed the code first (or it expired, or this is a reload): the
+  // human has to see that, not a view that silently cannot write.
+  function openSession() {
+    if (!sessionCode) { showNotice(LINK_USED); return; }
+    post('/api/session', { code: sessionCode }).then(function (res) {
+      if (res.status === 200 && res.json && res.json.ok && res.json.token) token = res.json.token;
+      else showNotice(LINK_USED);
+    }).catch(function (err) {
+      showNotice('Could not open the session: ' + err.message);
+    });
+    sessionCode = null;
+  }
+
+  function doPost(path, payload) {
+    if (!token) { showNotice(LINK_USED); return; }
+    post(path, payload).then(function (res) {
+      if (res.status === 200 && res.json && res.json.ok) {
+        return refreshState();
+      }
+      if (res.status === 409) {
+        showNotice('The canvas changed since this view loaded; reloading.');
+        return refreshState();
+      }
+      showNotice((res.json && res.json.error) || ('Request failed (' + res.status + ').'));
+    }).catch(function (err) {
+      showNotice('Request failed: ' + err.message);
+    });
+  }
+
+  app.addEventListener('click', function (event) {
+    var btn = event.target.closest('button[data-action]');
+    if (!btn || fixtureMode) return;
+    var action = btn.getAttribute('data-action');
+    if (action === 'accept' || action === 'stated') {
+      var qid = btn.getAttribute('data-question');
+      var hash = btn.getAttribute('data-hash');
+      var payload = { questionId: qid, expectedHash: hash };
+      var path = action === 'accept' ? '/api/accept' : '/api/stated';
+      if (action === 'accept') {
+        var whyInput = document.querySelector('[data-why-for="accept-' + qid + '-' + hash + '"]');
+        var why = whyInput ? whyInput.value.trim() : '';
+        if (why) payload.why = why;
+      }
+      doPost(path, payload);
+    } else if (action === 'comment') {
+      var num = btn.getAttribute('data-element');
+      var title = btn.getAttribute('data-element-title');
+      var bodyInput = document.querySelector('[data-comment-body-for="' + num + '"]');
+      var whyInput2 = document.querySelector('[data-comment-why-for="' + num + '"]');
+      var body = bodyInput ? bodyInput.value.trim() : '';
+      if (!body) { showNotice('A comment needs body text.'); return; }
+      var commentPayload = { ref: num + ' ' + title, body: body };
+      var why2 = whyInput2 ? whyInput2.value.trim() : '';
+      if (why2) commentPayload.why = why2;
+      doPost('/api/comment', commentPayload);
+    }
+  });
+
+  if (!fixtureMode) openSession();
+  refreshState().catch(function (err) {
+    app.innerHTML = '<p role="alert">Could not load the canvas: ' + esc(err.message) + '</p>';
+  });
+})();
+</script>
+</body>
+</html>

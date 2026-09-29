@@ -65,13 +65,29 @@ function hiddenLines(lines) {
   return reasons;
 }
 
+// `init` writes the researcher's own text — the project slug and the outlet —
+// as a double-quoted YAML scalar, because such a value may hold ": ", "#" or a
+// quote of its own and a bare one makes the frontmatter unparseable (SQ-77).
+// The quotes and the escapes they carry belong to the encoding, not to the
+// value: `status` and `review` must show the outlet the researcher typed.
+// A quoted scalar this parser cannot decode (a hand-written YAML escape JSON
+// does not know) is left as it stands rather than guessed at.
+function frontmatterScalar(raw) {
+  if (raw.length < 2 || raw[0] !== '"' || raw[raw.length - 1] !== '"') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return raw;
+  }
+}
+
 function parseFrontmatter(lines) {
   if (lines[0] !== '---') return { data: {}, end: 0 };
   const data = {};
   for (let i = 1; i < lines.length; i += 1) {
     if (lines[i] === '---') return { data, end: i + 1 };
     const m = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(lines[i]);
-    if (m) data[m[1]] = m[2].trim();
+    if (m) data[m[1]] = frontmatterScalar(m[2].trim());
   }
   return { data, end: lines.length, unterminated: true };
 }

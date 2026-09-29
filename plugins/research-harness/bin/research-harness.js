@@ -67,6 +67,18 @@ function refused(result) {
 
 // ---------- init ----------
 
+// Two frontmatter values are the researcher's own text: the project slug and
+// the outlet. Written bare, an outlet like `open: ISR / MISQ` makes the whole
+// frontmatter unreadable for a real YAML reader — pandoc refuses the canvas
+// with "mapping values are not allowed in this context" (SQ-73) — while this
+// plugin's own lenient reader hid the breach. A double-quoted scalar is valid
+// YAML everywhere, and canvas.js reads the quotes and their escapes back off.
+// profile and mode need no quoting: init has already refused any value that is
+// not one of the plugin's own identifiers.
+function yamlString(value) {
+  return JSON.stringify(String(value));
+}
+
 function init(flags) {
   const root = project.projectDir({});
   if (!flags.project || typeof flags.project !== 'string') return fail(`--project is required.\n${USAGE}`, 2);
@@ -96,8 +108,8 @@ function init(flags) {
   const body = template.replace(/^---[\s\S]*?\n---\n/, '');
   const frontmatter = [
     '---',
-    `project: ${flags.project}`,
-    `outlet: ${typeof flags.outlet === 'string' ? flags.outlet : ''}`,
+    `project: ${yamlString(flags.project)}`,
+    `outlet: ${yamlString(typeof flags.outlet === 'string' ? flags.outlet : '')}`,
     `profile: ${profileId}`,
     `created: ${today()}`,
     `mode: ${flags.mode}`,
@@ -236,6 +248,14 @@ function serve(flags) {
 // ---------- entry ----------
 
 function main(argv) {
+  // `--help`/`-h` is answered before anything else, on any subcommand: the
+  // usage is the whole answer, exit 0, no project looked at and no file
+  // touched. With no subcommand at all the usage is also the right answer
+  // rather than the refusal an unknown subcommand earns.
+  if (argv.includes('--help') || argv.includes('-h')) {
+    say(USAGE);
+    return 0;
+  }
   const { positional, flags } = parseArgs(argv);
   const command = positional.shift();
   switch (command) {
@@ -245,6 +265,9 @@ function main(argv) {
     case 'accept': return accept(positional, flags);
     case 'log': return log(positional, flags);
     case 'serve': return serve(flags);
+    case undefined:
+      say(USAGE);
+      return 0;
     default: return fail(USAGE, 2);
   }
 }

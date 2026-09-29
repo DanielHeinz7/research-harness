@@ -339,6 +339,9 @@ const READ_ONLY = new Set([
   'basename', 'dirname', 'md5sum', 'shasum', 'sha1sum', 'sha256sum', 'cksum',
   'echo', 'printf', 'pwd', 'cd', 'true', 'false', 'test', '[', '[[', 'date', 'sed', 'git',
 ]);
+// SQ-106: the keywords that open a loop's condition or body. `for` and `done`
+// stand as commands of their own and are handled where they appear.
+const LOOP_OPENERS = new Set(['do', 'while', 'until']);
 // SQ-68: verbs that never act on an operand as a file. An argument here is a
 // value the command computes with, not a landing place for the state, so an
 // unresolved substitution in one is not an unknown write target (the fail-closed
@@ -1486,6 +1489,11 @@ function logKindOf(invocation) {
 function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, splitsBlanks) {
   for (const redirect of sc.redirects) {
     if (!redirect.write) continue;
+    // SQ-106: a loop counts as read-only only when nothing in it writes, so a
+    // redirect that writes anywhere but /dev/null holds the whole loop.
+    if (sc.inLoop && !(redirect.target && !redirect.target.opaque && redirect.target.text === '/dev/null')) {
+      return 'a loop that writes through a redirect is not read-only';
+    }
     if (!redirect.target) return 'it redirects into a path assembled at runtime';
     for (const target of redirect.targets || [redirect.target]) {
       if (target.opaque) return 'it redirects into a path assembled at runtime';
@@ -1495,7 +1503,11 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
       if (touches) return 'it redirects into the research state';
     }
   }
-  if (!args.length) return null;
+  if (!args.length || sc.loopKeyword) return null;
+  // SQ-106: `read` in a `while`/`until` condition sets a shell variable from
+  // stdin and writes no file. It is not added to READ_ONLY: only this position
+  // lets it through.
+  if (sc.loopCondition && !args[0].opaque && args[0].text === 'read') return null;
   // SQ-67: a shell reading its program from this heredoc is a launcher, not a
   // verb of its own (an interpreter's body is program text instead, SQ-101). The body was lexed as the script it is, so
   // what runs is judged as commands in their own right — `cat research/canvas.md`
@@ -1660,8 +1672,30 @@ function bashVerdict(command, projectRoot) {
   let envAttempt = false;
   let refusal = null;
   let allReadOnly = true;
+  let loopDepth = 0;
 
   for (const sc of commands) {
+    // SQ-106: a loop is read by its parts. The lexer hands `for f in W; do
+    // head "$f"; done` over as `for f in W`, `do head "$f"` and `done`, so the
+    // keywords are taken off the front of each command and what follows is
+    // judged as the command it is. The header and a lone `done` do nothing of
+    // their own; a body command that is not read-only still refuses, and so a
+    // loop is read-only only when every command in it is.
+    while (sc.words.length && !sc.words[0].quoted && LOOP_OPENERS.has(sc.words[0].text)) {
+      const keyword = sc.words.shift().text;
+      sc.keywordStripped = true;
+      sc.loopCondition = keyword !== 'do';
+      if (sc.loopCondition) loopDepth += 1;
+    }
+    const lead = sc.words[0];
+    if (lead && !lead.quoted && lead.text === 'for') {
+      loopDepth += 1;
+      sc.loopKeyword = true;
+    } else if (lead && !lead.quoted && lead.text === 'done' && sc.words.length === 1) {
+      sc.loopKeyword = true;
+    }
+    sc.inLoop = loopDepth > 0;
+    if (sc.loopKeyword && lead.text === 'done') loopDepth = Math.max(0, loopDepth - 1);
     for (const w of sc.words) substitute(w, values);
     for (const redirect of sc.redirects) if (redirect.target) substitute(redirect.target, values);
     // SQ-75: each word becomes the words bash makes of it. Leading assignments
@@ -1753,6 +1787,11 @@ function bashVerdict(command, projectRoot) {
         if (hasState && hasUnknownSubstitution(w.text)) touches = true;
       }
     }
+    // SQ-106: a loop that is not read-only keeps the verdict it had before the
+    // keywords were taken off. Then every word after `do`, `while` or `until`
+    // was an operand of that keyword, so an unknown value anywhere in the
+    // command counted as a target. It decides nothing when the loop only reads.
+    if (hasState && sc.keywordStripped && sc.words.some((w) => hasUnknownSubstitution(w.text))) touches = true;
 
     const invocation = harnessInvocation(argv, 0, splitsBlanks);
     if (invocation) {

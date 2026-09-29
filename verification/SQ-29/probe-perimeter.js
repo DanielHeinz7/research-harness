@@ -175,6 +175,14 @@ function toolRow(id, desc, p, toolName, toolInput) {
     `stdbuf -o0 node ${q(c.path.join(c.PLUGIN, 'bin', 'canvas-serve.js'))} --no-open`);
 }
 
+// ---- loops (SQ-106) ----
+// A loop whose body only reads is read-only; one whose body writes is not.
+{
+  const p = project();
+  shellRow('M25', 'a loop over the state whose body redirects into a copy of each file', p,
+    'for f in research/*.md; do cat "$f" > "$f.bak"; done');
+}
+
 // ---- what the rows above compose into ----
 // Nothing new: a `node -e` program (allowed in cli/B13) whose every path is
 // assembled so that no word names the research state (allowed in lex/L15). It

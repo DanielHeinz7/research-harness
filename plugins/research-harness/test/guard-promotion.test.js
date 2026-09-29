@@ -1451,6 +1451,30 @@ test('Bash: neither route denies ordinary work', () => {
   assert.equal(run(root, 'Bash', { command: 'cd research-harness && npm test' }), null);
 });
 
+// US-2 P4. The session server takes approvals from the browser, so only the
+// researcher starts it: `research-harness serve` and the server script, on
+// either route, with or without research state in the project.
+test('Bash: the model cannot start the session server', () => {
+  for (const root of [makeProject(), makeBareProject()]) {
+    for (const command of [
+      'research-harness serve',
+      'nohup research-harness serve &',
+      'node plugins/research-harness/bin/canvas-serve.js',
+      'env node bin/canvas-serve.js --no-open',
+      'sh -c "node plugins/research-harness/bin/canvas-serve.js"',
+      'sh -c "node ./canvas-serve.js"',
+      'node -e \'require("./bin/canvas-serve")\'',
+    ]) {
+      const out = run(root, 'Bash', { command });
+      assert.equal(out && out.permissionDecision, 'deny', command);
+    }
+    const direct = run(root, 'Bash', { command: 'node plugins/research-harness/bin/canvas-serve.js' });
+    assert.match(direct.permissionDecisionReason, /starts the session server/);
+    // Reading the server's source is not starting it.
+    assert.equal(run(root, 'Bash', { command: 'grep -n serve plugins/research-harness/bin/canvas-serve.js' }), null);
+  }
+});
+
 // SQ-61, cli.txt B10. The inference read the command word first, and an opaque
 // one ended the walk there: the CLI name and `accept` behind it were never
 // looked at, so the invocation ran unseen. An opaque word is read the way an

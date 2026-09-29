@@ -21,6 +21,7 @@ const USAGE = [
   'research-harness review',
   'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
+  'research-harness serve [--no-open]',
 ].join('\n');
 
 function pluginRoot() {
@@ -210,6 +211,28 @@ function log(positional, flags) {
   return 0;
 }
 
+// ---------- serve ----------
+
+// The session view (US-2). A human runs this in their own terminal; the URL
+// with the one-time token goes to their browser and their terminal, nowhere
+// else. It runs until SIGINT.
+function serve(flags) {
+  const root = project.projectDir({});
+  if (!fs.existsSync(project.canvasPath(root))) return fail('This is not a paper project: no research/canvas.md. Run research-harness init first.');
+  const canvasServe = require('./canvas-serve');
+  canvasServe.start({ root, pluginRoot: pluginRoot() }).then((running) => {
+    say(running.url);
+    if (flags['no-open'] !== true) canvasServe.openInBrowser(running.url);
+    process.once('SIGINT', () => {
+      running.close().then(() => process.exit(0));
+    });
+  }, (err) => {
+    say(`Cannot start the session view: ${err.message}`);
+    process.exitCode = 1;
+  });
+  return 0;
+}
+
 // ---------- entry ----------
 
 function main(argv) {
@@ -221,6 +244,7 @@ function main(argv) {
     case 'review': return review();
     case 'accept': return accept(positional, flags);
     case 'log': return log(positional, flags);
+    case 'serve': return serve(flags);
     default: return fail(USAGE, 2);
   }
 }

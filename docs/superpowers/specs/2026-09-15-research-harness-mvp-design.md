@@ -785,7 +785,12 @@ the lexer cannot read, so it counts as an invocation when that text names the
 CLI, as a path component or as a `require`/`import` target, or names `accept`;
 `node -e 'console.log(1)'` names neither and stays outside the harness. Inside
 such a program the guard cannot see which subcommand runs, so it judges the
-whole of it as the researcher's act.
+whole of it as the researcher's act. Next to both routes, a line in a project
+with research state that names the CLI together with `accept` or `serve`, or
+names `canvas-serve`, is refused whatever wraps it unless every command in it is
+read-only, and a name the line builds at run time (`"research-" + "harness"` in
+Python, a concatenated variable) escapes that backstop, the same limit as
+indirect execution (SQ-99).
 
 **The harness's own state is not the project's state.** The sealing key of §4.7
 lives under `RESEARCH_HARNESS_STATE_DIR`, or `~/.claude/research-harness` by

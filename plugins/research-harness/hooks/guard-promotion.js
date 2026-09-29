@@ -1541,6 +1541,26 @@ function statePresent(stateDir) {
     || fs.existsSync(path.join(stateDir, project.DECISIONS_FILE));
 }
 
+// SQ-99: a backstop next to the wrapper and opaque-program routes. Whatever
+// wraps it — an unlisted wrapper, another interpreter's inline program, a
+// terminal launcher — a line whose text names the CLI together with one of its
+// two write verbs, or names the server script, reaches them. Quotes, escapes
+// and empty quote pairs are dropped first, so `research-harn''ess` reads as the
+// name the shell makes of it. A name built at run time is not seen (spec §5.3).
+const NAMED_WRITE_VERBS = new Set(['accept', 'serve']);
+const NAME_SPLIT = /[^A-Za-z0-9._\-/~+@:]+/;
+
+function namedWrite(text) {
+  const fragments = text.replace(/\$(?:''|"")/g, '').replace(/[\\'"`]/g, '').split(NAME_SPLIT);
+  const names = fragments.map((f) => f.split('/').filter(Boolean).pop() || '');
+  if (names.some((n) => SERVER_NAMES.has(n))) return 'serve';
+  if (!names.some((n) => CLI_NAMES.has(n))) return null;
+  if (fragments.includes('accept')) return 'accept';
+  return fragments.includes('serve') ? 'serve' : null;
+}
+
+const NAMED_SERVER_WHY = 'it names the session server (`research-harness serve` or canvas-serve), which only the researcher starts, and not every command in it is read-only';
+
 function bashVerdict(command, projectRoot) {
   const cmd = String(command || '');
   if (!cmd.trim()) return null;
@@ -1586,6 +1606,7 @@ function bashVerdict(command, projectRoot) {
   let decisionAttempt = false;
   let envAttempt = false;
   let refusal = null;
+  let allReadOnly = true;
 
   for (const sc of commands) {
     for (const w of sc.words) substitute(w, values);
@@ -1689,7 +1710,11 @@ function bashVerdict(command, projectRoot) {
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
     }
 
-    if (!refusal) refusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState);
+    const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState);
+    if (!refusal) refusal = scRefusal;
+    // A launcher reading its program from a heredoc is not a read-only verb here:
+    // a body in another language was never lexed into commands of its own.
+    if (scRefusal || sc.stdinProgram) allReadOnly = false;
 
     if (argv.length && !argv[0].opaque && baseNameOf(argv[0].text) === 'cd') {
       const operand = argv.slice(1).find((w) => !w.text.startsWith('-'));
@@ -1707,8 +1732,13 @@ function bashVerdict(command, projectRoot) {
   if (decisionAttempt) return LOG_DECISION_DENIAL;
   if (envAttempt) return ENV_DENIAL;
   if (uncomputable && refusal) return bashDenial(UNCOMPUTABLE_PATTERN_WHY);
-  if (!touches || !refusal) return null;
-  return bashDenial(refusal);
+  if (touches && refusal) return bashDenial(refusal);
+  if (hasState && !allReadOnly) {
+    const named = namedWrite(cmd);
+    if (named === 'accept') return ACCEPT_DENIAL;
+    if (named === 'serve') return bashDenial(NAMED_SERVER_WHY);
+  }
+  return null;
 }
 
 // ---------- path resolution ----------

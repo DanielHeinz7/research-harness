@@ -4,5 +4,7 @@
 {"label":"SQ-76 shape 2: du -sh next to a quoted '*/20*/*' pattern","command":"du -sh mirror/acct-a mirror/acct-b; find mirror/acct-a -name '*.md' -path '*/20*/*' | wc -l","expect":"ALLOW"}
 {"label":"SQ-76 shape 3: cd ... && find ... | wc -l && du -sh ...","command":"cd mirror && find history/inbox -name '*.md' | wc -l && du -sh history/inbox","expect":"ALLOW"}
 {"label":"SQ-75 shape: echo whose text contains research/","command":"echo \"drafts move to research/notes.md later\"","expect":"ALLOW"}
+{"label":"SQ-102: variable holding git -C <dir named like the CLI>","command":"G=\"git -C /home/u/src/research-harness\"; $G add -A","expect":"ALLOW"}
+{"label":"control: SQ-102 with IFS=: the variable is the CLI path","command":"IFS=:; G=\"/tmp/a b/research-harness.js\"; $G accept 1.2","expect":"DENY"}
 {"label":"control: cp into research/canvas.md","command":"cp draft.md research/canvas.md","expect":"DENY"}
 {"label":"control: redirect into research/canvas.md","command":"echo x > research/canvas.md","expect":"DENY"}

@@ -1350,7 +1350,7 @@ function opaqueProgram(word) {
   return { harness: true, sub, rest: [] };
 }
 
-function harnessInvocation(args, depth = 0) {
+function harnessInvocation(args, depth = 0, splitsBlanks = false) {
   if (!args.length || depth > MAX_SUBSTITUTION_DEPTH) return null;
   if (args[0].opaque) {
     // The command word is assembled at runtime (`$R bin/research-harness.js
@@ -1360,7 +1360,18 @@ function harnessInvocation(args, depth = 0) {
     // `accept` found there is the invocation it would have been; `$CMD
     // --version` names neither and is left alone.
     const commandAt = wrapperCommandAt(args, 1);
-    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1) : null;
+    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1, splitsBlanks) : null;
+  }
+  // An unquoted word only holds blanks when a variable's value put them there,
+  // and bash splits that value into words before it runs anything: the program
+  // is the first of them. `G="git -C /src/research-harness"; $G add` runs git,
+  // with the CLI's name as the directory of its `-C` (SQ-102). Only the default
+  // IFS splits on space, tab and newline, so the caller allows the split only
+  // when the command never names IFS; otherwise the whole word is read as one
+  // name, which errs toward denying (`IFS=:; G="/a b/research-harness.js"`).
+  if (splitsBlanks && !args[0].quoted && /[ \t\n]/.test(args[0].text)) {
+    const split = args[0].text.split(/[ \t\n]+/).filter(Boolean).map((text) => ({ text, opaque: false, quoted: false }));
+    return harnessInvocation([...split, ...args.slice(1)], depth + 1, splitsBlanks);
   }
   const skipFlags = (from) => {
     let k = from;
@@ -1375,7 +1386,7 @@ function harnessInvocation(args, depth = 0) {
   }
   if (WRAPPERS.has(name)) {
     const commandAt = wrapperCommandAt(args, 1);
-    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1) : null;
+    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1, splitsBlanks) : null;
   }
   if (name === 'xargs') {
     let commandAt = 1;
@@ -1390,14 +1401,14 @@ function harnessInvocation(args, depth = 0) {
       if (XARGS_VALUE_FLAGS.has(option.text)) commandAt += 1;
       commandAt += 1;
     }
-    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1) : null;
+    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1, splitsBlanks) : null;
   }
   if (name === 'find') {
     const execAt = args.findIndex((w, k) => k > 0 && !w.opaque && (w.text === '-exec' || w.text === '-execdir'));
     if (execAt < 0) return null;
     let end = execAt + 1;
     while (end < args.length && args[end].text !== ';' && args[end].text !== '+') end += 1;
-    const action = harnessInvocation(args.slice(execAt + 1, end), depth + 1);
+    const action = harnessInvocation(args.slice(execAt + 1, end), depth + 1, splitsBlanks);
     // `find` is not a launcher the way `env` is: it searches, and it can carry
     // more than one action. So the inference reads the action it was given
     // without vouching for the search around it, which keeps `find`'s own
@@ -1456,7 +1467,7 @@ function logKindOf(invocation) {
 
 // Returns null when the simple command is a named read-only form, or the
 // reason it is not.
-function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState) {
+function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, splitsBlanks) {
   for (const redirect of sc.redirects) {
     if (!redirect.write) continue;
     if (!redirect.target) return 'it redirects into a path assembled at runtime';
@@ -1474,7 +1485,7 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState) {
   // what runs is judged as commands in their own right — `cat research/canvas.md`
   // under it still reads. Its own redirects were checked above.
   if (sc.stdinProgram) return null;
-  const invocation = harnessInvocation(args);
+  const invocation = harnessInvocation(args, 0, splitsBlanks);
   if (invocation && invocation.harness && !invocation.action) {
     if (invocation.server) return 'it starts the session server, which only the researcher starts';
     if (!invocation.sub) return null;
@@ -1574,6 +1585,9 @@ function bashVerdict(command, projectRoot) {
   // project that holds no research state there is nowhere for it to land. Only
   // a word that spells the state's location is judged, as SQ-65 already has it.
   const hasState = statePresent(stateDir);
+  // SQ-102: a command that names IFS anywhere (an assignment, `export`,
+  // `read`, a subshell) may change how bash splits a variable's value.
+  const splitsBlanks = !/\bIFS\b/.test(cmd);
 
   let commands = null;
   if (cmd.length <= MAX_COMMAND_LENGTH) {
@@ -1701,7 +1715,7 @@ function bashVerdict(command, projectRoot) {
       }
     }
 
-    const invocation = harnessInvocation(argv);
+    const invocation = harnessInvocation(argv, 0, splitsBlanks);
     if (invocation) {
       if (invocation.harness) touches = true;
       if (invocation.harness && verbAt > 0) envAttempt = true;
@@ -1710,7 +1724,7 @@ function bashVerdict(command, projectRoot) {
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
     }
 
-    const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState);
+    const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState, splitsBlanks);
     if (!refusal) refusal = scRefusal;
     // A launcher reading its program from a heredoc is not a read-only verb here:
     // a body in another language was never lexed into commands of its own.

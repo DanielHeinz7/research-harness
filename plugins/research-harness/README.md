@@ -48,7 +48,7 @@ a project that already has a canvas it creates the missing key and changes
 nothing else. Entries sealed elsewhere stay unverifiable on this machine; that
 is the honest answer, and the review says so rather than reporting a problem.
 
-## The five commands
+## The six commands
 
 The skills above are the normal way in. The CLI underneath them is
 `node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js"`:
@@ -60,6 +60,45 @@ The skills above are the normal way in. The CLI underneath them is
 | `review` | the mechanical half of `canvas-review` |
 | `accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]` | the researcher's act; the model may not run it |
 | `log DISCOVERY\|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]` | appends a sealed entry — how the model records a finding |
+| `serve [--no-open]` | opens the session view in your browser; the model may not run it |
+
+## Session view
+
+    research-harness serve
+
+Run this in your own terminal, not through Claude Code: the guard refuses both
+the `serve` subcommand and a direct run of `bin/canvas-serve.js`, because
+starting the server is the researcher's act. It refuses to start at all
+without a `research/canvas.md` already in place.
+
+The command binds to `127.0.0.1` on a random port, opens a browser tab whose
+URL carries a one-time token, and prints that same URL to your terminal in
+case the browser does not open on its own. The token lives only in that
+process's memory; stop the server with Ctrl-C and it is gone.
+
+The view shows:
+
+- a 3x3 grid of the nine elements, with marker counts, open or closed status,
+  and a mark on the element most others depend on;
+- one element at a time, with its numbered questions, its statements, and
+  their source footnotes;
+- an agenda: each open element together with the DISCOVERY findings linked to
+  it;
+- the decision log, with each entry's seal status.
+
+From the view you can comment, which appends a DISCOVERY entry; set a
+statement to `[stated]`; and accept a statement, through the same code the
+CLI calls, so the decision-log entry it writes is byte-identical to a CLI
+accept. Statement text is not editable here — that stays the CLI and
+`canvas-review`.
+
+Print the page for a coauthor who wants a paper copy: the print stylesheet
+puts the grid on its own landscape page and hides the comment and accept
+controls.
+
+One limit worth stating plainly: a model given a browser-automation tool in
+the same session could read the open tab and click through an accept itself.
+Close the tab when you are done.
 
 ## What it enforces
 

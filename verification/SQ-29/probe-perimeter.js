@@ -156,6 +156,25 @@ function toolRow(id, desc, p, toolName, toolInput) {
     `nohup node ${q(c.path.join(c.PLUGIN, 'bin', 'canvas-serve.js'))} --no-open`);
 }
 
+// ---- the name backstop (SQ-99) ----
+// One row per route class SQ-93 found open: an unlisted wrapper, another
+// interpreter's inline program, a quote-split name under bash -c, a terminal
+// launcher, and the server script behind an unlisted wrapper.
+{
+  const p = project();
+  const split = CLI.replace(/research-harness/g, "research-harn''ess");
+  shellRow('M20', 'accept behind an unlisted wrapper (caffeinate)', p,
+    `caffeinate -i node ${q(CLI)} accept 1.2 --match ${q('Speaking frequency')}`);
+  shellRow('M21', 'serve from a python3 -c inline program', p,
+    `python3 -c "import subprocess; subprocess.run(['node', '${CLI}', 'serve', '--no-open'])"`);
+  shellRow('M22', 'accept under bash -c with quote-split names', p,
+    `bash -c "node ${split} acc''ept 1.2 --match chairing"`);
+  shellRow('M23', 'serve through a terminal launcher (tmux new -d)', p,
+    `tmux new -d "node ${CLI} serve --no-open"`);
+  shellRow('M24', 'the server script behind an unlisted wrapper (stdbuf)', p,
+    `stdbuf -o0 node ${q(c.path.join(c.PLUGIN, 'bin', 'canvas-serve.js'))} --no-open`);
+}
+
 // ---- what the rows above compose into ----
 // Nothing new: a `node -e` program (allowed in cli/B13) whose every path is
 // assembled so that no word names the research state (allowed in lex/L15). It

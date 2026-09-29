@@ -1476,6 +1476,73 @@ test('Bash: the model cannot start the session server', () => {
   }
 });
 
+// SQ-99 (P6 F2). Unlisted wrappers, other interpreters' inline programs,
+// terminal launchers and quote-split names reached `accept` and `serve`. In a
+// project with state, a line naming the CLI with either verb, or naming
+// canvas-serve, is refused unless every command in it is read-only.
+const SQ99_CLI = '/Users/x/.claude/plugins/cache/eigenwise/research-harness/1.0/bin/research-harness.js';
+const SQ99_SPLIT = "/Users/x/.claude/plugins/cache/eigenwise/research-harn''ess/1.0/bin/research-harn''ess.js";
+const SQ99_FORMS = (verb) => [
+  `timeout 600 node ${SQ99_CLI} ${verb}`,
+  `caffeinate -i node ${SQ99_CLI} ${verb}`,
+  `script -q /dev/null node ${SQ99_CLI} ${verb}`,
+  `arch -arm64 node ${SQ99_CLI} ${verb}`,
+  `stdbuf -o0 node ${SQ99_CLI} ${verb}`,
+  `watch -n 999 node ${SQ99_CLI} ${verb}`,
+  `flock /tmp/l node ${SQ99_CLI} ${verb}`,
+  `doas node ${SQ99_CLI} ${verb}`,
+  `setsid node ${SQ99_CLI} ${verb}`,
+  `python3 -c "import subprocess; subprocess.run(['node','${SQ99_CLI}','${verb.split(' ').join("','")}'])"`,
+  `perl -e "system(q{node ${SQ99_CLI} ${verb}})"`,
+  `osascript -e "do shell script \\"node ${SQ99_CLI} ${verb}\\""`,
+  `bash -c "node ${SQ99_SPLIT} ${verb.replace(/^accept/, "acc''ept")}"`,
+  `cmux workspace create --cwd /tmp --name x --command "node ${SQ99_CLI} ${verb}"`,
+  `cmux send --surface surface:2 "node ${SQ99_CLI} ${verb}"`,
+  `tmux new -d "node ${SQ99_CLI} ${verb}"`,
+  `screen -dm node ${SQ99_CLI} ${verb}`,
+  `ln -s ${SQ99_CLI} /tmp/rh.js && node /tmp/rh.js ${verb}`,
+  `python3 <<'EOF'\nimport subprocess; subprocess.run(['node', '${SQ99_CLI}', '${verb.split(' ')[0]}'])\nEOF`,
+];
+
+test('SQ-99: a line naming the CLI with accept or serve is denied whatever wraps it', () => {
+  const root = makeProject();
+  for (const command of [...SQ99_FORMS('serve --no-open'), 'bash -c "research-harn\'\'ess serve"']) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+    assert.match(out.permissionDecisionReason, /session server/, command);
+  }
+  for (const command of SQ99_FORMS('accept 1.2')) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+    assert.match(out.permissionDecisionReason, /Accepting a statement is the researcher's act/, command);
+  }
+  const server = run(root, 'Bash', { command: 'caffeinate -i node plugins/research-harness/bin/canvas-serve.js' });
+  assert.equal(server && server.permissionDecision, 'deny');
+});
+
+test('SQ-99: reading the plugin and wrapping unrelated commands stay allowed', () => {
+  const root = makeProject();
+  for (const command of [
+    'grep -n accept plugins/research-harness/bin/research-harness.js',
+    'grep "research-harness accept" README.md',
+    'grep -rn serve plugins/research-harness/bin/canvas-serve.js | head -5',
+    'git commit -m "research-harness serve: document the token"',
+    'caffeinate -i make test',
+    'timeout 5 node x.js',
+    'cd plugins/research-harness && node --test test/serve.test.js',
+    'research-harness status',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
+test('SQ-99: without research state the name rule does not engage', () => {
+  const root = makeBareProject();
+  for (const command of [`caffeinate -i node ${SQ99_CLI} accept 1.2`, `tmux new -d "node ${SQ99_CLI} serve"`]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
 // SQ-61, cli.txt B10. The inference read the command word first, and an opaque
 // one ended the walk there: the CLI name and `accept` behind it were never
 // looked at, so the invocation ran unseen. An opaque word is read the way an

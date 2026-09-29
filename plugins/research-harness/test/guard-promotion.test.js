@@ -1608,6 +1608,43 @@ test('SQ-61: an opaque command word does not hide the invocation behind it', () 
   }
 });
 
+// SQ-102 (SQ-97 shape 3). A variable's value is spliced into the command word
+// unsplit, so the whole `git -C …/research-harness` read as one path whose last
+// component is the CLI's name. Bash splits the unquoted value and runs git; the
+// CLI's name is only the directory of `-C`. A value that does start the CLI
+// keeps its denial, and so does SQ-61's opaque command word.
+test('SQ-102: the CLI name as a directory in a variable\'s flag argument is not a harness call', () => {
+  const allowed = [
+    'G="git -C /home/u/src/research-harness"; $G status --short',
+    'G="git -C /home/u/src/research-harness"; $G log -3',
+    'G="git -C /home/u/src/research-harness"; $G add -A',
+  ];
+  const denied = [
+    '$R bin/research-harness.js accept 1.2',
+    'G="node bin/research-harness.js"; $G accept 1.2',
+    'G="npx research-harness"; $G accept 1.2',
+    'G="/opt/x/bin/research-harness.js accept"; $G 1.2',
+    // A changed IFS decides how bash splits the value, so the guard does not
+    // split it: with IFS=: the program is the whole path, the CLI.
+    'IFS=:; G="/tmp/a b/research-harness.js"; $G accept 1.2',
+    'export IFS=:; G="/tmp/a b/research-harness.js"; $G accept 1.2',
+    "IFS=$'\\n'; G=\"/tmp/a b/research-harness.js\"; $G accept 1.2",
+    '(IFS=:; G="/tmp/a b/research-harness.js"; $G accept 1.2)',
+    // Only space, tab and newline split under the default IFS; a carriage
+    // return stays inside the program name.
+    'G="/tmp/a\rb/research-harness.js"; $G accept 1.2',
+  ];
+  // The probe corpus replays in a project without research state, where no
+  // state path can deny for a reason of its own; a paper project must agree.
+  for (const root of [makeBareProject(), makeProject()]) {
+    for (const command of allowed) assert.equal(run(root, 'Bash', { command }), null, command);
+    for (const command of denied) {
+      const out = run(root, 'Bash', { command });
+      assert.equal(out && out.permissionDecision, 'deny', command);
+    }
+  }
+});
+
 // SQ-61, the argument-position sibling (SQ-57's reading, closed here). An
 // assignment whose value carries a substitution the guard cannot resolve makes
 // the variable unknown, so `$x` is an unknown target where it stands: denied

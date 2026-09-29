@@ -960,8 +960,20 @@ function hasPathSeparator(text) {
 // names nothing. A word that spells a location literally (`research/canvas.md`,
 // `./research`, an absolute path) is never let go this way: that is the word
 // that would create the state, and SQ-65 judges it whether or not it exists.
+//
+// A pattern below the state directory is let go too, unless the component that
+// stands where the state files would can match one of them (SQ-76). The shell
+// expands a glob only onto files that exist, so `find -path '*/20*/*'` — denied
+// in a repo without research state because its leading `*` resolved onto
+// `research` — cannot reach the canvas. `research/canva?.md` is still judged:
+// the state is read once, on entry, and a line that first creates it with a
+// bare name (`git checkout HEAD -- research`) would have the glob land on it.
+const STATE_FILES = [project.CANVAS_FILE, project.DECISIONS_FILE];
+
 function namesAbsentStateDir(candidate, base, stateParts, hasState) {
-  if (hasPathSeparator(candidate) && !isPattern(candidate)) return false;
+  if (hasState) return false;
+  const pattern = isPattern(candidate);
+  if (hasPathSeparator(candidate) && !pattern) return false;
   let resolved;
   try {
     resolved = path.resolve(base, candidate);
@@ -971,7 +983,10 @@ function namesAbsentStateDir(candidate, base, stateParts, hasState) {
   // Equal length means the word is the state directory itself, not a path
   // reaching into it; denotesState has already matched every component.
   const parts = resolved.split(path.sep).filter(Boolean);
-  return parts.length === stateParts.length && !hasState;
+  if (parts.length === stateParts.length) return true;
+  if (!pattern) return false;
+  const below = parts[stateParts.length];
+  return STATE_FILES.every((name) => componentMatches(below, name) === false);
 }
 
 // True when the word names the state, null when the pattern in it is one the

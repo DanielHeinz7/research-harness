@@ -875,6 +875,46 @@ test('SQ-71: with research state the same rows still deny', () => {
   }
 });
 
+// SQ-76: a glob expands only onto files that exist, so where the state is
+// absent a pattern cannot land on it at any depth. SQ-71 let the pattern go
+// when it stood for the state directory itself, but a deeper one — the `find
+// -path '*/20*/*'` of a mail-mirror count — still resolved its leading `*`
+// onto `research` and denied the `du` beside it in a repo with no research
+// state. The three kit-bridge lines are the rows below, with the scratchpad
+// path shortened; the spelled path and the stateful control still deny.
+test('SQ-76: without research state a pattern below the state directory is not the state', () => {
+  const bare = makeBareProject();
+  const S = '/private/tmp/claude-501/-Users-x-kit-bridge/0a1b/scratchpad';
+  for (const command of [
+    `S=${S}; head -3 $S/inbox_imap.log; for k in a b; do d=mirror/$k/history/inbox; [ -d $d ] && echo "$k: $(ls $d | grep -v '\\.md$' | head -1), $(find $d -name '*.md' -path '*/20*/*' | wc -l) Dateien" || echo "$k: kein Archiv"; done; .venv/bin/python --version`,
+    `S=${S}; grep -c "Eingangsarchiv 20" $S/inbox_kit.log; tail -1 $S/inbox_kit.log; cd ${bare} && find mirror/history/inbox -name '*.md' -path '*/20*/*' | wc -l; du -sh mirror/history/inbox mirror/*/history/inbox`,
+    `cd ${bare} && find mirror/history/inbox -name '*.md' -path '*/20*/*' | wc -l && ls mirror/history/inbox | head -1 && du -sh mirror/history/inbox mirror/a/history/inbox`,
+    'rm -rf */20*/*',
+  ]) {
+    assert.equal(run(bare, 'Bash', { command }), null, command);
+  }
+  // A pattern that can stand for a state file is still judged: a line that
+  // first creates the state with a bare name would have the glob land on it.
+  for (const command of [
+    'cat > research/canvas.md',
+    'cp x.md research/canvas.md',
+    'git checkout HEAD -- research && cp x.md research/canva?.md',
+    'git checkout HEAD -- research && sed -i s/a/b/ */canvas.md',
+    'rm -rf research/*',
+  ]) {
+    const out = run(bare, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-empty-'));
+  fs.mkdirSync(path.join(empty, 'research'));
+  assert.equal(run(empty, 'Bash', { command: "find . -path '*/20*/*' | wc -l && du -sh research" }), null);
+  const root = makeProject();
+  for (const command of ["find m -path '*/20*/*' | wc -l && du -sh m", 'rm -rf research/*', 'rm -rf */20*/*']) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+});
+
 test('SQ-65: with the state directory there the same words still deny', () => {
   const root = makeProject();
   for (const command of [

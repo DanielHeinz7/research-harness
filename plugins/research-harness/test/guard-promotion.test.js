@@ -1025,6 +1025,45 @@ test('SQ-86: a loop variable rebound inside the loop is unknown again', () => {
   }
 });
 
+// SQ-106: a `for`, `while` or `until` loop is read-only when every command in
+// it, the condition included, is read-only and nothing in it redirects into a
+// file. The header's word list is not a write.
+const SQ106_CLI = '/Users/x/.claude/plugins/cache/eigenwise/research-harness/1.0/bin/research-harness.js';
+test('SQ-106: a loop whose body only reads is allowed, with state and without', () => {
+  for (const root of [makeProject(), makeBareProject()]) {
+    for (const command of [
+      'for f in research/*.md; do head -3 "$f"; done',
+      'for k in a b c; do d=mirror/$k/history/inbox; [ -d $d ] && echo "$k" || echo none; done',
+      'while read -r l; do echo "$l"; done < research/canvas.md',
+      'for f in research/*.md; do for g in a b; do grep -c "$g" "$f"; done; done',
+    ]) {
+      assert.equal(run(root, 'Bash', { command }), null, `${root}: ${command}`);
+    }
+  }
+});
+
+test('SQ-106: a loop whose body writes keeps its denial', () => {
+  const root = makeProject();
+  for (const command of [
+    'for f in research/*.md; do sed -i s/x/y/ "$f"; done',
+    'for f in research/*.md; do cat "$f" > "$f.bak"; done',
+    'for f in research/*.md; do grep x "$f" > /tmp/out; done',
+    `for f in research/*.md; do node ${SQ106_CLI} accept 1.2; done`,
+    'while true; do cp x research/canvas.md; done',
+    'until false; do rm research/canvas.md; done',
+    'for f in research/*.md; do for g in a b; do cp $g $f; done; done',
+    'for f in research/*.md; do while read -r l; do echo "$l"; done < $f > research/out.md; done',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  const accept = run(root, 'Bash', { command: `for f in research/*.md; do node ${SQ106_CLI} accept 1.2; done` });
+  assert.match(accept.permissionDecisionReason, /Accepting a statement is the researcher's act/);
+  // `read` passes only as a loop condition: it is not on the read-only list.
+  const read = run(root, 'Bash', { command: 'read -r l < research/canvas.md; cp x research/canvas.md' });
+  assert.equal(read && read.permissionDecision, 'deny');
+});
+
 // SQ-29 finding F5, first face (verification/SQ-29/lex.txt L30, L26). A `[…]`
 // run in a word made every word a glob, and a pattern the regex engine refused
 // was answered "matches": an ordinary `node -e` whose JavaScript held an array

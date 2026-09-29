@@ -1007,6 +1007,23 @@ test('SQ-75: without research state a word below the state directory is judged o
   }
 });
 
+// SQ-86: a loop body that rebinds its variable (`do f=…`, `export f=…`,
+// `read f`, `printf -v f`, `declare f=…`) makes `$f` something other than the
+// loop's literal words, so the loop values no longer count.
+test('SQ-86: a loop variable rebound inside the loop is unknown again', () => {
+  const bare = makeBareProject();
+  for (const command of [
+    'for f in x y; do f=canvas.md; cp a.md research/$f; done',
+    'for f in x; do export f=canvas.md; cp a.md research/$f; done',
+    'for f in x; do read f < n.txt; cp a.md research/$f; done',
+    'for f in x; do printf -v f canvas.md; cp a.md research/$f; done',
+    'for f in x; do declare f=canvas.md; cp a.md research/$f; done',
+  ]) {
+    const out = run(bare, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+});
+
 // SQ-29 finding F5, first face (verification/SQ-29/lex.txt L30, L26). A `[…]`
 // run in a word made every word a glob, and a pattern the regex engine refused
 // was answered "matches": an ordinary `node -e` whose JavaScript held an array

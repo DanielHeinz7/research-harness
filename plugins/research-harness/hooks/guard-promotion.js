@@ -1561,8 +1561,14 @@ function bashVerdict(command, projectRoot) {
     if (loopVerb && !loopVerb.opaque && loopVerb.text === 'for' && loopName && /^[A-Za-z_][A-Za-z0-9_]*$/.test(loopName.text)) {
       values.delete(loopName.text);
       loops.delete(loopName.text);
-      if (loopIn && loopIn.text === 'in' && !loopIn.opaque && loopWords.every((w) => !w.opaque)) {
-        loops.set(loopName.text, loopWords.map((w) => w.text));
+      // SQ-86: the body can rebind NAME (`do f=…`, `export f=…`, `read f`,
+      // `printf -v f …`), and `$f` is then no longer a loop value. Any later
+      // word that is NAME or assigns to it leaves NAME unknown for the line.
+      const name = loopName.text;
+      const rebound = commands.slice(commands.indexOf(sc) + 1).some((later) =>
+        later.words.some((w) => w.text === name || w.text.startsWith(`${name}=`) || w.text.startsWith(`${name}+=`)));
+      if (!rebound && loopIn && loopIn.text === 'in' && !loopIn.opaque && loopWords.every((w) => !w.opaque)) {
+        loops.set(name, loopWords.map((w) => w.text));
       }
     }
     for (const w of sc.words) {

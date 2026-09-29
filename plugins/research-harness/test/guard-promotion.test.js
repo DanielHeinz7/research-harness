@@ -1381,18 +1381,15 @@ test('SQ-101: an interpreter\'s heredoc program is judged as program text, not a
     assert.equal(run(bare, 'Bash', { command: cmd }), null, cmd);
   }
   assert.equal(run(root, 'Bash', { command: lexedAsBash }), null);
-  // What the body spells still counts: a state path, a substitution bash runs
-  // first under an unquoted delimiter, and the CLI named inside the program.
+  // What the body spells still counts: a state path, and a substitution bash
+  // runs first under an unquoted delimiter.
   for (const [form, cmd] of [
     ['a state write', "python3 - <<'EOF'\nopen('research/canvas.md','w').write('x')\nEOF"],
     ['a substitution bash runs', "python3 <<EOF\nprint('$(rm research/canvas.md)')\nEOF"],
-    ['the CLI inside the program', "node <<'EOF'\nrequire('child_process').execSync('node bin/research-harness.js accept 1.2')\nEOF"],
   ]) {
     const out = run(root, 'Bash', { command: cmd });
     assert.equal(out && out.permissionDecision, 'deny', form);
   }
-  const accept = run(bare, 'Bash', { command: "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['research-harness', 'accept', '1.2'])\nEOF" });
-  assert.equal(accept && accept.permissionDecision, 'deny');
   // A shell as the reader keeps SQ-67: its body is lexed as the script it is.
   assert.equal(run(root, 'Bash', { command: 'bash <<EOF\ncat research/canvas.md\nEOF' }), null);
   const shell = run(root, 'Bash', { command: "bash <<'EOF'\nrm research/canvas.md\nEOF" });

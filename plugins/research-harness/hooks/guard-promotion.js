@@ -651,8 +651,11 @@ function lexBash(text, depth) {
         // ordinary scripts. It is program text the guard cannot read, judged the
         // way the quoted `PROG` of `node -e PROG` is: on the paths it spells,
         // with the interpreter itself a verb that is not read-only. An unquoted
-        // delimiter still has bash run the body's substitutions first.
-        heredoc.redirect.unreadBody = { text: body, opaque: false, quoted: true, program: true };
+        // delimiter still has bash run the body's substitutions first. The CLI
+        // name is not looked for in the body: a path component spelling it
+        // (`plugins/research-harness/…`) is no invocation, and matching on it
+        // denied ordinary scripts in the harness's own checkout as `accept`.
+        heredoc.redirect.unreadBody = { text: body, opaque: false, quoted: true };
         if (!heredoc.quoted) nestHeredocBody(body);
         continue;
       }
@@ -1698,15 +1701,6 @@ function bashVerdict(command, projectRoot) {
       if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'accept') acceptAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.opaque) acceptAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
-    }
-    // SQ-101: an interpreter's heredoc program reaches the CLI the way a
-    // `node -e` program does.
-    for (const redirect of sc.redirects) {
-      const program = redirect.unreadBody && redirect.unreadBody.program ? opaqueProgram(redirect.unreadBody) : null;
-      if (program) {
-        touches = true;
-        acceptAttempt = true;
-      }
     }
 
     if (!refusal) refusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState);

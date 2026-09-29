@@ -89,9 +89,12 @@ starting the server is the researcher's act. It refuses to start at all
 without a `research/canvas.md` already in place.
 
 The command binds to `127.0.0.1` on a random port, opens a browser tab whose
-URL carries a one-time token, and prints that same URL to your terminal in
-case the browser does not open on its own. The token lives only in that
-process's memory; stop the server with Ctrl-C and it is gone.
+URL carries a single-use code, and prints that same URL to your terminal in
+case the browser does not open on its own. On load the view trades the code
+for the write token, once. The token lives only in the server's memory and
+the open tab; stop the server with Ctrl-C and it is gone. The terminal
+prints `session code redeemed` with the time when that happens. If the view
+says the link was already used, stop `serve` and start it again.
 
 The view shows:
 
@@ -115,7 +118,10 @@ controls.
 
 One limit worth stating plainly: a model given a browser-automation tool in
 the same session could read the open tab and click through an accept itself.
-Close the tab when you are done.
+Close the tab when you are done. And a model that reads your terminal or a
+process listing in the second before the view loads, and redeems the code
+first, takes the session; you then see the "already used" message instead of
+a working view.
 
 ## What it enforces
 

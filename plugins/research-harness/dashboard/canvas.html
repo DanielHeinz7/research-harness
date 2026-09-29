@@ -159,12 +159,17 @@
   var fixturePath = qs.get('fixture');
   var fixtureMode = !!fixturePath;
 
+  // The URL carries a single-use code, not the write token. The view trades
+  // the code for the token once and keeps the token in this variable only:
+  // never in storage, never back in the URL.
   var token = null;
+  var sessionCode = null;
   if (!fixtureMode) {
-    var m = /(?:^|[#&])t=([0-9a-f]+)/.exec(location.hash);
-    token = m ? m[1] : null;
+    var m = /(?:^|[#&])c=([0-9a-f]+)/.exec(location.hash);
+    sessionCode = m ? m[1] : null;
     history.replaceState(null, '', location.pathname + location.search);
   }
+  var LINK_USED = 'This session link was already used. Stop `serve` and start it again.';
 
   var state = null;
   var app = document.getElementById('app');
@@ -412,7 +417,22 @@
     });
   }
 
+  // Trades the code from the URL for the write token. A refusal means someone
+  // else redeemed the code first (or it expired, or this is a reload): the
+  // human has to see that, not a view that silently cannot write.
+  function openSession() {
+    if (!sessionCode) { showNotice(LINK_USED); return; }
+    post('/api/session', { code: sessionCode }).then(function (res) {
+      if (res.status === 200 && res.json && res.json.ok && res.json.token) token = res.json.token;
+      else showNotice(LINK_USED);
+    }).catch(function (err) {
+      showNotice('Could not open the session: ' + err.message);
+    });
+    sessionCode = null;
+  }
+
   function doPost(path, payload) {
+    if (!token) { showNotice(LINK_USED); return; }
     post(path, payload).then(function (res) {
       if (res.status === 200 && res.json && res.json.ok) {
         return refreshState();
@@ -456,6 +476,7 @@
     }
   });
 
+  if (!fixtureMode) openSession();
   refreshState().catch(function (err) {
     app.innerHTML = '<p role="alert">Could not load the canvas: ' + esc(err.message) + '</p>';
   });

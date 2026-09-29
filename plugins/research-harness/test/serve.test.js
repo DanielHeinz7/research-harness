@@ -95,7 +95,8 @@ test('the session server serves state, refuses what fails a check, and writes wh
   const srv = await start({ root, pluginRoot });
   t.after(() => srv.close());
   assert.match(srv.token, /^[0-9a-f]{64}$/);
-  assert.equal(srv.url, `http://127.0.0.1:${srv.port}/#t=${srv.token}`);
+  assert.equal(srv.url, `http://127.0.0.1:${srv.port}/#c=${srv.code}`);
+  assert.ok(!srv.url.includes(srv.token), 'the URL carries the code, never the token');
   const host = { Host: `127.0.0.1:${srv.port}` };
 
   // GET /api/state: the elements, each statement with its text hash, the
@@ -175,24 +176,96 @@ test('the session server serves state, refuses what fails a check, and writes wh
   }
 });
 
-test('research-harness serve --no-open prints the URL once and stops on SIGINT', { skip: process.platform === 'win32' }, async () => {
+test('the single-use code is traded for the token once, and is no token itself', async (t) => {
+  const root = keyedProject();
+  const logged = [];
+  const srv = await start({ root, pluginRoot, log: (line) => logged.push(line) });
+  t.after(() => srv.close());
+  assert.match(srv.code, /^[0-9a-f]{32}$/);
+  const session = (body, extra) => post(srv, '/api/session', body, { 'X-Harness-Token': undefined, ...extra });
+  const payload = { questionId: '1.2', expectedHash: textHash(SPEAKING) };
+
+  // The code is not a write token.
+  assert.equal((await post(srv, '/api/accept', payload, { 'X-Harness-Token': srv.code })).status, 403);
+  // The exchange takes the same Host, Origin and Content-Type checks as every POST.
+  assert.equal((await session({ code: srv.code }, { Host: `localhost:${srv.port}` })).status, 403);
+  assert.equal((await session({ code: srv.code }, { Origin: 'http://evil.example' })).status, 403);
+  assert.equal((await session({ code: srv.code }, { 'Content-Type': 'text/plain' })).status, 403);
+  // A wrong code is refused and does not burn the right one.
+  assert.equal((await session({ code: '0'.repeat(32) })).status, 403);
+  assert.equal((await session({})).status, 403);
+  assert.deepEqual(logged, []);
+
+  const first = await session({ code: srv.code }, { Origin: `http://127.0.0.1:${srv.port}` });
+  assert.equal(first.status, 200, first.text);
+  assert.deepEqual(first.json, { ok: true, token: srv.token });
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /^session code redeemed \d{4}-\d{2}-\d{2}T\S+Z$/);
+
+  // A second redemption is refused, and says nothing about the token.
+  const again = await session({ code: srv.code });
+  assert.equal(again.status, 403);
+  assert.deepEqual(again.json, { ok: false, error: 'forbidden' });
+  assert.equal(logged.length, 1);
+
+  // The token it handed out writes; the code still does not.
+  assert.equal((await post(srv, '/api/accept', payload, { 'X-Harness-Token': srv.code })).status, 403);
+  const accepted = await post(srv, '/api/accept', { ...payload, why: WHY });
+  assert.equal(accepted.status, 200, accepted.text);
+});
+
+test('an expired code is refused', async (t) => {
+  const srv = await start({ root: keyedProject(), pluginRoot, codeTtlMs: -1 });
+  t.after(() => srv.close());
+  assert.equal((await post(srv, '/api/session', { code: srv.code }, { 'X-Harness-Token': undefined })).status, 403);
+});
+
+test('research-harness serve --no-open prints the code URL, never the token, and stops on SIGINT', { skip: process.platform === 'win32' }, async (t) => {
   const root = keyedProject();
   const child = childProcess.spawn(process.execPath, [cli, 'serve', '--no-open'], {
     cwd: root,
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  // A failed assertion must not leave the server running.
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
   let stdout = '';
+  let lines = 1;
+  let onLine = null;
   child.stdout.setEncoding('utf8');
-  await new Promise((resolve, reject) => {
-    child.stdout.on('data', (c) => { stdout += c; if (stdout.includes('\n')) resolve(); });
+  child.stdout.on('data', (c) => {
+    stdout += c;
+    if (onLine && stdout.split('\n').length > lines) onLine();
+  });
+  const nextLine = () => new Promise((resolve, reject) => {
+    onLine = () => { onLine = null; lines += 1; resolve(); };
+    if (stdout.split('\n').length > lines) onLine();
     child.once('exit', () => reject(new Error(`serve exited early: ${stdout}`)));
   });
-  assert.match(stdout, /^http:\/\/127\.0\.0\.1:\d+\/#t=[0-9a-f]{64}\n$/);
+  await nextLine();
+  const m = /^http:\/\/127\.0\.0\.1:(\d+)\/#c=([0-9a-f]{32})\n$/.exec(stdout);
+  assert.ok(m, stdout);
+
+  // Redeem the printed code as the view would; the terminal says so, and the
+  // token the server hands back never appears in stdout.
+  const port = Number(m[1]);
+  const res = await request(port, {
+    method: 'POST',
+    urlPath: '/api/session',
+    headers: { Host: `127.0.0.1:${port}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: m[2] }),
+  });
+  assert.equal(res.status, 200, res.text);
+  assert.match(res.json.token, /^[0-9a-f]{64}$/);
+  await nextLine();
+  assert.match(stdout.split('\n')[1], /^session code redeemed \d{4}-\d{2}-\d{2}T\S+Z$/);
+
   const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)));
   child.kill('SIGINT');
   assert.equal(await exited, 0);
-  assert.equal(stdout.split('\n').filter(Boolean).length, 1);
+  assert.equal(stdout.split('\n').filter(Boolean).length, 2);
+  assert.ok(!/[0-9a-f]{64}/.test(stdout), 'stdout holds no 64-hex token');
+  assert.ok(!stdout.includes(res.json.token));
 });
 
 test.after(() => {

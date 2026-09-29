@@ -13,11 +13,19 @@ test('canvas.html is self-contained: no http(s) URLs other than 127.0.0.1', () =
   assert.deepEqual(offenders, []);
 });
 
-test('canvas.html reads the session token from location.hash', () => {
+test('canvas.html reads a single-use code from location.hash and trades it for the token', () => {
   assert.match(html, /location\.hash/);
+  assert.match(html, /\[#&\]\)c=/);
+  assert.doesNotMatch(html, /\[#&\]\)t=/, 'the URL no longer carries the token');
+  assert.match(html, /'\/api\/session'/);
+  assert.match(html, /This session link was already used\. Stop `serve` and start it again\./);
 });
 
-test('canvas.html clears the token from the URL with history.replaceState', () => {
+test('canvas.html keeps the token in memory only', () => {
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB|document\.cookie/);
+});
+
+test('canvas.html clears the code from the URL with history.replaceState', () => {
   assert.match(html, /history\.replaceState/);
 });
 

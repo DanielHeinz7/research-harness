@@ -226,13 +226,14 @@ function log(positional, flags) {
 // ---------- serve ----------
 
 // The session view (US-2). A human runs this in their own terminal; the URL
-// with the one-time token goes to their browser and their terminal, nowhere
-// else. It runs until SIGINT.
+// with the single-use code goes to their browser and their terminal, and the
+// token it is traded for never leaves the server and the view. The terminal
+// also shows when the code is redeemed. It runs until SIGINT.
 function serve(flags) {
   const root = project.projectDir({});
   if (!fs.existsSync(project.canvasPath(root))) return fail('This is not a paper project: no research/canvas.md. Run research-harness init first.');
   const canvasServe = require('./canvas-serve');
-  canvasServe.start({ root, pluginRoot: pluginRoot() }).then((running) => {
+  canvasServe.start({ root, pluginRoot: pluginRoot(), log: say }).then((running) => {
     say(running.url);
     if (flags['no-open'] !== true) canvasServe.openInBrowser(running.url);
     process.once('SIGINT', () => {

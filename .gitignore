@@ -15,3 +15,6 @@ docs/superpowers/specs/private/
 
 # Abgezweigte Themen: nennen lokale Pfade und Board-Tickets.
 spinoff-*.md
+
+# Harvested Bash commands from private sessions (probe-benign.js --harvest).
+verification/local/

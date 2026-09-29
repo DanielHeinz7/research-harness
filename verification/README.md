@@ -13,6 +13,7 @@ a claim about enforcement. A claim nobody can re-run is not evidence.
     node verification/probes/probe-structural.js
     node verification/probes/probe-diff.js
     node verification/probes/probe-reconfirm.js
+    node verification/probes/probe-benign.js --corpus verification/fixtures/benign-sample.jsonl
 
 No arguments, no setup, no dependencies. Each script builds throwaway projects
 in a temporary directory from the fixture canvas, drives every case through the
@@ -37,6 +38,7 @@ guard that denies everything is a wall, not a guard.
 | `probe-structural.js` | the document around a statement: moving it under another element, duplicating an element or question heading, rewriting a question's text or an element's title, the frontmatter |
 | `probe-diff.js` | the statement itself and the decision log: rewording, downgrading, forging `[accepted]`, homoglyphs, invisible characters, marker-group variants, appending a forged `DECISION` entry |
 | `probe-reconfirm.js` | a short regression pass over one case per family, for when only a quick check is wanted |
+| `probe-benign.js` | the opposite direction: false positives. It replays Bash commands from projects that hold no research state through the hook and counts the DENYs; it never runs them. `--corpus verification/fixtures/benign-sample.jsonl` replays synthetic rows with expected verdicts (the SQ-76 and SQ-75 shapes plus two write controls) and exits 1 on an unexpected verdict. `--harvest` builds the corpus from exactly two path patterns: the main transcripts `~/.claude/projects/*/*.jsonl` and the subagent transcripts `~/.claude/projects/*/*/subagents/*.jsonl` (where Sidequest executors run much of their Bash). Each command takes its cwd from its own record, and a (cwd, command) pair found in both counts once, as main. It writes the corpus and a tab-separated report to the gitignored `verification/local/` and prints only counts (per origin, and DENYs per guard-reason prefix), because those commands come from private sessions. Limits: the corpus holds only commands Claude actually wrote, and a command rephrased after a denial appears in its rephrased form, so the DENY count is a lower bound. A cwd may have gained or lost research state since the command ran; rows are classified by the state at replay time, and a cwd that no longer exists is skipped. It measures the hook's decision, not what the command would have done. |
 
 `recorded/` holds output from earlier runs, kept as a baseline to diff against:
 the original pass that found the holes, the before-and-after pair from the

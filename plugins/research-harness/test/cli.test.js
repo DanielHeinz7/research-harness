@@ -352,3 +352,39 @@ test('a canvas that exists but cannot be read is reported on one line with the f
     fs.chmodSync(canvasFile, 0o644);
   }
 });
+
+// doctor reads the same three settings files Claude Code does, but has no
+// way to see what a running Claude Code process actually loaded — these
+// tests point CLAUDE_CONFIG_DIR at a fixture instead of the real ~/.claude.
+function fakeConfigDir(enabledPlugins) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-config-'));
+  if (enabledPlugins !== undefined) {
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ enabledPlugins }));
+  }
+  return dir;
+}
+
+test('doctor reports ok when the plugin is enabled in the user settings', () => {
+  const root = makeProject(false);
+  const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir });
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /^research-harness doctor: ok \(2 checks\)$/m);
+});
+
+test('doctor reports the plugin as not enabled when no settings file names it', () => {
+  const root = makeProject(false);
+  const configDir = fakeConfigDir();
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir });
+  assert.notEqual(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /plugin enabled: no enabledPlugins entry for research-harness@/);
+});
+
+test("doctor's guard-denies check passes on its own throwaway project, independent of the plugin-enabled check", () => {
+  const root = makeProject(false);
+  const configDir = fakeConfigDir({ 'research-harness@research-harness': false });
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir });
+  assert.notEqual(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /plugin enabled: .*is disabled/);
+  assert.doesNotMatch(out.stdout, /guard denies/);
+});

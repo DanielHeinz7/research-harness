@@ -2,7 +2,9 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const childProcess = require('node:child_process');
 
 const project = require('../hooks/lib/project');
 const decisions = require('../hooks/lib/decisions');
@@ -22,6 +24,7 @@ const USAGE = [
   'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
   'research-harness serve [--no-open]',
+  'research-harness doctor',
 ].join('\n');
 
 function pluginRoot() {
@@ -245,6 +248,147 @@ function serve(flags) {
   return 0;
 }
 
+// ---------- doctor ----------
+
+const PLUGIN_NAME = 'research-harness';
+
+// The three settings files Claude Code reads for this cwd, in the order a
+// later one overrides an earlier one. doctor can only read what is on disk;
+// it cannot see whether a running Claude Code process actually loaded the
+// plugin.
+function settingsSources(root) {
+  const home = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  return [
+    { label: 'user settings', file: path.join(home, 'settings.json') },
+    { label: 'project settings', file: path.join(root, '.claude', 'settings.json') },
+    { label: 'local settings', file: path.join(root, '.claude', 'settings.local.json') },
+  ];
+}
+
+function checkPluginEnabled(root) {
+  let match = null;
+  const problems = [];
+  for (const { label, file } of settingsSources(root)) {
+    let raw;
+    try {
+      raw = project.readIfExists(file);
+    } catch (err) {
+      problems.push(`${file} cannot be read (${(err && err.code) || 'unknown error'})`);
+      continue;
+    }
+    if (raw === null) continue;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (err) {
+      problems.push(`${file} does not parse as JSON (${err.message})`);
+      continue;
+    }
+    const enabled = data && typeof data === 'object' ? data.enabledPlugins : null;
+    if (!enabled || typeof enabled !== 'object') continue;
+    // The last file to name the key wins, which is exactly Claude Code's own
+    // precedence (user, then project, then local) — so a later file that
+    // disables the plugin is the answer, not the earlier one that enabled it.
+    for (const key of Object.keys(enabled)) {
+      if (key.startsWith(`${PLUGIN_NAME}@`)) {
+        match = { label, file, key, value: !!enabled[key] };
+      }
+    }
+  }
+  if (problems.length) return { ok: false, name: 'plugin enabled', detail: problems.join('; ') };
+  if (!match) {
+    const files = settingsSources(root).map((s) => s.file).join(', ');
+    return { ok: false, name: 'plugin enabled', detail: `no enabledPlugins entry for ${PLUGIN_NAME}@<marketplace> in ${files}` };
+  }
+  if (!match.value) return { ok: false, name: 'plugin enabled', detail: `${match.key} is disabled by ${match.label} (${match.file})` };
+  return { ok: true, name: 'plugin enabled', detail: `${match.key} is enabled by ${match.label} (${match.file})` };
+}
+
+// Runs the guard exactly as Claude Code would: a PreToolUse payload on its
+// stdin, cwd and CLAUDE_PROJECT_DIR pointed at the project, the verdict read
+// back off stdout. Same mechanics as test/guard-promotion.test.js's run().
+function runGuard(cwd, toolName, toolInput) {
+  const { CLAUDE_PROJECT_DIR: _project, RESEARCH_HARNESS_DIR: _dir, ...ambient } = process.env;
+  const script = path.join(pluginRoot(), 'hooks', 'guard-promotion.js');
+  const result = childProcess.spawnSync(process.execPath, [script], {
+    cwd,
+    env: { ...ambient, CLAUDE_PLUGIN_ROOT: pluginRoot(), CLAUDE_PROJECT_DIR: cwd },
+    input: JSON.stringify({ cwd, session_id: 'doctor', hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput }),
+    encoding: 'utf8',
+  });
+  if (result.error) return { error: `could not run the guard (${result.error.message})` };
+  if (result.status !== 0) return { error: `the guard exited ${result.status}: ${(result.stderr || result.stdout || '').trim()}` };
+  if (!result.stdout) return { decision: null };
+  const parsed = JSON.parse(result.stdout).hookSpecificOutput || {};
+  return { decision: parsed.permissionDecision || null, reason: parsed.permissionDecisionReason };
+}
+
+// A throwaway project the guard is asked to judge: one [proposed] statement,
+// promoted to [accepted] the way a model's Edit would. The guard must deny
+// that, and must not deny an ordinary read — an always-deny guard is not a
+// working guard.
+function checkGuardDenies() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-doctor-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'research'));
+    const canvasFile = path.join(dir, 'research', 'canvas.md');
+    const statement = 'A throwaway statement doctor writes to test the guard. [proposed]';
+    const canvasText = [
+      '---',
+      'canvas-schema: 2',
+      '---',
+      '',
+      '# 1 · Puzzle',
+      '',
+      '## 1.1 What is the broad question this project speaks to?',
+      '',
+      statement,
+      '',
+    ].join('\n');
+    fs.writeFileSync(canvasFile, canvasText);
+
+    const promote = runGuard(dir, 'Edit', {
+      file_path: canvasFile,
+      old_string: statement,
+      new_string: statement.replace('[proposed]', '[accepted]'),
+    });
+    if (promote.error) return { ok: false, name: 'guard denies', detail: promote.error };
+    if (promote.decision !== 'deny') {
+      return { ok: false, name: 'guard denies', detail: 'the guard allowed a model edit that promotes a [proposed] statement to [accepted]; it should have denied it' };
+    }
+
+    const read = runGuard(dir, 'Read', { file_path: canvasFile });
+    if (read.error) return { ok: false, name: 'guard denies', detail: read.error };
+    if (read.decision === 'deny') {
+      return { ok: false, name: 'guard denies', detail: `the guard denies an ordinary read of the canvas (${read.reason}); it should only deny writes it cannot judge` };
+    }
+    return { ok: true, name: 'guard denies', detail: 'guard-promotion.js denies a model promotion to [accepted] and allows an ordinary read' };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// Only inside a project: the sealing key `status` and `review` both need
+// (via loadState) to write a verifiable decision-log entry.
+function checkProjectState() {
+  const state = loadState();
+  if (state.error) return null;
+  if (state.keyError) return { ok: false, name: 'project state', detail: state.keyError };
+  if (!state.key) {
+    return { ok: false, name: 'project state', detail: 'no sealing key for this project on this machine; run `research-harness init --project <slug> --mode <mode>` once here' };
+  }
+  return { ok: true, name: 'project state', detail: `sealing key present at ${seal.keyPath(state.root)}` };
+}
+
+function doctor() {
+  const root = project.projectDir({});
+  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState()].filter(Boolean);
+  const failed = checks.filter((c) => !c.ok);
+  say(`research-harness doctor: ${failed.length === 0 ? `ok (${checks.length} checks)` : `${failed.length} of ${checks.length} checks failed`}`);
+  for (const c of failed) say(`- ${c.name}: ${c.detail}`);
+  return failed.length === 0 ? 0 : 1;
+}
+
 // ---------- entry ----------
 
 function main(argv) {
@@ -265,6 +409,7 @@ function main(argv) {
     case 'accept': return accept(positional, flags);
     case 'log': return log(positional, flags);
     case 'serve': return serve(flags);
+    case 'doctor': return doctor();
     case undefined:
       say(USAGE);
       return 0;

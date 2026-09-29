@@ -12,3 +12,6 @@ UPSTREAM-ISSUE.md
 
 # Private companions to the specs: unpublished studies, people, local paths.
 docs/superpowers/specs/private/
+
+# Abgezweigte Themen: nennen lokale Pfade und Board-Tickets.
+spinoff-*.md

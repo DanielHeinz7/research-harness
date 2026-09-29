@@ -147,6 +147,15 @@ function toolRow(id, desc, p, toolName, toolInput) {
     `cat ${q(c.path.join(p.alt, 'seal.key'))}`);
 }
 
+// ---- the session server (US-2 P4) ----
+// The server takes approvals from the browser, so only the researcher starts it.
+// Run as its own script it names no subcommand for the CLI rule to read.
+{
+  const p = project();
+  shellRow('M19', 'start the session server by running its script behind nohup', p,
+    `nohup node ${q(c.path.join(c.PLUGIN, 'bin', 'canvas-serve.js'))} --no-open`);
+}
+
 // ---- what the rows above compose into ----
 // Nothing new: a `node -e` program (allowed in cli/B13) whose every path is
 // assembled so that no word names the research state (allowed in lex/L15). It

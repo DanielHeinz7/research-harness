@@ -235,6 +235,11 @@ const MAX_EXPANSIONS = 256;
 const RUNNERS = new Set(['node', 'nodejs', 'npx', 'bun', 'deno', 'pnpm', 'yarn']);
 const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
 const CLI_READ_SUBS = new Set(['status', 'review', 'init']);
+// US-2: the session server takes approvals from the browser, so only the
+// researcher starts it. `research-harness serve` is already refused as a
+// subcommand outside CLI_READ_SUBS; running the server script itself is the
+// same act, and it is found on the same two routes as the CLI.
+const SERVER_NAMES = new Set(['canvas-serve', 'canvas-serve.js']);
 const XARGS_VALUE_FLAGS = new Set([
   '-a', '-d', '-E', '-I', '-J', '-L', '-n', '-P', '-s', '-S',
   '--arg-file', '--delimiter', '--eof', '--replace', '--max-lines', '--max-args', '--max-procs', '--max-chars',
@@ -1317,8 +1322,9 @@ function readsProgramFromStdin(words) {
 
 // What a program text the lexer cannot read names: 'accept' when the word is in
 // there, 'cli' when it names the CLI as a path component or a require target,
-// and null when it names neither — `node -e 'console.log(1)'` is ordinary work
-// and stays outside the harness.
+// (the session server's script counts as the CLI here), and null when it names
+// neither — `node -e 'console.log(1)'` is ordinary work and stays outside the
+// harness.
 function programNames(text) {
   let cli = false;
   for (const fragment of text.replace(EXP_RE, ' ').split(FRAGMENT_SPLIT)) {
@@ -1326,7 +1332,7 @@ function programNames(text) {
     if (fragment === 'accept') return 'accept';
     if (!cli) {
       for (const part of fragment.split('/')) {
-        if (CLI_NAMES.has(part)) cli = true;
+        if (CLI_NAMES.has(part) || SERVER_NAMES.has(part)) cli = true;
       }
     }
   }
@@ -1362,6 +1368,7 @@ function harnessInvocation(args, depth = 0) {
     return k;
   };
   const name = baseNameOf(args[0].text);
+  if (SERVER_NAMES.has(name)) return { harness: true, server: true, sub: null, rest: args.slice(1) };
   if (CLI_NAMES.has(name)) {
     const k = skipFlags(1);
     return { harness: true, sub: k < args.length ? args[k] : null, rest: args.slice(k + 1) };
@@ -1426,6 +1433,9 @@ function harnessInvocation(args, depth = 0) {
   }
   if (scriptAt >= args.length) return null;
   const script = args[scriptAt];
+  if (!script.opaque && SERVER_NAMES.has(baseNameOf(script.text))) {
+    return { harness: true, server: true, sub: null, rest: args.slice(scriptAt + 1) };
+  }
   const subAt = skipFlags(scriptAt + 1);
   return {
     harness: !script.opaque && CLI_NAMES.has(baseNameOf(script.text)),
@@ -1466,6 +1476,7 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState) {
   if (sc.stdinProgram) return null;
   const invocation = harnessInvocation(args);
   if (invocation && invocation.harness && !invocation.action) {
+    if (invocation.server) return 'it starts the session server, which only the researcher starts';
     if (!invocation.sub) return null;
     if (invocation.sub.opaque) return 'the CLI is being run with a subcommand that is not status, review, init or log';
     if (invocation.sub.text === 'log') {

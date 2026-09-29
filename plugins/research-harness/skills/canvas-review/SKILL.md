@@ -72,9 +72,23 @@ statement yourself; propose it alongside.
 ## What you write
 
 Only `[proposed]` paragraphs in the canvas, next to the statement they concern,
-and `DISCOVERY` entries recorded through the harness, which seals them:
+and `DISCOVERY` entries recorded through the harness, which seals them.
 
-    node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" log DISCOVERY "<element or n.m>" --body "<one paragraph> [proposed]"
+Word each DISCOVERY body as an open question the author team can sit down and
+talk about, not a verdict. Name the field involved by its human question, not
+by "element N", "RQ3", or a statement number — the element or statement number
+belongs in `ref`, where the harness already keeps the machine reference. Follow
+the named field with the one-sentence reason it matters.
+
+Human questions, one per element: 1 What puzzles us? · 2 Who cares, and what
+do they already know? · 3 What exactly do we ask? · 4 What is it made of? ·
+5 Where do we look? · 6 How do we look? · 7 What did we find? · 8 What does it
+change? · 9 Where does it stop?
+
+    Before: "Element 5 reports a sample drawn mainly from the authors' networks; generalizability claim in 9.1 is not supported."
+    After: "Our sample comes mostly from our own networks (Where do we look?). How far can the claim in Where does it stop? travel beyond them?"
+
+    node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" log DISCOVERY "<element or n.m>" --body "<open question, field named by its human question> [proposed]"
 
 Never write `research/decisions.md` yourself; the guard denies it, appends
 included, because an entry the harness did not seal does not verify. Never

@@ -48,6 +48,15 @@ a project that already has a canvas it creates the missing key and changes
 nothing else. Entries sealed elsewhere stay unverifiable on this machine; that
 is the honest answer, and the review says so rather than reporting a problem.
 
+## Feedback
+
+Report problems as GitHub Issues: *friction* when something took longer than it
+should have or confused you, *bug* when a result is wrong or something crashes.
+[Open an issue](https://github.com/DanielHeinz7/research-harness/issues/new/choose)
+and the template asks for the command, what happened, and your plugin version.
+
+Issues are public, so keep unpublished canvas and decision text out of them.
+
 ## The five commands
 
 The skills above are the normal way in. The CLI underneath them is

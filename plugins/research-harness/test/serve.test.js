@@ -141,6 +141,13 @@ test('the session server serves state, refuses what fails a check, and writes wh
   const bad = await post(srv, '/api/accept', { questionId: '99', expectedHash: textHash(SPEAKING) });
   assert.equal(bad.status, 422);
   assert.equal(bad.json.code, 'invalid');
+  // An accept without expectedHash would skip the staleness check; it is 422.
+  for (const body of [{ questionId: '1.2', match: 'chairing' }, { questionId: '1.2', expectedHash: '' }]) {
+    const noHash = await post(srv, '/api/accept', body);
+    assert.equal(noHash.status, 422, noHash.text);
+    assert.equal(noHash.json.code, 'invalid');
+  }
+  assert.equal(read(root, 'decisions.md'), fs.readFileSync(path.join(fixtureDir, 'decisions.md'), 'utf8'), 'an accept without expectedHash wrote nothing');
 
   // Accept through HTTP, with the same Origin a same-origin page sends; then
   // the CLI accepts the same statement on a second copy holding the same key.

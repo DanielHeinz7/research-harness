@@ -860,13 +860,18 @@ function expandWord(w, loops) {
 // argument (`awk -v f=research/canvas.md`), and any slash-bearing run inside a
 // quoted program text (`node -e '…("research/canvas.md")'`).
 function pathCandidates(text) {
-  const out = [text];
+  return wordCandidates(text).concat(pathFragments(text));
+}
+
+// The candidates the shell itself sees as arguments: the word and its value.
+function wordCandidates(text) {
   const value = VALUE_RE.exec(text);
-  if (value) out.push(value[1]);
-  for (const fragment of text.split(FRAGMENT_SPLIT)) {
-    if (fragment.includes('/')) out.push(fragment);
-  }
-  return out;
+  return value ? [text, value[1]] : [text];
+}
+
+// The slash-bearing runs inside the word's text.
+function pathFragments(text) {
+  return text.split(FRAGMENT_SPLIT).filter((fragment) => fragment.includes('/'));
 }
 
 function globToRegExp(component) {
@@ -927,10 +932,10 @@ function componentMatches(pattern, literal) {
 // Shared by the plain spelling comparison and the resolved-path comparison
 // below: true when the leading components of `parts` spell `stateParts`, null
 // when one of them is a pattern the guard cannot compute.
-function partsMatchState(parts, stateParts) {
+function partsMatchState(parts, stateParts, literal) {
   if (parts.length < stateParts.length) return false;
   for (let k = 0; k < stateParts.length; k += 1) {
-    const matched = componentMatches(parts[k], stateParts[k]);
+    const matched = literal ? parts[k] === stateParts[k] : componentMatches(parts[k], stateParts[k]);
     if (matched === null) return null;
     if (!matched) return false;
   }
@@ -941,8 +946,9 @@ function partsMatchState(parts, stateParts) {
 // when a component of it is a pattern the guard cannot compute. A word that is
 // only an ancestor (`.`, `..`) does not count: catching those would refuse
 // `git add .`, and this is a promotion guard, not a sandbox against a command
-// that destroys the whole project.
-function denotesState(candidate, base, stateParts) {
+// that destroys the whole project. `literal` compares each component as a name
+// only, for text no shell will expand (see wordTouchesState).
+function denotesState(candidate, base, stateParts, literal) {
   if (!candidate || candidate.startsWith('~') || candidate.includes(EXP_OPEN)) return false;
   let resolved;
   try {
@@ -950,7 +956,7 @@ function denotesState(candidate, base, stateParts) {
   } catch (_) {
     return false;
   }
-  return partsMatchState(resolved.split(path.sep).filter(Boolean), stateParts);
+  return partsMatchState(resolved.split(path.sep).filter(Boolean), stateParts, literal);
 }
 
 // The harness state root, as words on a command line can spell it: resolved,
@@ -1157,7 +1163,15 @@ function opaqueReachesState(text, stateNames, dirName) {
 // guard cannot compute, false when it names something else. The null is the
 // caller's to weigh: a word in a write position is denied on it, because a
 // pattern whose expansion is unknown can land on the state.
-function wordTouchesState(w, base, stateParts, stateNames, hasState) {
+//
+// `inertText` says the command runs no program text of its own (see
+// runsProgramText). The slash-bearing runs inside the word are then bytes of a
+// sed program, a grep pattern or a message, which no shell expands: a `*` or
+// `**` there is a character, and a run names the state only by spelling it
+// (SQ-96: `sed -i '' 's|x|**/_raw/*|' .gitignore` was denied because `**`
+// matched `research`). The word itself and a `k=v` value stay patterns, since
+// the shell does expand those.
+function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText) {
   // A brace expansion or loop too large to compute (SQ-75) is unknown where
   // state is there to land on; where it is not, it is read on the names it
   // spells, the way an opaque word is.
@@ -1166,12 +1180,32 @@ function wordTouchesState(w, base, stateParts, stateNames, hasState) {
   if (w.opaque) return opaqueReachesState(w.text, stateNames, stateParts[stateParts.length - 1]);
   if (base === null) return false;
   let unjudgeable = false;
-  for (const candidate of pathCandidates(w.text)) {
-    const denotes = denotesState(candidate, base, stateParts);
+  const candidates = wordCandidates(w.text).map((text) => [text, false])
+    .concat(pathFragments(w.text).map((text) => [text, !!inertText]));
+  for (const [candidate, literal] of candidates) {
+    const denotes = denotesState(candidate, base, stateParts, literal);
     if (denotes === null) unjudgeable = true;
     else if (denotes && !namesAbsentStateDir(candidate, base, stateParts, hasState)) return true;
   }
   return unjudgeable ? null : false;
+}
+
+// Commands that hand some of their words to a shell or an interpreter as program
+// text (`sh -c 'rm res*/canvas.md'`, `eval`, `xargs sh -c`, `find -exec sh -c`,
+// `node -e 'execSync(…)'`, `awk '{system(…)}'`, `watch`, `ssh`). A `*` in that
+// text is expanded when it runs, so a command that names one of them anywhere,
+// or whose command word cannot be read, keeps every run inside a word a pattern.
+const PROGRAM_TEXT_COMMANDS = new Set([
+  ...STDIN_PROGRAM_SHELLS, ...STDIN_PROGRAM_INTERPRETERS, ...RUNNERS,
+  'eval', 'source', '.', 'fish', 'csh', 'tcsh', 'awk', 'gawk', 'mawk', 'nawk', 'php',
+  'watch', 'su', 'runuser', 'script', 'ssh', 'parallel', 'tmux', 'screen', 'make',
+]);
+
+function runsProgramText(words) {
+  const verbAt = words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
+  if (verbAt < 0) return false;
+  if (words[verbAt].opaque) return true;
+  return words.slice(verbAt).some((w) => !w.opaque && PROGRAM_TEXT_COMMANDS.has(baseNameOf(w.text)));
 }
 
 // A redirection target built at runtime (`>> "$f.md"`, `>> "$(…)"`) is the
@@ -1605,8 +1639,9 @@ function bashVerdict(command, projectRoot) {
     // A word that spells the state's location is still judged (SQ-65).
     const touched = (verdict) => verdict === true || (verdict !== false && hasState);
     if (base === null && hasState) touches = true;
+    const inertText = !runsProgramText(sc.words);
     for (const w of sc.words) {
-      const verdict = wordTouchesState(w, base, stateParts, stateNames, hasState);
+      const verdict = wordTouchesState(w, base, stateParts, stateNames, hasState, inertText);
       if (verdict === null && hasState) uncomputable = true;
       else if (verdict) touches = true;
     }

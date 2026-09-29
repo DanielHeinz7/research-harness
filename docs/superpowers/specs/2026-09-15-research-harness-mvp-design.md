@@ -713,8 +713,8 @@ is a list of yesterday's holes, and the next write tool — an MCP filesystem
 server, whatever the client ships next — would arrive unseen. The guard applies
 to writes against `canvas.md` and `decisions.md` in the state directory
 (`research/`, or whatever `RESEARCH_HARNESS_DIR` says), to the harness's own
-state directory (§4.7), and, from stage 2 on, to `Bash` invocations against the
-canvas server's port (§7).
+state directory (§4.7), and, from stage 2 on, to invocations of the session
+view's server, `research-harness serve` or `bin/canvas-serve.js` directly (§7).
 
 **Rule for `canvas.md` — one rule, over the committed set.** The guard parses
 the file as it is and as the write would leave it, and permits the write only
@@ -829,7 +829,10 @@ statement or a deleted canvas shows in git. A `[stated]`, `[tentative]` or
 `[proposed]` statement changed this way carries no seal and shows only in the
 git diff. The interpreter list in `readsProgramFromStdin` covers the common
 one-step forms and is not meant to be complete; a missing interpreter is not a
-defect to be filed.
+defect to be filed. GNU sed's `e` command runs shell text, and a sed program's
+fragments are compared literally, so a glob that avoids the state dir's name is
+not seen. It is the same class as indirect execution and only GNU sed has it;
+the seal still catches a changed `[accepted]` line.
 
 **Fails closed — a deliberate departure from Toolshed's doctrine.** Toolshed
 mandates fail-soft behaviour ("a malformed rule file degrades to 'skip that
@@ -971,7 +974,7 @@ equivalent is a session view for author-team meetings and solo reviews.
   violations highlighted.
 - **Zoom in:** one element with its question set, content, markers, and source.
 - **Numbering:** every field and every sub-question shows its number.
-- **Edit and comment:** comments go to `decisions.md` as `DISCOVERY` entries.
+- **Comment:** comments go to `decisions.md` as `DISCOVERY` entries.
 
 **One truth.** The view is generated from `canvas.md` and writes back to it. It
 does not live alongside it.
@@ -979,16 +982,36 @@ does not live alongside it.
 **It is the better approval path.** The command line already does the job from
 stage 1; this is where it becomes usable in a meeting — a human sets `[stated]`
 and `[accepted]` by clicking. `bin/canvas-serve.js` binds to `127.0.0.1` on a
-random port and writes the promotion directly into the file. The deny hook
-remains the counter-check on the model's side. Two separate routes into the same
-file: one for the agent, one for the human.
+random port and writes the promotion directly into the file, through the same
+`hooks/lib` functions the CLI calls (§5.2), so an acceptance made by clicking
+and one made by typing `accept` produce byte-identical `decisions.md` entries.
+The deny hook remains the counter-check on the model's side. Two separate
+routes into the same file: one for the agent, one for the human.
 
 **And an honest limit.** A local HTTP server is not a cryptographic barrier
-against a model that has `Bash`. The guard therefore also refuses `Bash`
-invocations against the server's port. The security property is nonetheless
-**visibility and deliberateness, not impossibility**: a promotion requires a
-conscious, visible act. That is strictly more than Sidequest has, but it is not
-absolute, and the harness should be able to say so about itself.
+against a model that has `Bash` — so the guard denies the model both
+`research-harness serve` and a direct run of `bin/canvas-serve.js` (§5.3): it
+cannot start a server of its own. The server the researcher starts binds to
+`127.0.0.1`, mints a one-time token that lives only in that process's memory,
+and hands it to the browser as a URL fragment (`#t=…`), a part of the URL a
+browser never sends over the network, so it cannot leak into a request log or
+a proxy. Every write additionally checks the request's `Host` header and, when
+present, its `Origin`. This replaces an earlier draft of this section, which
+had the guard refuse `Bash` invocations against the server's port; a random,
+short-lived port is not a rule the guard can state, where a token the model
+was never handed is. The security property is nonetheless **visibility and
+deliberateness, not impossibility**: a promotion requires a conscious, visible
+act. That is strictly more than Sidequest has, but it is not absolute, and the
+harness should be able to say so about itself. The residual risk is a model
+holding its own browser-automation tool in the same session: it could read the
+open tab, token and all, and click through a promotion itself. The view carries
+no defence against that; the researcher's own defence is to close the tab when
+the session is over (README, "Session view").
+
+Daniel decided on 2026-09-29 that the view is comment-and-promote only — no
+in-browser text editing, which stays the CLI's and `canvas-review`'s job — and
+that its agenda is derived from `canvas.md` and `decisions.md` rather than kept
+as state of its own, for the same one-truth reason as the rest of the view.
 
 **Not in the plugin:** publishing the canvas as a hosted artifact for remote
 co-authors. That depends on an account; the plugin ships the local, account-free
@@ -1001,7 +1024,7 @@ variant so it works for other researchers.
 | Stage | Contents | Size |
 |---|---|---|
 | **1 · Record and approval** | manifests, `inject-state.js`, `guard-promotion.js` + test, three skills, `bin/research-harness.js` + test, `references/` | ~1,200 lines, mostly prose |
-| **2 · Session view** | `bin/canvas-serve.js`, `dashboard/canvas.html`, guard extended to the server port | ~800 lines |
+| **2 · Session view** | `bin/canvas-serve.js`, `dashboard/canvas.html`, `hooks/lib/{state,accept,stated,log}.js`, `guard-promotion.js`'s serve rule | 975 lines, plus 14 in the existing guard |
 
 After stage 1 there is a usable tool with a real approval path on the command
 line; stage 2 makes that path clickable and adds the meeting view. Together

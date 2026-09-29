@@ -1361,6 +1361,44 @@ test('SQ-70: the inline-program letters belong to one interpreter, not to all of
   }
 });
 
+// SQ-101. SQ-67 lexed every stdin program as bash, which is right for a shell and
+// wrong for python, node, perl and ruby: their source was read as shell words, and
+// a string like `'*/*.md'` became a glob onto the state. The body of an
+// interpreter is now program text the guard cannot read, judged the way the same
+// text is under `python3 -c` or `node -e`.
+test('SQ-101: an interpreter\'s heredoc program is judged as program text, not as bash', () => {
+  const bare = makeBareProject();
+  const root = makeProject();
+  // Lexed as bash, the template literal was a backquote substitution the guard
+  // could not compute, and that denied the program where state is present.
+  const lexedAsBash = "node - <<'EOF'\nconst x = `${1}`;\nconsole.log(x)\nEOF";
+  for (const cmd of [
+    "python3 - <<'EOF'\nimport os, tempfile\nd = tempfile.mkdtemp()\nos.mkdir(os.path.join(d, \"out\"))\nprint(d)\nEOF",
+    "node - <<'EOF'\nconst r = require('fs').readdirSync('.');\nfor (const f of r) console.log(f > '')\nEOF",
+    "perl <<'EOF'\nopen(my $f, '>', 'out.txt') or die; print $f 1;\nEOF",
+    lexedAsBash,
+  ]) {
+    assert.equal(run(bare, 'Bash', { command: cmd }), null, cmd);
+  }
+  assert.equal(run(root, 'Bash', { command: lexedAsBash }), null);
+  // What the body spells still counts: a state path, a substitution bash runs
+  // first under an unquoted delimiter, and the CLI named inside the program.
+  for (const [form, cmd] of [
+    ['a state write', "python3 - <<'EOF'\nopen('research/canvas.md','w').write('x')\nEOF"],
+    ['a substitution bash runs', "python3 <<EOF\nprint('$(rm research/canvas.md)')\nEOF"],
+    ['the CLI inside the program', "node <<'EOF'\nrequire('child_process').execSync('node bin/research-harness.js accept 1.2')\nEOF"],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+  }
+  const accept = run(bare, 'Bash', { command: "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['research-harness', 'accept', '1.2'])\nEOF" });
+  assert.equal(accept && accept.permissionDecision, 'deny');
+  // A shell as the reader keeps SQ-67: its body is lexed as the script it is.
+  assert.equal(run(root, 'Bash', { command: 'bash <<EOF\ncat research/canvas.md\nEOF' }), null);
+  const shell = run(root, 'Bash', { command: "bash <<'EOF'\nrm research/canvas.md\nEOF" });
+  assert.equal(shell && shell.permissionDecision, 'deny');
+});
+
 test('Bash: a CLI-named path operand does not imply harness invocation', () => {
   const root = makeProject();
   const pathOperand = path.join(path.dirname(root), 'research-harness');

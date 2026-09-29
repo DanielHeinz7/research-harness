@@ -790,7 +790,17 @@ with research state that names the CLI together with `accept` or `serve`, or
 names `canvas-serve`, is refused whatever wraps it unless every command in it is
 read-only, and a name the line builds at run time (`"research-" + "harness"` in
 Python, a concatenated variable) escapes that backstop, the same limit as
-indirect execution (SQ-99).
+indirect execution (SQ-99). An interpreter's own program text, the inline
+program of `python3 -c`, `perl -e`, `ruby -e` or `node -e` and a heredoc body
+that `python3`, `perl`, `ruby` or `node` reads as its program, is held to the
+same test in a project without state as well (SQ-105). These are one-step forms
+the guard reads, and a single line can create the state and accept into it.
+They get the narrower test and not the opaque-program route because a script
+body names the plugin's paths as a matter of course: the CLI's name as a path
+segment, or `accept` on its own, is not a call. What that still costs is a
+script in the harness's own checkout whose text spells `research-harness
+accept` or `canvas-serve`, such as one that edits the CLI's usage text; the
+Edit tool makes that change.
 
 **The harness's own state is not the project's state.** The sealing key of §4.7
 lives under `RESEARCH_HARNESS_STATE_DIR`, or `~/.claude/research-harness` by

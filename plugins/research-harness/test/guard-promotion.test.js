@@ -1578,6 +1578,47 @@ test('SQ-99: without research state the name rule does not engage', () => {
   }
 });
 
+// SQ-105. `node -e` reached the CLI through the opaque-program route in every
+// project, while the same call from python's `-c`, perl's or ruby's `-e`, or a
+// heredoc an interpreter reads as its program was caught only by SQ-99's
+// backstop, which needs research state. A line can create the state and accept
+// into it in one call, so an interpreter's program text is held to the
+// named-write test without state too.
+test('SQ-105: an interpreter program naming the CLI with accept or serve is denied without state', () => {
+  const root = makeBareProject();
+  for (const command of [
+    `python3 -c "import subprocess; subprocess.run(['research-harness', 'accept', '1.2'])"`,
+    `python3 -Ic "import os; os.system('node ${SQ99_CLI} accept 1.2')"`,
+    `env FOO=1 python3 -c "import os; os.system('research-harness accept 1.2')"`,
+    `perl -e 'system("research-harness", "accept", "1.2")'`,
+    `ruby -e 'system("research-harness accept 1.2")'`,
+    `python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['research-harness', 'accept', '1.2'])\nEOF`,
+    `python3 <<EOF\nimport subprocess\nsubprocess.run(['node', '${SQ99_CLI}', 'accept', '1.2'])\nEOF`,
+    `node - <<'EOF'\nrequire('child_process').execSync('research-harness accept 1.2');\nEOF`,
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+    assert.match(out.permissionDecisionReason, /Accepting a statement is the researcher's act/, command);
+  }
+  const serve = run(root, 'Bash', { command: `python3 -c "import subprocess; subprocess.Popen(['node', 'bin/canvas-serve.js'])"` });
+  assert.equal(serve && serve.permissionDecision, 'deny');
+  assert.match(serve.permissionDecisionReason, /session server/);
+});
+
+test('SQ-105: a path segment or a lone accept in an interpreter program stays allowed', () => {
+  const root = makeBareProject();
+  for (const command of [
+    `python3 -c "import os; os.chdir('/src/research-harness'); print(os.listdir('.'))"`,
+    `python3 -c "print('accept')"`,
+    `python3 - <<'EOF'\nimport json\nprint(json.load(open('plugins/research-harness/package.json')))\nEOF`,
+    `node - <<'EOF'\nconsole.log(require('fs').readFileSync('plugins/research-harness/hooks/lib/accept.js', 'utf8').length);\nEOF`,
+    `python3 -m pytest -k accept tests/research-harness`,
+    `cat <<'EOF'\nresearch-harness accept 1.2\nEOF`,
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
 // SQ-61, cli.txt B10. The inference read the command word first, and an opaque
 // one ended the walk there: the CLI name and `accept` behind it were never
 // looked at, so the invocation ran unseen. An opaque word is read the way an

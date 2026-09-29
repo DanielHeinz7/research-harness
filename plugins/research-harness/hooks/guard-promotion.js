@@ -651,11 +651,13 @@ function lexBash(text, depth) {
         // ordinary scripts. It is program text the guard cannot read, judged the
         // way the quoted `PROG` of `node -e PROG` is: on the paths it spells,
         // with the interpreter itself a verb that is not read-only. An unquoted
-        // delimiter still has bash run the body's substitutions first. The CLI
-        // name is not looked for in the body: a path component spelling it
-        // (`plugins/research-harness/…`) is no invocation, and matching on it
+        // delimiter still has bash run the body's substitutions first. The body
+        // is not read the way `node -e PROG` is: a path component spelling the
+        // CLI (`plugins/research-harness/…`) is no invocation, and matching on it
         // denied ordinary scripts in the harness's own checkout as `accept`.
-        heredoc.redirect.unreadBody = { text: body, opaque: false, quoted: true };
+        // SQ-105: `program` marks it for the narrower named-write test instead,
+        // which wants the CLI's name at the end of a path together with `accept`.
+        heredoc.redirect.unreadBody = { text: body, opaque: false, quoted: true, program: true };
         if (!heredoc.quoted) nestHeredocBody(body);
         continue;
       }
@@ -1584,7 +1586,29 @@ function namedWrite(text) {
   return fragments.includes('serve') ? 'serve' : null;
 }
 
-const NAMED_SERVER_WHY = 'it names the session server (`research-harness serve` or canvas-serve), which only the researcher starts, and not every command in it is read-only';
+// SQ-105: the program text an interpreter takes on its command line —
+// `python3 -c PROG`, `python3 -Ic PROG`, `perl -e'PROG'`, `ruby -ne PROG`,
+// `node -e PROG` — found with the same per-interpreter spellings that decide
+// whether a heredoc body is the program (SQ-70).
+function inlinePrograms(words) {
+  const launched = launchedCommandAt(words);
+  const programRe = launched && INTERPRETER_INLINE_PROGRAM_RE.get(launched.name);
+  if (!programRe) return [];
+  const programs = [];
+  const args = words.slice(launched.at + 1);
+  for (let k = 0; k < args.length; k += 1) {
+    const { text } = args[k];
+    if (text === '--') break;
+    const match = text.startsWith('-') ? programRe.exec(flagName(text)) : null;
+    if (!match) continue;
+    const attached = text.slice(match[0].length).replace(/^=/, '');
+    if (attached) programs.push(attached);
+    else if (k + 1 < args.length) programs.push(args[k + 1].text);
+  }
+  return programs.map((text) => text.replace(EXP_RE, ' '));
+}
+
+const NAMED_SERVER_WHY ='it names the session server (`research-harness serve` or canvas-serve), which only the researcher starts, and not every command in it is read-only';
 
 function bashVerdict(command, projectRoot) {
   const cmd = String(command || '');
@@ -1631,6 +1655,7 @@ function bashVerdict(command, projectRoot) {
   let touches = false;
   let uncomputable = false;
   let acceptAttempt = false;
+  let serveAttempt = false;
   let decisionAttempt = false;
   let envAttempt = false;
   let refusal = null;
@@ -1737,6 +1762,20 @@ function bashVerdict(command, projectRoot) {
       else if (invocation.harness && invocation.sub && invocation.sub.opaque) acceptAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
     }
+    // SQ-105: an interpreter's own program text — an inline program or a heredoc
+    // body it reads as its program — is held to the SQ-99 named-write test in
+    // every project, as `node -e` already is to the opaque-program route: a line
+    // can create the state and accept into it in one call, so no state yet is no
+    // reason to let it through.
+    const programs = [
+      ...inlinePrograms(argv),
+      ...sc.redirects.filter((r) => r.unreadBody && r.unreadBody.program).map((r) => r.unreadBody.text),
+    ];
+    for (const text of programs) {
+      const named = namedWrite(text);
+      if (named === 'accept') acceptAttempt = true;
+      else if (named === 'serve') serveAttempt = true;
+    }
 
     const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState, splitsBlanks);
     if (!refusal) refusal = scRefusal;
@@ -1757,6 +1796,7 @@ function bashVerdict(command, projectRoot) {
   }
 
   if (acceptAttempt) return ACCEPT_DENIAL;
+  if (serveAttempt) return bashDenial(NAMED_SERVER_WHY);
   if (decisionAttempt) return LOG_DECISION_DENIAL;
   if (envAttempt) return ENV_DENIAL;
   if (uncomputable && refusal) return bashDenial(UNCOMPUTABLE_PATTERN_WHY);

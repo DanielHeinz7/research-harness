@@ -6,3 +6,4 @@
 {"label":"SQ-75 shape: echo whose text contains research/","command":"echo \"drafts move to research/notes.md later\"","expect":"ALLOW"}
 {"label":"control: cp into research/canvas.md","command":"cp draft.md research/canvas.md","expect":"DENY"}
 {"label":"control: redirect into research/canvas.md","command":"echo x > research/canvas.md","expect":"DENY"}
+{"label":"SQ-101: python heredoc program is not lexed as bash","command":"python3 - <<'EOF'\nimport os, tempfile\nd = tempfile.mkdtemp()\nos.mkdir(os.path.join(d, \"out\"))\nprint(d)\nEOF","expect":"ALLOW"}

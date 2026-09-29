@@ -641,8 +641,22 @@ function lexBash(text, depth) {
       // nests an unquoted body's `$(...)` at. The receiving command is marked so
       // the verdict reads it as a launcher and judges what the body does.
       if (heredoc.cmd && readsProgramFromStdin(heredoc.cmd.words)) {
-        heredoc.cmd.stdinProgram = true;
-        if (!nest(body)) heredoc.redirect.unreadBody = { text: body, opaque: true };
+        if (STDIN_PROGRAM_SHELLS.has(launchedCommandAt(heredoc.cmd.words).name)) {
+          heredoc.cmd.stdinProgram = true;
+          if (!nest(body)) heredoc.redirect.unreadBody = { text: body, opaque: true };
+          continue;
+        }
+        // SQ-101: an interpreter's body is python, JS, perl or ruby, not shell
+        // words, so lexing it as bash read `os.mkdir(…)` as commands and refused
+        // ordinary scripts. It is program text the guard cannot read, judged the
+        // way the quoted `PROG` of `node -e PROG` is: on the paths it spells,
+        // with the interpreter itself a verb that is not read-only. An unquoted
+        // delimiter still has bash run the body's substitutions first. The CLI
+        // name is not looked for in the body: a path component spelling it
+        // (`plugins/research-harness/…`) is no invocation, and matching on it
+        // denied ordinary scripts in the harness's own checkout as `accept`.
+        heredoc.redirect.unreadBody = { text: body, opaque: false, quoted: true };
+        if (!heredoc.quoted) nestHeredocBody(body);
         continue;
       }
       if (heredoc.quoted) continue;
@@ -1469,8 +1483,8 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState) {
     }
   }
   if (!args.length) return null;
-  // SQ-67: a shell or interpreter reading its program from this heredoc is a
-  // launcher, not a verb of its own. The body was lexed as the script it is, so
+  // SQ-67: a shell reading its program from this heredoc is a launcher, not a
+  // verb of its own (an interpreter's body is program text instead, SQ-101). The body was lexed as the script it is, so
   // what runs is judged as commands in their own right — `cat research/canvas.md`
   // under it still reads. Its own redirects were checked above.
   if (sc.stdinProgram) return null;

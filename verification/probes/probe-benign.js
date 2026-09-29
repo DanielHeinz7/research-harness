@@ -35,16 +35,41 @@ function holdsState(root) {
   return fs.existsSync(path.join(dir, project.CANVAS_FILE)) || fs.existsSync(path.join(dir, project.DECISIONS_FILE));
 }
 
+// True once `root` is gone or is no longer a directory: vanished between the
+// existence check and the spawn (subagent worktrees get cleaned up), turned
+// into a file, or otherwise broken. Node reports a bad-cwd spawn failure as
+// ENOENT on the *exec path* (not the cwd) when the cwd is missing, and as a
+// synchronously-thrown ENOTDIR when the cwd exists but is a file, so the
+// error alone can't tell a bad cwd from a genuinely missing node binary.
+function cwdGone(root) {
+  try { return !fs.statSync(root).isDirectory(); } catch (e) { return true; }
+}
+
+// A spawn failure caused by a vanished/broken cwd never reached the guard:
+// it is a skip, not a hook error. Any other spawn failure (a real problem
+// with the exec path itself) stays a visible hook error.
+function classifySpawnError(root, e) {
+  if ((e.code === "ENOENT" || e.code === "ENOTDIR") && cwdGone(root)) return { decision: "CWD_VANISHED", reason: e.message };
+  return { decision: "HOOKERR", reason: e.message };
+}
+
 // One hook process per row, as Claude Code runs it: payload on stdin, cwd and
 // CLAUDE_PROJECT_DIR set to the row's project. The command is only data here.
 function runHook(root, command) {
   const env = Object.assign({}, process.env, { CLAUDE_PLUGIN_ROOT: PLUGIN, CLAUDE_PROJECT_DIR: root });
   return new Promise(function (resolve) {
-    const child = cp.spawn(process.execPath, [GUARD], { cwd: root, env: env, stdio: ["pipe", "pipe", "pipe"] });
+    let child;
+    try {
+      // A cwd that is a file rather than a directory makes spawn throw
+      // synchronously (ENOTDIR) instead of emitting an async "error".
+      child = cp.spawn(process.execPath, [GUARD], { cwd: root, env: env, stdio: ["pipe", "pipe", "pipe"] });
+    } catch (e) {
+      return resolve(classifySpawnError(root, e));
+    }
     let stdout = "", stderr = "";
     child.stdout.on("data", function (b) { stdout += b; });
     child.stderr.on("data", function (b) { stderr += b; });
-    child.on("error", function (e) { resolve({ decision: "HOOKERR", reason: e.message }); });
+    child.on("error", function (e) { resolve(classifySpawnError(root, e)); });
     child.on("close", function (code) {
       if (code !== 0) return resolve({ decision: "HOOKERR", reason: stderr.slice(0, 200) });
       if (!stdout) return resolve({ decision: "ALLOW", reason: "" });
@@ -150,7 +175,7 @@ async function main(argv) {
   }
 
   let scratch = null;
-  let missing = 0, withState = 0, replayed = 0, denied = 0, hookErr = 0, mismatched = 0, knownWrong = 0;
+  let missing = 0, withState = 0, replayed = 0, denied = 0, hookErr = 0, mismatched = 0, knownWrong = 0, cwdVanished = 0;
   const lines = [];
   const todo = [];
   for (const r of rows) {
@@ -175,6 +200,7 @@ async function main(argv) {
   for (let i = 0; i < todo.length; i++) {
     const r = todo[i].r;
     const v = verdicts[i];
+    if (v.decision === "CWD_VANISHED") { cwdVanished += 1; continue; }
     replayed += 1;
     const o = byOrigin[r.origin || "corpus"];
     o.replayed += 1;
@@ -201,7 +227,8 @@ async function main(argv) {
 
   const summary = replayed + " replayed, " + denied + " denied"
     + (hookErr ? ", " + hookErr + " hook errors" : "")
-    + " (skipped: " + withState + " with research state, " + missing + " cwd missing)"
+    + " (skipped: " + withState + " with research state, " + missing + " cwd missing"
+    + (cwdVanished ? ", " + cwdVanished + " cwd vanished" : "") + ")"
     + (mismatched || knownWrong ? "; " + mismatched + " unexpected, " + knownWrong + " known" : "");
   const counts = Object.keys(byOrigin).sort().map(function (k) {
     return "  " + k + ": " + byOrigin[k].pairs + " rows, " + byOrigin[k].replayed + " replayed, " + byOrigin[k].denied + " denied";

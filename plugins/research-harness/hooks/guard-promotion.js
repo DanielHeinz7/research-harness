@@ -234,7 +234,7 @@ const MAX_EXPANSIONS = 256;
 
 const RUNNERS = new Set(['node', 'nodejs', 'npx', 'bun', 'deno', 'pnpm', 'yarn']);
 const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
-const CLI_READ_SUBS = new Set(['status', 'review', 'init']);
+const CLI_READ_SUBS = new Set(['status', 'review', 'init', 'doctor']);
 // US-2: the session server takes approvals from the browser, so only the
 // researcher starts it. `research-harness serve` is already refused as a
 // subcommand outside CLI_READ_SUBS; running the server script itself is the

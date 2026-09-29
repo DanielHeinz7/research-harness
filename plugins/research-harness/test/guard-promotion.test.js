@@ -671,6 +671,7 @@ const BASH_ALLOWED = [
   'shasum research/*.md',
   'cat bin/research-harness.js',
   'npx research-harness status',
+  'research-harness doctor',
   'echo "see research/canvas.md"',
   'echo x > "$LOG"',
   'node -e \'console.log(1)\'',

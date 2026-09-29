@@ -14,6 +14,13 @@ From Claude Code:
 
 Or from a local checkout: `/plugin marketplace add /path/to/research-harness`.
 
+Run `research-harness doctor` first: it checks that the plugin is enabled in
+your settings and that the promotion guard is actually denying what it should,
+and prints one line per problem it finds. It reads settings files rather than
+Claude Code's own running state, so it cannot see whether a Claude Code
+process you already have open actually loaded the plugin — restart the
+session after installing or enabling it.
+
 In any repository without `research/canvas.md` the plugin stays silent, with one
 exception: a command or tool call that names the `research/` location is still
 judged there, because creating or removing that directory is how the state
@@ -57,7 +64,7 @@ and the template asks for the command, what happened, and your plugin version.
 
 Issues are public, so keep unpublished canvas and decision text out of them.
 
-## The six commands
+## The seven commands
 
 The skills above are the normal way in. The CLI underneath them is
 `node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js"`:
@@ -70,6 +77,7 @@ The skills above are the normal way in. The CLI underneath them is
 | `accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]` | the researcher's act; the model may not run it |
 | `log DISCOVERY\|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]` | appends a sealed entry — how the model records a finding |
 | `serve [--no-open]` | opens the session view in your browser; the model may not run it |
+| `doctor` | checks that the plugin is enabled and the guard denies what it should |
 
 ## Session view
 

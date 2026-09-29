@@ -840,6 +840,15 @@ rule'"), but that doctrine is about context injection. A permission guard that
 lets writes through on error is a hole. If `guard-promotion.js` cannot judge a
 diff confidently, it denies with a reason that says so.
 
+This covers errors inside the guard, not a guard that never answers. Claude Code
+lets a PreToolUse command hook through when it times out or cannot start: the
+hooks reference says a timed-out hook "doesn't block the tool call", and a hook
+that can't start "lands in the same non-blocking bucket" (checked 2026-09-29).
+`hooks.json` gives the guard 10 seconds. On a machine loaded far past its cores,
+a Node start can take longer, and the command then runs unjudged. Nothing in the
+plugin can close this, because the hook is the only place it can act. The seal
+and `canvas-review` still catch a changed `[accepted]` statement afterwards.
+
 **What "cannot judge" covers.** The clause is not a blank to be filled in by
 whoever implements the next case. It is this list, so that the perimeter tickets
 implement a stated rule instead of inventing one:

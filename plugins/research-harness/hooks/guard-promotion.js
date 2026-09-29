@@ -1683,6 +1683,7 @@ function bashVerdict(command, projectRoot) {
     // loop is read-only only when every command in it is.
     while (sc.words.length && !sc.words[0].quoted && LOOP_OPENERS.has(sc.words[0].text)) {
       const keyword = sc.words.shift().text;
+      sc.keywordStripped = true;
       sc.loopCondition = keyword !== 'do';
       if (sc.loopCondition) loopDepth += 1;
     }
@@ -1786,6 +1787,11 @@ function bashVerdict(command, projectRoot) {
         if (hasState && hasUnknownSubstitution(w.text)) touches = true;
       }
     }
+    // SQ-106: a loop that is not read-only keeps the verdict it had before the
+    // keywords were taken off. Then every word after `do`, `while` or `until`
+    // was an operand of that keyword, so an unknown value anywhere in the
+    // command counted as a target. It decides nothing when the loop only reads.
+    if (hasState && sc.keywordStripped && sc.words.some((w) => hasUnknownSubstitution(w.text))) touches = true;
 
     const invocation = harnessInvocation(argv, 0, splitsBlanks);
     if (invocation) {

@@ -862,8 +862,10 @@ test('SQ-71: an empty state directory is no state', () => {
 // that holds state, which is the rule SQ-71 narrowed and did not remove.
 test('SQ-71: with research state the same rows still deny', () => {
   const root = makeProject();
+  // SQ-106 made a loop whose body only reads read-only (`for d in */; do echo
+  // "$d"; done` is allowed here now), so the loop row writes.
   for (const command of [
-    'for d in */; do echo "$d"; done',
+    'for d in */; do rm -r "$d"; done',
     'while true; do l=$(sysctl -n vm.loadavg); echo "$l"; sleep 30; done',
     'x=$(cat a); rm "$x"',
     'rm -rf resea[r]ch',

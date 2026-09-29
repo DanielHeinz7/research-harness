@@ -217,6 +217,21 @@ const EXP_CLOSE = '\u0001';
 const EXP_UNKNOWN = `${EXP_OPEN}${EXP_CLOSE}`;
 const EXP_RE = /\u0000([A-Za-z0-9_]*)\u0001/g;
 
+// SQ-75: bash expands `{a,b}` and `{1..3}` before anything else, so
+// `rm -rf {research,tmp}` removes the state directory. Only an unquoted brace
+// expands, so the lexer keeps a second spelling of a word (`shape`) in which the
+// unquoted `{`, `,` and `}` are these marks; a quoted or escaped one stays the
+// plain character and is left alone, as bash leaves it.
+const BRACE_OPEN = '\u0002';
+const BRACE_CLOSE = '\u0003';
+const BRACE_COMMA = '\u0004';
+const BRACE_MARK = { '{': BRACE_OPEN, '}': BRACE_CLOSE, ',': BRACE_COMMA };
+const BRACE_MARKS_RE = /[\u0002\u0003\u0004]/g;
+const BRACE_CHAR = { [BRACE_OPEN]: '{', [BRACE_CLOSE]: '}', [BRACE_COMMA]: ',' };
+// Past this many words a brace expansion or a loop is not computed: the word is
+// one the guard cannot judge, like a pattern it cannot compute.
+const MAX_EXPANSIONS = 256;
+
 const RUNNERS = new Set(['node', 'nodejs', 'npx', 'bun', 'deno', 'pnpm', 'yarn']);
 const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
 const CLI_READ_SUBS = new Set(['status', 'review', 'init']);
@@ -404,6 +419,18 @@ function lexBash(text, depth) {
   function endWord() {
     if (!word) return;
     word.opaque = word.text.includes(EXP_OPEN);
+    if (word.braceAt) {
+      if (word.braceAt.some((k) => word.text[k] === '{')) {
+        let shape = '';
+        let from = 0;
+        for (const k of word.braceAt) {
+          shape += word.text.slice(from, k) + BRACE_MARK[word.text[k]];
+          from = k + 1;
+        }
+        word.shape = shape + word.text.slice(from);
+      }
+      delete word.braceAt;
+    }
     if (pending) {
       // SQ-60: after `>&` or `<&`, a target that is only digits or `-` names a
       // file descriptor, not a file. The word is part of the redirection and
@@ -671,7 +698,9 @@ function lexBash(text, depth) {
       readRedirect(false);
       continue;
     }
-    startWord().text += ch;
+    const plain = startWord();
+    if (ch === '{' || ch === '}' || ch === ',') (plain.braceAt || (plain.braceAt = [])).push(plain.text.length);
+    plain.text += ch;
     i += 1;
   }
   endWord();
@@ -701,7 +730,8 @@ function literalSubstitutionValue(body, depth) {
   if (commands.length !== 1) return null;
   const [sc] = commands;
   if (sc.redirects.length || !sc.words.length) return null;
-  if (sc.words.some((w) => w.opaque)) return null;
+  // A brace in the echoed words expands to more than the text it spells (SQ-75).
+  if (sc.words.some((w) => w.opaque || w.shape)) return null;
   const verb = baseNameOf(sc.words[0].text);
   const args = sc.words.slice(1).map((w) => w.text);
   if (verb === 'echo') {
@@ -722,8 +752,108 @@ function literalSubstitutionValue(body, depth) {
 
 function substitute(w, values) {
   if (!w.text.includes(EXP_OPEN)) return;
-  w.text = w.text.replace(EXP_RE, (all, name) => (name && values.has(name) ? values.get(name) : all));
+  const put = (all, name) => (name && values.has(name) ? values.get(name) : all);
+  w.text = w.text.replace(EXP_RE, put);
+  // A value is spliced in after brace expansion, as bash does it: a brace in the
+  // value is a plain character in the shape.
+  if (w.shape) w.shape = w.shape.replace(EXP_RE, put);
   w.opaque = w.text.includes(EXP_OPEN);
+}
+
+// A `{1..3}` or `{a..e}` body as the words it expands to, or null when it is
+// not a sequence bash expands.
+function braceSequence(body) {
+  const num = /^(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?$/.exec(body);
+  const chr = num ? null : /^([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?$/.exec(body);
+  const m = num || chr;
+  if (!m) return null;
+  const from = num ? Number(m[1]) : m[1].charCodeAt(0);
+  const to = num ? Number(m[2]) : m[2].charCodeAt(0);
+  const step = Math.abs(Number(m[3] || 1)) || 1;
+  const count = Math.floor(Math.abs(to - from) / step) + 1;
+  if (!Number.isSafeInteger(count) || count > MAX_EXPANSIONS) return undefined;
+  const padded = !!num && (/^-?0\d/.test(m[1]) || /^-?0\d/.test(m[2]));
+  const pad = padded ? Math.max(m[1].length, m[2].length) : 0;
+  const out = [];
+  for (let k = 0, v = from; k < count; k += 1, v += from <= to ? step : -step) {
+    if (!num) out.push(String.fromCharCode(v));
+    else {
+      const digits = String(Math.abs(v)).padStart(pad - (v < 0 ? 1 : 0), '0');
+      out.push(v < 0 ? `-${digits}` : digits);
+    }
+  }
+  return out;
+}
+
+// Expands the brace marks in a shape the way bash does, prefix and suffix and
+// nesting included. Returns null past MAX_EXPANSIONS words: that word is one
+// the guard cannot judge.
+function braceExpand(shape) {
+  for (let open = shape.indexOf(BRACE_OPEN); open >= 0; open = shape.indexOf(BRACE_OPEN, open + 1)) {
+    let level = 0;
+    let close = -1;
+    const commas = [];
+    for (let k = open; k < shape.length; k += 1) {
+      if (shape[k] === BRACE_OPEN) level += 1;
+      else if (shape[k] === BRACE_CLOSE) {
+        level -= 1;
+        if (!level) { close = k; break; }
+      } else if (shape[k] === BRACE_COMMA && level === 1) commas.push(k);
+    }
+    if (close < 0) continue;
+    let alternatives;
+    if (commas.length) {
+      alternatives = [];
+      let from = open + 1;
+      for (const k of [...commas, close]) { alternatives.push(shape.slice(from, k)); from = k + 1; }
+    } else {
+      alternatives = braceSequence(shape.slice(open + 1, close).replace(BRACE_MARKS_RE, (m) => BRACE_CHAR[m]));
+      if (alternatives === undefined) return null;
+      if (!alternatives) continue;
+    }
+    const out = [];
+    for (const alternative of alternatives) {
+      const rest = braceExpand(shape.slice(0, open) + alternative + shape.slice(close + 1));
+      if (!rest || out.length + rest.length > MAX_EXPANSIONS) return null;
+      out.push(...rest);
+    }
+    return out;
+  }
+  return [shape.replace(BRACE_MARKS_RE, (m) => BRACE_CHAR[m])];
+}
+
+// The words bash makes of one word: its brace expansion, and for every variable
+// a `for NAME in …` loop over literal words set (`loops`), one word per value
+// (SQ-75). A word too large to compute comes back as one opaque word marked
+// `uncomputable`. A word with neither comes back as itself.
+function expandWord(w, loops) {
+  let texts = [w.text];
+  if (w.shape) {
+    // Every unmatched `{` is rescanned, so a word of thousands of them is not
+    // expanded at all.
+    const marks = w.shape.match(BRACE_MARKS_RE).length;
+    texts = marks > 4 * MAX_EXPANSIONS ? null : braceExpand(w.shape);
+    if (!texts) return [{ text: w.text, opaque: true, quoted: w.quoted, uncomputable: true }];
+  }
+  if (loops.size && w.text.includes(EXP_OPEN)) {
+    const out = [];
+    for (const text of texts) {
+      let variants = [text];
+      const names = new Set();
+      for (const m of text.matchAll(EXP_RE)) if (loops.has(m[1])) names.add(m[1]);
+      for (const name of names) {
+        const mark = `${EXP_OPEN}${name}${EXP_CLOSE}`;
+        const next = [];
+        for (const v of variants) for (const value of loops.get(name)) next.push(v.split(mark).join(value));
+        if (out.length + next.length > MAX_EXPANSIONS) return [{ text: w.text, opaque: true, quoted: w.quoted, uncomputable: true }];
+        variants = next;
+      }
+      out.push(...variants);
+    }
+    texts = out;
+  }
+  if (texts.length === 1 && texts[0] === w.text) return [w.shape ? { text: w.text, opaque: w.opaque, quoted: w.quoted } : w];
+  return texts.map((text) => ({ text, opaque: text.includes(EXP_OPEN), quoted: w.quoted }));
 }
 
 // One word can carry several paths: the word itself, the value of a `k=v`
@@ -970,10 +1100,21 @@ function hasPathSeparator(text) {
 // bare name (`git checkout HEAD -- research`) would have the glob land on it.
 const STATE_FILES = [project.CANVAS_FILE, project.DECISIONS_FILE];
 
+//
+// SQ-75 carries the same rule over to a literal word: `git mv research/a.md
+// research/b.md` in a vault whose `research/` is a notes folder lands on no
+// state file and creates none, so it is let go. Only the component that stands
+// where the state files would decides, compared without case, because a
+// case-blind volume would put `research/Canvas.md` on the canvas. A spelled
+// path to the directory itself (`research/`, `./research`) is still judged:
+// copying a folder into it can bring the canvas along.
+function isStateFileName(component) {
+  return STATE_FILES.some((name) => component.toLowerCase() === name.toLowerCase() || componentMatches(component, name) !== false);
+}
+
 function namesAbsentStateDir(candidate, base, stateParts, hasState) {
   if (hasState) return false;
   const pattern = isPattern(candidate);
-  if (hasPathSeparator(candidate) && !pattern) return false;
   let resolved;
   try {
     resolved = path.resolve(base, candidate);
@@ -983,10 +1124,33 @@ function namesAbsentStateDir(candidate, base, stateParts, hasState) {
   // Equal length means the word is the state directory itself, not a path
   // reaching into it; denotesState has already matched every component.
   const parts = resolved.split(path.sep).filter(Boolean);
-  if (parts.length === stateParts.length) return true;
-  if (!pattern) return false;
-  const below = parts[stateParts.length];
-  return STATE_FILES.every((name) => componentMatches(below, name) === false);
+  if (parts.length === stateParts.length) return pattern || !hasPathSeparator(candidate);
+  return !isStateFileName(parts[stateParts.length]);
+}
+
+// An opaque word in a project without state (SQ-75). A word that reaches below
+// a component named like the state directory through a literal tail lands where
+// that tail says, whatever the unknown part before it was: `research/$n` with a
+// loop value, `"$d/research/x.md"`. It is let go unless the component below can
+// be a state file. An unknown part anywhere in the tail can climb out with `..`
+// or be `canvas.md` itself, so it counts as "can"; so does a tail that leaves the
+// directory. Every other name the word spells is judged as before.
+const OPAQUE_SPLIT = /[^A-Za-z0-9._\-/~*?[\]+@:\u0000\u0001]+/;
+
+function opaqueReachesState(text, stateNames, dirName) {
+  for (const fragment of text.split(OPAQUE_SPLIT)) {
+    const parts = fragment.split('/');
+    for (let k = 0; k < parts.length; k += 1) {
+      const names = parts[k].replace(EXP_RE, ' ').split(' ').some((piece) => piece && stateNames.has(piece));
+      if (!names) continue;
+      const tail = parts.slice(k + 1).join('/');
+      if (parts[k] !== dirName || !tail || tail.includes(EXP_OPEN)) return true;
+      const below = path.posix.normalize(tail).split('/')[0];
+      if (below === '.' || below === '..' || isStateFileName(below)) return true;
+      break;
+    }
+  }
+  return false;
 }
 
 // True when the word names the state, null when the pattern in it is one the
@@ -994,7 +1158,12 @@ function namesAbsentStateDir(candidate, base, stateParts, hasState) {
 // caller's to weigh: a word in a write position is denied on it, because a
 // pattern whose expansion is unknown can land on the state.
 function wordTouchesState(w, base, stateParts, stateNames, hasState) {
-  if (w.opaque) return opaqueNamesState(w.text, stateNames);
+  // A brace expansion or loop too large to compute (SQ-75) is unknown where
+  // state is there to land on; where it is not, it is read on the names it
+  // spells, the way an opaque word is.
+  if (w.uncomputable && hasState) return null;
+  if (w.opaque && hasState) return opaqueNamesState(w.text, stateNames);
+  if (w.opaque) return opaqueReachesState(w.text, stateNames, stateParts[stateParts.length - 1]);
   if (base === null) return false;
   let unjudgeable = false;
   for (const candidate of pathCandidates(w.text)) {
@@ -1246,12 +1415,14 @@ function logKindOf(invocation) {
 function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState) {
   for (const redirect of sc.redirects) {
     if (!redirect.write) continue;
-    const target = redirect.target;
-    if (!target || target.opaque) return 'it redirects into a path assembled at runtime';
-    if (base === null && !target.text.startsWith('/')) return 'it redirects into a relative path after a `cd` this guard cannot follow';
-    const touches = wordTouchesState(target, base, stateParts, stateNames, hasState);
-    if (touches === null) return UNCOMPUTABLE_PATTERN_WHY;
-    if (touches) return 'it redirects into the research state';
+    if (!redirect.target) return 'it redirects into a path assembled at runtime';
+    for (const target of redirect.targets || [redirect.target]) {
+      if (target.opaque) return 'it redirects into a path assembled at runtime';
+      if (base === null && !target.text.startsWith('/')) return 'it redirects into a relative path after a `cd` this guard cannot follow';
+      const touches = wordTouchesState(target, base, stateParts, stateNames, hasState);
+      if (touches === null) return UNCOMPUTABLE_PATTERN_WHY;
+      if (touches) return 'it redirects into the research state';
+    }
   }
   if (!args.length) return null;
   // SQ-67: a shell or interpreter reading its program from this heredoc is a
@@ -1360,6 +1531,7 @@ function bashVerdict(command, projectRoot) {
   }
 
   const values = new Map();
+  const loops = new Map();
   const harness = harnessRoot();
   const links = new Map();
   let base = root;
@@ -1373,9 +1545,30 @@ function bashVerdict(command, projectRoot) {
   for (const sc of commands) {
     for (const w of sc.words) substitute(w, values);
     for (const redirect of sc.redirects) if (redirect.target) substitute(redirect.target, values);
+    // SQ-75: each word becomes the words bash makes of it. Leading assignments
+    // are not brace-expanded; a redirect target keeps every form it can take,
+    // and each is judged.
+    const leading = sc.words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
+    const cut = leading < 0 ? sc.words.length : leading;
+    sc.words = [...sc.words.slice(0, cut), ...sc.words.slice(cut).flatMap((w) => expandWord(w, loops))];
+    for (const redirect of sc.redirects) {
+      redirect.targets = redirect.target && !redirect.heredoc ? expandWord(redirect.target, loops) : [];
+    }
+    // `for NAME in W…` over literal words sets NAME to each of them in turn, so a
+    // word that uses it is judged once per value. A loop over anything the
+    // guard cannot read leaves NAME unknown, as it was.
+    const [loopVerb, loopName, loopIn, ...loopWords] = sc.words;
+    if (loopVerb && !loopVerb.opaque && loopVerb.text === 'for' && loopName && /^[A-Za-z_][A-Za-z0-9_]*$/.test(loopName.text)) {
+      values.delete(loopName.text);
+      loops.delete(loopName.text);
+      if (loopIn && loopIn.text === 'in' && !loopIn.opaque && loopWords.every((w) => !w.opaque)) {
+        loops.set(loopName.text, loopWords.map((w) => w.text));
+      }
+    }
     for (const w of sc.words) {
       const assignment = ASSIGNMENT_RE.exec(w.text);
       if (!assignment) break;
+      loops.delete(assignment[1]);
       // A value the guard resolved to literal text is recorded. One that still
       // carries an unresolved substitution is recorded too, as the unknown it
       // is: `x=$(cat p.txt)` makes `$x` an unknown target, not a name the guard
@@ -1393,7 +1586,7 @@ function bashVerdict(command, projectRoot) {
       // A heredoc body left unread is judged the way an opaque word is: on the
       // literal names it still spells out.
       if (redirect.unreadBody && wordTouchesHarness(redirect.unreadBody, base, harness, links)) return harnessStateDenial('this shell command');
-      if (redirect.target && !redirect.heredoc && wordTouchesHarness(redirect.target, base, harness, links)) return harnessStateDenial('this shell command');
+      if (redirect.targets.some((target) => wordTouchesHarness(target, base, harness, links))) return harnessStateDenial('this shell command');
     }
 
     // Leading `NAME=value` words are assignments, not the command.
@@ -1413,12 +1606,13 @@ function bashVerdict(command, projectRoot) {
     }
     for (const redirect of sc.redirects) {
       if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames, hasState)) touches = true;
-      if (!redirect.target || redirect.heredoc) continue;
       // A redirect target is a write position, so a pattern there the guard
       // cannot compute counts as touching: `readOnlyRefusal` below supplies the
       // reason.
-      if (touched(wordTouchesState(redirect.target, base, stateParts, stateNames, hasState))) touches = true;
-      if (hasState && redirect.write && redirect.target.opaque && (assembledTarget(redirect.target.text) || hasUnknownSubstitution(redirect.target.text))) touches = true;
+      for (const target of redirect.targets) {
+        if (touched(wordTouchesState(target, base, stateParts, stateNames, hasState))) touches = true;
+        if (hasState && redirect.write && target.opaque && (assembledTarget(target.text) || hasUnknownSubstitution(target.text))) touches = true;
+      }
     }
     // A word in argument position that is wholly or partly the output of a
     // command substitution the guard could not resolve to a literal is an

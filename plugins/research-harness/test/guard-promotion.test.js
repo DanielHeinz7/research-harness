@@ -933,6 +933,80 @@ test('SQ-65: with the state directory there the same words still deny', () => {
   }
 });
 
+// SQ-75: bash expands braces before anything else, so `rm -rf {research,tmp}`
+// removes the state directory. The lexer split the word on its braces and never
+// saw `research`. Every expansion is now judged; a quoted or escaped brace does
+// not expand and is judged as the name it spells.
+test('SQ-75: a brace expansion is judged on every word it expands to', () => {
+  const root = makeProject();
+  for (const command of [
+    'cp a.md research/canvas.md',
+    'rm -rf {research,tmp}',
+    'cp a.md {research,x}/canvas.md',
+    'cp a.md rese{arch,x}/canvas.md',
+    'cp a.md research/{canvas,x}.md',
+    'sed -i s/a/b/ {research,x}/canvas.md',
+    'cp a.md rese{a..c}rch/canvas.md',
+    'for n in research tmp; do rm -rf $n; done',
+    'for n in {research,tmp}; do rm -rf $n; done',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  for (const command of [
+    "cp a.md '{research,x}'/canvas.md",
+    'cp a.md \\{research,x\\}/canvas.md',
+    'cat {research,x}/canvas.md',
+    'find . -name x -exec grep y {} +',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+  // Too many words to compute is a word the guard cannot judge.
+  const huge = run(root, 'Bash', { command: `cp a.md ${'{a,b}'.repeat(10)}` });
+  assert.equal(huge && huge.permissionDecision, 'deny');
+});
+
+// SQ-75: in a vault whose `research/` is a notes folder, moving a note and a
+// loop over literal names were denied. A word below the state directory now
+// lands on the state only if the component where the state files stand can be
+// one of them; a loop over literal words is judged once per value.
+test('SQ-75: without research state a word below the state directory is judged on the state file position', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-vault-'));
+  fs.mkdirSync(path.join(vault, 'research'));
+  fs.writeFileSync(path.join(vault, 'research', 'a.md'), 'note');
+  const B = 'for n in sichtbarkeit kit-ki; do echo "$n: $(ls -d {areas,projects,research,appdev}/$n{.md,} 2>/dev/null)"; done';
+  for (const command of [
+    'git mv research/a.md research/b.md',
+    'mv research/x.md projects/x.md',
+    'for n in a b; do ls -d research/$n; done',
+    B,
+    'cp x.md "$d/research/x.md"',
+  ]) {
+    assert.equal(run(vault, 'Bash', { command }), null, command);
+  }
+  const bare = makeBareProject();
+  assert.equal(run(bare, 'Bash', { command: `cd ${vault}; ${B}` }), null);
+  for (const [where, command] of [
+    [bare, 'cat > research/canvas.md'],
+    [bare, 'git checkout HEAD -- research/'],
+    [bare, 'cp x.md "research/$f"'],
+    [bare, 'git checkout HEAD -- research && cp x.md research/canva?.md'],
+    [bare, 'rm -rf research/*'],
+    [bare, 'cp x.md {research,x}/canvas.md'],
+    [bare, 'cp x.md research/Canvas.md'],
+    [bare, 'cp x.md research/sub/../canvas.md'],
+    [bare, 'cp x.md "$d/research/sub/$f"'],
+    [bare, 'cp -r src "$d/research"'],
+    [vault, 'for f in canvas.md x; do cp a research/$f; done'],
+    [vault, 'for n in $(ls); do cp x research/$n; done'],
+    [vault, 'cat ~/.claude/{research-harness,x}/abc/seal.key'],
+    [vault, 'research-harness accept 1.2'],
+  ]) {
+    const out = run(where, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+});
+
 // SQ-29 finding F5, first face (verification/SQ-29/lex.txt L30, L26). A `[…]`
 // run in a word made every word a glob, and a pattern the regex engine refused
 // was answered "matches": an ordinary `node -e` whose JavaScript held an array

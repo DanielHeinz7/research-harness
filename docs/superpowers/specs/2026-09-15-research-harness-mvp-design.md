@@ -1006,11 +1006,18 @@ routes into the same file: one for the agent, one for the human.
 against a model that has `Bash` — so the guard denies the model both
 `research-harness serve` and a direct run of `bin/canvas-serve.js` (§5.3): it
 cannot start a server of its own. The server the researcher starts binds to
-`127.0.0.1`, mints a one-time token that lives only in that process's memory,
-and hands it to the browser as a URL fragment (`#t=…`), a part of the URL a
-browser never sends over the network, so it cannot leak into a request log or
-a proxy. Every write additionally checks the request's `Host` header and, when
-present, its `Origin`. This replaces an earlier draft of this section, which
+`127.0.0.1` and mints a write token that lives only in that process's memory.
+The URL it prints and opens carries neither the token nor anything reusable:
+it carries a single-use code in the fragment (`#c=…`), which the view trades
+once, within 60 seconds, for the token (`POST /api/session`), then keeps in
+memory. After that trade the code is dead, so copies of the URL in the
+terminal's scrollback, a process listing or the browser history open nothing.
+Whoever redeems first wins, and the loser sees it: the researcher's view says
+the link was already used, and the terminal prints the moment of redemption.
+Every write additionally checks the request's `Host` header and, when present,
+its `Origin`, and carries the statement's hash so it cannot land on text the
+viewer never saw (decided 2026-09-29, after the review SQ-93 showed the first
+design, a token in the URL, was readable from the researcher's terminal). This replaces an earlier draft of this section, which
 had the guard refuse `Bash` invocations against the server's port; a random,
 short-lived port is not a rule the guard can state, where a token the model
 was never handed is. The security property is nonetheless **visibility and
@@ -1018,7 +1025,9 @@ deliberateness, not impossibility**: a promotion requires a conscious, visible
 act. That is strictly more than Sidequest has, but it is not absolute, and the
 harness should be able to say so about itself. The residual risk is a model
 holding its own browser-automation tool in the same session: it could read the
-open tab, token and all, and click through a promotion itself. The view carries
+open tab and click through a promotion itself. A model that reads the
+terminal or a process listing in the seconds before the view loads can also
+redeem the code first; the researcher then sees the "already used" notice. The view carries
 no defence against that; the researcher's own defence is to close the tab when
 the session is over (README, "Session view").
 

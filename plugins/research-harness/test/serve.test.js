@@ -220,13 +220,15 @@ test('an expired code is refused', async (t) => {
   assert.equal((await post(srv, '/api/session', { code: srv.code }, { 'X-Harness-Token': undefined })).status, 403);
 });
 
-test('research-harness serve --no-open prints the code URL, never the token, and stops on SIGINT', { skip: process.platform === 'win32' }, async () => {
+test('research-harness serve --no-open prints the code URL, never the token, and stops on SIGINT', { skip: process.platform === 'win32' }, async (t) => {
   const root = keyedProject();
   const child = childProcess.spawn(process.execPath, [cli, 'serve', '--no-open'], {
     cwd: root,
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  // A failed assertion must not leave the server running.
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
   let stdout = '';
   let lines = 1;
   let onLine = null;

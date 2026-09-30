@@ -96,24 +96,32 @@ the open tab; stop the server with Ctrl-C and it is gone. The terminal
 prints `session code redeemed` with the time when that happens. If the view
 says the link was already used, stop `serve` and start it again.
 
-The view shows:
+The view opens on the poster and reads like the paper's argument, not a form:
 
-- a 3x3 grid of the nine elements, with marker counts, open or closed status,
-  and a mark on the element most others depend on;
-- one element at a time, with its numbered questions, its statements, and
-  their source footnotes;
-- an agenda: each open element together with the DISCOVERY findings linked to
-  it;
-- the decision log, with each entry's seal status.
+- the poster shows the whole paper on one screen, nine fields in argument
+  order. Each field is a plain question with the first statement under it,
+  written the way the authors would say it. Where a field has findings, a
+  quiet line at the foot of its card ("2 things to talk about") opens the
+  "To talk about" tab at that field;
+- "To talk about" is where a meeting starts: the fields with something to
+  discuss, and the questions nobody has answered yet;
+- "History" lists what has been said and decided, in order;
+- the element view, reached with "More" on a card, shows one field with all its
+  statements as prose. A suggestion made by the model appears as an "Idea"
+  note, sources appear as page numbers, and an open question says "Not
+  answered yet".
 
-From the view you can comment, which appends a DISCOVERY entry; set a
-statement to `[stated]`; and accept a statement, through the same code the
-CLI calls, so the decision-log entry it writes is byte-identical to a CLI
-accept. Statement text is not editable here — that stays the CLI and
-`canvas-review`.
+The markers, seals and `src:` paths stay in `canvas.md` and `decisions.md`;
+the view just does not show them as codes.
+
+From the view you can comment (it appears as a "To talk about" note and is
+written as a DISCOVERY entry), set a statement to `[stated]`, and accept a
+statement, through the same code the CLI calls, so the decision-log entry it
+writes is byte-identical to a CLI accept. Statement text is not editable here
+— that stays the CLI and `canvas-review`.
 
 Print the page for a coauthor who wants a paper copy: the print stylesheet
-puts the grid on its own landscape page and hides the comment and accept
+puts the poster on its own A4 landscape page and hides the comment and accept
 controls.
 
 One limit worth stating plainly: a model given a browser-automation tool in

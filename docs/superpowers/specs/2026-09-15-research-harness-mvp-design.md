@@ -994,11 +994,21 @@ act. This makes import safe without a special case.
 The original canvas is designed as a *"ready-to-copy"* poster print. Its digital
 equivalent is a session view for author-team meetings and solo reviews.
 
-- **Zoom out:** the puzzle layout, nine fields, markers in colour, dependency
-  violations highlighted.
-- **Zoom in:** one element with its question set, content, markers, and source.
-- **Numbering:** every field and every sub-question shows its number.
-- **Comment:** comments go to `decisions.md` as `DISCOVERY` entries.
+- **Zoom out (the poster):** the whole paper on one screen, nine fields in
+  the canvas's argument order. Each field is headed by a plain question and
+  shows its first statement as a sentence in the authors' words; a field with
+  findings also says how many things there are to talk about.
+- **Zoom in (the element view):** one field with all its statements as prose.
+  A suggestion made by the model reads as an "Idea" note, sources are page
+  numbers, and a question nobody has answered says "Not answered yet".
+- **Numbering:** every field shows its number.
+- **Comment:** comments go to `decisions.md` as `DISCOVERY` entries; the view
+  calls them "To talk about", and the log itself sits behind "History".
+
+The view presents the paper as a story rather than as a form: markers, seals
+and `src:` paths stay in the files and are not shown as counters or codes in
+the reading views (decided 2026-09-30, after earlier drafts read as
+bureaucracy).
 
 **One truth.** The view is generated from `canvas.md` and writes back to it. It
 does not live alongside it.

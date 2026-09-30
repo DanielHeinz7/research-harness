@@ -22,7 +22,7 @@ const USAGE = [
   'research-harness init --project <slug> --mode brainstorming|seed|import [--outlet <name>] [--title <text>] [--profile <id>]',
   'research-harness status [--key <file>]',
   'research-harness review [--key <file>]',
-  'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
+  'research-harness accept <n.m> --explained <text> [--match <substring>] [--why <text>] [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
   'research-harness title [<text>]',
   'research-harness serve [--no-open]',
@@ -251,11 +251,13 @@ function accept(positional, flags) {
     questionId,
     match: typeof flags.match === 'string' ? flags.match : undefined,
     why: typeof flags.why === 'string' ? flags.why : undefined,
+    explained: typeof flags.explained === 'string' ? flags.explained : undefined,
     rejected: typeof flags.rejected === 'string' ? flags.rejected : undefined,
     pluginRoot: pluginRoot(),
   });
   if (!result.ok) return refused(result);
   say(`Accepted ${questionId} (was [${result.was}]): ${result.text}`);
+  if (result.openAtAccept.length) say(`Accepted with open check questions: ${result.openAtAccept.map((n) => `#${n}`).join(', ')}.`);
   say(`Logged as #${result.seq} with text ${result.hash}, sealed ${result.seal}.`);
   return 0;
 }

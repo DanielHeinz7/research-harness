@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 
 const canvas = require('./canvas');
+const decisions = require('./decisions');
 const project = require('./project');
 const profileLib = require('./profile');
 const seal = require('./seal');
@@ -39,14 +40,20 @@ function pickTarget(parsed, questionId, match, expectedHash) {
 // The approval path: the statement's marker becomes [accepted] and a sealed
 // DECISION carrying its text hash is appended. The CLI and the session view
 // both come through here.
-function acceptStatement({ root, questionId, match, why, rejected, expectedHash, pluginRoot } = {}) {
+function acceptStatement({ root, questionId, match, why, explained, rejected, expectedHash, pluginRoot } = {}) {
   const state = loadState(root, { pluginRoot });
   if (state.error) return refuse(state.code, state.error);
   if (typeof questionId !== 'string' || !QUESTION_ID.test(questionId)) return refuse('invalid', 'accept needs a question id like 3.1.', true);
   if (expectedHash !== undefined && typeof expectedHash !== 'string') return refuse('invalid', 'expectedHash must be a text hash.');
+  // Every acceptance carries the researcher's own one-sentence explanation of
+  // what they accept; without it nothing is accepted.
+  if (typeof explained !== 'string' || !explained.trim()) {
+    return refuse('explanation-required', `Accepting ${questionId} needs your explanation: one sentence, in your own words, of what you accept and why it holds (--explained <text>). Nothing is accepted.`);
+  }
+  const explanation = explained.trim();
   const reason = typeof why === 'string' ? why : undefined;
   const rejectedText = typeof rejected === 'string' ? rejected : undefined;
-  const heading = headingRefusal(reason, rejectedText);
+  const heading = headingRefusal(reason, explanation, rejectedText);
   if (heading) return refuse('invalid', heading);
   if (state.profileError) return refuse('dependency', `${state.profileError}; cannot check dependencies, so nothing is accepted.`);
 
@@ -80,6 +87,11 @@ function acceptStatement({ root, questionId, match, why, rejected, expectedHash,
     target = again.target;
   }
 
+  // Check questions still open at this moment are recorded, not gating: the
+  // researcher may accept anyway. Computed here from decisions.md alone, so
+  // every route writes the same bytes.
+  const openAtAccept = openChecks(project.readIfExists(state.paths.decisions) || '', questionId).map((e) => e.seq);
+
   fs.writeFileSync(state.paths.canvas, withMarker(canvasText, target, 'accepted'));
 
   const hash = textHash(target.text);
@@ -90,9 +102,21 @@ function acceptStatement({ root, questionId, match, why, rejected, expectedHash,
     hash,
     body: `${target.text} [accepted${target.tags.length ? `, ${target.tags.join(', ')}` : ''}]`,
     why: reason,
+    explained: explanation,
     rejected: rejectedText,
+    openAtAccept,
   }, state.key, { decision: true });
-  return { ok: true, seq: logged.seq, seal: logged.seal, hash, text: target.text, elementNumber: element.number, was: target.marker };
+  return { ok: true, seq: logged.seq, seal: logged.seal, hash, text: target.text, elementNumber: element.number, was: target.marker, openAtAccept };
 }
 
-module.exports = { acceptStatement };
+// The open check questions on a question: every DISCOVERY with ref
+// `<n.m> check` logged after the last DECISION on `n.m`. A DECISION on the
+// question closes the checks before it.
+function openChecks(decisionsText, questionId) {
+  const { entries } = decisions.parseDecisions(decisionsText);
+  const onQuestion = (e) => e.ref.trim().split(/\s+/)[0] === questionId;
+  const lastDecision = entries.filter((e) => e.kind === 'DECISION' && onQuestion(e)).reduce((max, e) => Math.max(max, e.seq), 0);
+  return entries.filter((e) => e.kind === 'DISCOVERY' && e.ref.trim() === `${questionId} check` && e.seq > lastDecision);
+}
+
+module.exports = { acceptStatement, openChecks };

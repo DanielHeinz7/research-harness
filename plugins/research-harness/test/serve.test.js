@@ -23,6 +23,8 @@ process.env.RESEARCH_HARNESS_STATE_DIR = stateDir;
 
 const SPEAKING = 'Speaking frequency is well documented; whether a proposal is taken up is not.';
 const WHY = 'the gap is uptake, not voice';
+// Every accept carries the researcher's explanation (US-3).
+const EXPLAINED = 'I accept this because the fieldnotes show it.';
 const roots = [];
 
 function run(root, args) {
@@ -136,7 +138,7 @@ test('the session server serves state, refuses what fails a check, and writes wh
   assert.equal(big.status, 413);
 
   // A stale hash is 409, another refusal 422.
-  const stale = await post(srv, '/api/accept', { questionId: '1.2', expectedHash: '00000000' });
+  const stale = await post(srv, '/api/accept', { questionId: '1.2', expectedHash: '00000000', explained: EXPLAINED });
   assert.equal(stale.status, 409);
   assert.equal(stale.json.code, 'stale');
   const bad = await post(srv, '/api/accept', { questionId: '99', expectedHash: textHash(SPEAKING) });
@@ -152,7 +154,7 @@ test('the session server serves state, refuses what fails a check, and writes wh
 
   // Accept through HTTP, with the same Origin a same-origin page sends; then
   // the CLI accepts the same statement on a second copy holding the same key.
-  const accepted = await post(srv, '/api/accept', { ...payload, why: WHY }, { Origin: `http://127.0.0.1:${srv.port}` });
+  const accepted = await post(srv, '/api/accept', { ...payload, why: WHY, explained: EXPLAINED }, { Origin: `http://127.0.0.1:${srv.port}` });
   assert.equal(accepted.status, 200, accepted.text);
   assert.equal(accepted.json.ok, true);
   assert.equal(accepted.json.hash, textHash(SPEAKING));
@@ -160,7 +162,7 @@ test('the session server serves state, refuses what fails a check, and writes wh
   const second = copyFixture();
   fs.mkdirSync(path.dirname(seal.keyPath(second)), { recursive: true });
   fs.copyFileSync(seal.keyPath(root), seal.keyPath(second));
-  const out = run(second, ['accept', '1.2', '--match', 'Speaking frequency', '--why', WHY]);
+  const out = run(second, ['accept', '1.2', '--match', 'Speaking frequency', '--why', WHY, '--explained', EXPLAINED]);
   assert.equal(out.status, 0, out.stdout);
   assert.equal(read(root, 'decisions.md'), read(second, 'decisions.md'));
   assert.equal(read(root, 'canvas.md'), read(second, 'canvas.md'));
@@ -210,7 +212,7 @@ test('the single-use code is traded for the token once, and is no token itself',
 
   // The token it handed out writes; the code still does not.
   assert.equal((await post(srv, '/api/accept', payload, { 'X-Harness-Token': srv.code })).status, 403);
-  const accepted = await post(srv, '/api/accept', { ...payload, why: WHY });
+  const accepted = await post(srv, '/api/accept', { ...payload, why: WHY, explained: EXPLAINED });
   assert.equal(accepted.status, 200, accepted.text);
 });
 

@@ -15,6 +15,8 @@ const { textHash } = require('../hooks/lib/hash');
 const pluginRoot = path.resolve(__dirname, '..');
 const cli = path.join(pluginRoot, 'bin', 'research-harness.js');
 const fixtureDir = path.join(__dirname, 'fixtures', 'voice-uptake', 'research');
+// Every accept carries the researcher's explanation (US-3).
+const EXPLAINED = 'I accept this because the fieldnotes show it.';
 
 function makeProject(withState = true) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-'));
@@ -326,7 +328,7 @@ test('review names a committed statement that would not render, and says which v
 
 test('review reports a verified, an unverifiable-here and a broken ledger, and names the cover an unlogged acceptance lacks', () => {
   const root = keyedProject();
-  const one = run(root, ['accept', '1.2', '--match', 'Speaking frequency']);
+  const one = run(root, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency']);
   assert.equal(one.status, 0, one.stdout);
   const verified = run(root, ['review']);
   assert.match(verified.stdout, /## Decision log\nverified: 1 sealed entry; entries #1, #2, #3 predate the seal/);
@@ -363,7 +365,7 @@ function anchorLine(stdout) {
 
 test('a record received from elsewhere verifies with --key <file>, and a wrong key reads as broken', () => {
   const author = keyedProject();
-  const accepted = run(author, ['accept', '1.2', '--match', 'Speaking frequency']);
+  const accepted = run(author, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency']);
   assert.equal(accepted.status, 0, accepted.stdout);
   const reviewer = receivedCopy(author);
 
@@ -417,7 +419,7 @@ test('--key refuses a file it cannot read, one that is not 32 bytes, and a missi
 
 test('the anchor line is stable for an unchanged record and moves when a byte moves', () => {
   const root = keyedProject();
-  assert.equal(run(root, ['accept', '1.2', '--match', 'Speaking frequency']).status, 0);
+  assert.equal(run(root, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency']).status, 0);
   const parts = (line) => line.match(/^last seal ([0-9a-f]{16}), maxSeq (\d+), decisions\.md sha256 ([0-9a-f]{64})$/);
   const before = parts(anchorLine(run(root, ['review']).stdout));
   assert.ok(before, 'the anchor names the last seal, maxSeq and the file hash');
@@ -434,11 +436,11 @@ test('the anchor line is stable for an unchanged record and moves when a byte mo
 test('accept promotes the single candidate, keeps tags, logs a sealed DECISION with the text hash', () => {
   const root = keyedProject();
   // 3.1 depends on 1 (is-qualitative). Element 1 is stated, not accepted → refused first.
-  const refused = run(root, ['accept', '3.1']);
+  const refused = run(root, ['accept', '3.1', '--explained', EXPLAINED]);
   assert.equal(refused.status, 1);
   assert.match(refused.stdout, /element 1 is stated/);
   // Accept the remaining committed statement in 1.2 so element 1 becomes accepted.
-  const one = run(root, ['accept', '1.2', '--match', 'Speaking frequency', '--why', 'the gap is uptake, not voice']);
+  const one = run(root, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency', '--why', 'the gap is uptake, not voice']);
   assert.equal(one.status, 0, one.stdout);
   let text = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
   assert.match(text, /whether a proposal is taken up is not\. \[accepted\]/);
@@ -450,7 +452,7 @@ test('accept promotes the single candidate, keeps tags, logs a sealed DECISION w
   assert.match(log.entries[3].seal, /^[0-9a-f]{16}$/);
   assert.match(one.stdout, /sealed/);
   // Now 3.1 is acceptable; its src: tag survives.
-  const three = run(root, ['accept', '3.1']);
+  const three = run(root, ['accept', '3.1', '--explained', EXPLAINED]);
   assert.equal(three.status, 0, three.stdout);
   text = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
   assert.match(text, /get taken up\? \[accepted, src: memo-03\]/);
@@ -463,17 +465,17 @@ test('accept promotes the single candidate, keeps tags, logs a sealed DECISION w
 test('accept refuses without a key and on a broken ledger, and leaves the canvas untouched', () => {
   const noKey = makeProject();
   const canvasBefore = fs.readFileSync(path.join(noKey.toString(), 'research', 'canvas.md'), 'utf8');
-  const refused = run(noKey, ['accept', '1.2', '--match', 'Speaking frequency']);
+  const refused = run(noKey, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency']);
   assert.equal(refused.status, 1);
   assert.match(refused.stdout, /no sealing key/i);
   assert.match(refused.stdout, /research-harness init/);
   assert.equal(fs.readFileSync(path.join(noKey, 'research', 'canvas.md'), 'utf8'), canvasBefore, 'nothing is accepted without a log entry');
 
   const root = keyedProject();
-  assert.equal(run(root, ['accept', '1.2', '--match', 'Speaking frequency']).status, 0);
+  assert.equal(run(root, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency']).status, 0);
   fs.appendFileSync(path.join(root, 'research', 'decisions.md'), '\n## [#5] 2026-09-18 · DECISION · 3.1 accepted · text deadbeef\nforged [accepted]\n');
   const before = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
-  const onBroken = run(root, ['accept', '3.1']);
+  const onBroken = run(root, ['accept', '3.1', '--explained', EXPLAINED]);
   assert.equal(onBroken.status, 1);
   assert.match(onBroken.stdout, /broken at #5/);
   assert.equal(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), before);
@@ -524,8 +526,8 @@ test('log and accept refuse an entry heading in any free-text field, not only --
   for (const args of [
     ['log', 'DISCOVERY', '1.2', '--body', `a finding\n${forged}`],
     ['log', 'DISCOVERY', '1.2', '--body', 'a finding', '--why', `because\n${forged}`],
-    ['accept', '1.2', '--match', 'Speaking frequency', '--why', `because\n${forged}`],
-    ['accept', '1.2', '--match', 'Speaking frequency', '--rejected', `because\n${forged}`],
+    ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency', '--why', `because\n${forged}`],
+    ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency', '--rejected', `because\n${forged}`],
   ]) {
     const out = run(root, args);
     assert.equal(out.status, 2, `${args.join(' ')} was not refused: ${out.stdout}`);
@@ -534,21 +536,41 @@ test('log and accept refuse an entry heading in any free-text field, not only --
   assert.equal(readLog(root), before, 'a refused heading writes nothing');
   assert.equal(decisions.parseDecisions(readLog(root)).entries.some((e) => e.seq === 99), false, 'no forged entry reached the ledger');
   // The ledger is still whole, so the researcher's own accept still lands.
-  const accepted = run(root, ['accept', '1.2', '--match', 'Speaking frequency']);
+  const accepted = run(root, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency']);
   assert.equal(accepted.status, 0, accepted.stdout);
 });
 
 test('accept refuses ambiguity, unknown questions, and already-accepted statements', () => {
   const root = makeProject();
-  const ambiguous = run(root, ['accept', '1.2']);
+  const ambiguous = run(root, ['accept', '1.2', '--explained', EXPLAINED]);
   assert.equal(ambiguous.status, 1);
   assert.match(ambiguous.stdout, /--match/);
-  const unknown = run(root, ['accept', '7.9']);
+  const unknown = run(root, ['accept', '7.9', '--explained', EXPLAINED]);
   assert.equal(unknown.status, 1);
   assert.match(unknown.stdout, /no question 7\.9/);
-  const done = run(root, ['accept', '1.1']);
+  const done = run(root, ['accept', '1.1', '--explained', EXPLAINED]);
   assert.equal(done.status, 1);
   assert.match(done.stdout, /nothing to accept/);
+});
+
+test('accept without an explanation is refused and writes nothing; with one, the explanation is logged', () => {
+  const root = keyedProject();
+  const canvasBefore = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+  const logBefore = readLog(root);
+  for (const extra of [[], ['--explained'], ['--explained', '   '], ['--explained', '']]) {
+    const out = run(root, ['accept', '1.2', '--match', 'Speaking frequency', ...extra]);
+    assert.equal(out.status, 1, `${extra.join(' ')} was not refused: ${out.stdout}`);
+    assert.match(out.stdout, /needs your explanation/);
+    assert.match(out.stdout, /--explained <text>/);
+  }
+  assert.equal(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), canvasBefore, 'nothing is accepted without an explanation');
+  assert.equal(readLog(root), logBefore, 'nothing is logged without an explanation');
+  const out = run(root, ['accept', '1.2', '--match', 'Speaking frequency', '--explained', EXPLAINED]);
+  assert.equal(out.status, 0, out.stdout);
+  const last = decisions.parseDecisions(readLog(root)).entries.at(-1);
+  assert.equal(last.explained, EXPLAINED);
+  assert.deepEqual(last.openAtAccept, []);
+  assert.doesNotMatch(out.stdout, /open check questions/);
 });
 
 test('nothing is written to stderr, so a skill can embed the output through a `!` line', () => {

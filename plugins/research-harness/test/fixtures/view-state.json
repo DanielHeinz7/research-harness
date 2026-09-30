@@ -526,6 +526,30 @@
       "offset": 342,
       "body": "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]\n**Why:** the phenomenon, not a gap, drives the study.\n**Rejected:** framing it as a voice-frequency question.",
       "sealStatus": "legacy"
+    },
+    {
+      "seq": 4,
+      "date": "2026-09-30",
+      "kind": "DECISION",
+      "ref": "1.1 accepted",
+      "hash": "3de2d26a",
+      "seal": "b773a2d1ecbc298b",
+      "line": 13,
+      "offset": 612,
+      "body": "How can we understand how members' suggestions come to be taken up in meetings? [accepted, src: gerlach-cenfetelli-2020 p. 1706]\n**Why:** The study starts from the phenomenon, not from a gap.",
+      "sealStatus": "verified"
+    },
+    {
+      "seq": 5,
+      "date": "2026-09-30",
+      "kind": "DISCOVERY",
+      "ref": "1 Puzzle",
+      "hash": null,
+      "seal": "f8bd896407e7642d",
+      "line": 17,
+      "offset": 820,
+      "body": "Ask whether the twelve meetings cover more than one team.\n**Why:** The puzzle may hold for only one group.",
+      "sealStatus": "verified"
     }
   ],
   "profileError": null,

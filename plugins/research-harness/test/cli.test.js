@@ -101,6 +101,7 @@ test('--help and -h print the usage and exit 0, with a subcommand and without on
     assert.match(out.stdout, /^research-harness init --project <slug>/, label);
     assert.match(out.stdout, /\[--title <text>\]/, label);
     assert.match(out.stdout, /research-harness serve \[--no-open\]/, label);
+    assert.match(out.stdout, /research-harness title \[<text>\]/, label);
   }
   assert.equal(fs.existsSync(path.join(root, 'research')), false, 'a help call writes nothing');
 });
@@ -147,14 +148,97 @@ test('init --title writes the paper\'s own text as a quoted scalar after project
   assert.ok(!/^title:/m.test(bareText), bareText.split('\n').slice(0, 9).join('\n'));
 });
 
-test('init --title on an existing project leaves the canvas byte-identical and names the hand edit', () => {
+test('init --title on an existing project leaves the canvas byte-identical and names the title command', () => {
   const root = makeProject();
   const before = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
   const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed', '--title', 'A title that must not land']);
   assert.equal(out.status, 0, out.stdout + out.stderr);
-  assert.match(out.stdout, /--title was not applied/);
-  assert.match(out.stdout, /by hand/);
+  assert.match(out.stdout, /^--title was not applied: research\/canvas\.md already exists; run research-harness title "<text>" to set it\.$/m);
+  assert.doesNotMatch(out.stdout, /by hand/, 'the old hand-edit wording is gone');
   assert.equal(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), before);
+  assert.equal(readLog(root), fs.readFileSync(path.join(fixtureDir, 'decisions.md'), 'utf8'), 'the message is the whole effect');
+});
+
+test('title writes the line after project:, and every other byte of the canvas stays as it was', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const before = fs.readFileSync(file, 'utf8');
+  const logBefore = readLog(root);
+  // The title is the researcher's own text: a quote, a colon, a hash and
+  // non-ASCII, the shapes the frontmatter quoting has to survive.
+  const title = 'Wissen, was man gebaut hat: "Vibe Coding" #1 — für Daniel';
+  const out = run(root, ['title', title]);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  assert.equal(out.stdout, `Title set: ${title}\n`);
+  const after = fs.readFileSync(file, 'utf8');
+  assert.equal(after, before.replace('project: voice-uptake\n', `project: voice-uptake\ntitle: ${JSON.stringify(title)}\n`));
+  const parsed = canvas.parseCanvas(after);
+  assert.deepEqual(parsed.problems, [], 'the frontmatter must still parse');
+  assert.equal(parsed.frontmatter.title, title, 'the value reads back unchanged, with no quotes left on it');
+  assert.equal(parsed.frontmatter.outlet, 'Organization Science', 'the fields around it are untouched');
+  assert.equal(readLog(root), logBefore, 'setting a title writes no decision-log entry');
+});
+
+test('title replaces the title line in place, so a second call never adds a second one', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  assert.equal(run(root, ['title', 'First title']).status, 0);
+  const one = fs.readFileSync(file, 'utf8');
+  const second = 'Second: "title" #2';
+  const out = run(root, ['title', second]);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  const two = fs.readFileSync(file, 'utf8');
+  assert.equal(two, one.replace(`title: ${JSON.stringify('First title')}\n`, `title: ${JSON.stringify(second)}\n`));
+  assert.equal((two.match(/^title:/gm) || []).length, 1, 'exactly one title line after the second call');
+  assert.equal(canvas.parseCanvas(two).frontmatter.title, second);
+});
+
+test('title without text prints the title, or says there is none', () => {
+  const root = makeProject();
+  const none = run(root, ['title']);
+  assert.equal(none.status, 0, none.stdout + none.stderr);
+  assert.equal(none.stdout, 'No title set.\n');
+  assert.equal(run(root, ['title', 'Voice uptake']).status, 0);
+  assert.equal(run(root, ['title']).stdout, 'Voice uptake\n');
+});
+
+test('title joins the words it is given and refuses an empty one', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const before = fs.readFileSync(file, 'utf8');
+  for (const args of [['title', ''], ['title', '   '], ['title', '\t\n']]) {
+    const out = run(root, args);
+    assert.equal(out.status, 1, `${JSON.stringify(args)} was not refused: ${out.stdout}`);
+    assert.equal(out.stderr, '', 'the refusal is one line on stdout');
+    assert.match(out.stdout, /cannot be empty/);
+  }
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'a refused title writes nothing');
+  const joined = run(root, ['title', 'Metacognition', 'in', 'meetings']);
+  assert.equal(joined.status, 0, joined.stdout + joined.stderr);
+  assert.equal(run(root, ['title']).stdout, 'Metacognition in meetings\n');
+});
+
+test('title refuses outside a paper project, like status, and creates nothing', () => {
+  const root = makeProject(false);
+  for (const args of [['title'], ['title', 'A title']]) {
+    const out = run(root, args);
+    assert.equal(out.status, 1, `${args.join(' ')} was not refused: ${out.stdout}`);
+    assert.equal(out.stderr, '');
+    assert.match(out.stdout, /not a paper project/);
+    assert.match(out.stdout, /no research\/canvas\.md/);
+  }
+  assert.equal(fs.existsSync(path.join(root, 'research')), false);
+});
+
+test('title refuses a canvas it cannot place the line in, rather than guessing', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const text = '---\nmode: seed\n---\n\n# 1 · Puzzle\n';
+  fs.writeFileSync(file, text);
+  const out = run(root, ['title', 'A title']);
+  assert.equal(out.status, 1);
+  assert.match(out.stdout, /nowhere to set a title/);
+  assert.equal(fs.readFileSync(file, 'utf8'), text);
 });
 
 test('init on an existing project only creates the missing key, and never replaces one', () => {

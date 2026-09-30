@@ -25,6 +25,18 @@ function lensOf(parsed) {
   return typeof lens === 'string' && lens.trim() ? lens.trim() : null;
 }
 
+// A refusal names a [stated] statement by its question and its own text.
+// parseCanvas already collapses the text to one line; a statement can still run
+// long, and this is read in a terminal, so past this many code points it is cut
+// with an ellipsis — on a code-point boundary, never inside a character.
+const STATED_TEXT_LIMIT = 120;
+
+function namedStatement(s) {
+  const chars = Array.from(s.text);
+  const text = chars.length <= STATED_TEXT_LIMIT ? s.text : `${chars.slice(0, STATED_TEXT_LIMIT - 1).join('')}…`;
+  return `${s.question} "${text}"`;
+}
+
 // Choosing a framing is the researcher's act, like an acceptance: the model
 // generates the variants and never picks one. The chosen variant's statements
 // become research/canvas.md as they are — proposed, tentative or stated — under
@@ -48,8 +60,21 @@ function chooseFraming({ root, name, why, rejected, pluginRoot } = {}) {
   // Replacing that framing would leave the acceptance's entry stale and the
   // commitment gone, so a framing is chosen before anything is accepted.
   const accepted = canvas.allStatements(main.parsed).filter((s) => s.marker === 'accepted');
-  if (accepted.length) {
-    return refuse('already', `The main canvas already holds ${accepted.length} [accepted] statement${accepted.length === 1 ? '' : 's'} (${[...new Set(accepted.map((s) => s.question))].join(', ')}); a framing is chosen before anything is accepted, so nothing is changed.`);
+  // A [stated] statement is the researcher's own words, and the canvas skill
+  // says one is never altered or deleted; a choice replaces everything below
+  // the frontmatter, so it would delete each of them. Same code as the
+  // [accepted] branch, so the CLI's exit status and the server's mapping treat
+  // both refusals alike.
+  const stated = canvas.allStatements(main.parsed).filter((s) => s.marker === 'stated');
+  if (accepted.length || stated.length) {
+    const parts = [];
+    if (accepted.length) {
+      parts.push(`The main canvas already holds ${accepted.length} [accepted] statement${accepted.length === 1 ? '' : 's'} (${[...new Set(accepted.map((s) => s.question))].join(', ')}); a framing is chosen before anything is accepted, so nothing is changed.`);
+    }
+    if (stated.length) {
+      parts.push(`The main canvas ${accepted.length ? 'also ' : ''}holds ${stated.length} [stated] statement${stated.length === 1 ? '' : 's'}, which choosing a framing would delete: ${stated.map(namedStatement).join('; ')}. A [stated] statement is never altered or deleted — move each one into the variant it belongs to, or remove it, then choose again; nothing is changed.`);
+    }
+    return refuse('already', parts.join(' '));
   }
   // A variant is written by the model, and only an acceptance may put
   // [accepted] into the main canvas. Copying one would plant a commitment no

@@ -55,6 +55,17 @@ function ok(out) {
 const file = (root, ...parts) => path.join(root, 'research', ...parts);
 const read = (f) => fs.readFileSync(f, 'utf8');
 
+// Writes one statement under the question with this id, where its placeholder
+// still stands — the same edit the accepted-refusal test makes by hand.
+function putStatement(f, id, statement) {
+  const text = read(f);
+  const heading = text.indexOf(`## ${id} `);
+  assert.notEqual(heading, -1, `no question ${id} in ${f}`);
+  const at = text.indexOf('_(empty)_', heading);
+  assert.notEqual(at, -1, `question ${id} is not empty in ${f}`);
+  fs.writeFileSync(f, `${text.slice(0, at)}${statement}${text.slice(at + '_(empty)_'.length)}`);
+}
+
 // A fresh project with two variants, each holding one proposal under 1.1.
 function projectWithVariants() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-var-'));
@@ -198,6 +209,62 @@ test('choose refuses once the main canvas holds an [accepted] statement, and ref
   const planted = run(other, ['choose', 'power', '--why', 'x']);
   assert.equal(planted.status, 2);
   assert.match(planted.stdout, /holds \[accepted\] statements/);
+});
+
+test('choose refuses while the main canvas holds a [stated] statement, names it, and writes nothing', () => {
+  const root = projectWithVariants();
+  const main = file(root, 'canvas.md');
+  putStatement(main, '1.1', 'The researcher said this in the meeting. [stated]');
+  const before = read(main);
+  const logBefore = read(file(root, 'decisions.md'));
+
+  const out = run(root, ['choose', 'power', '--why', 'x']);
+  assert.equal(out.status, 1, out.stdout + out.stderr);
+  assert.match(out.stdout, /^The main canvas holds 1 \[stated\] statement, which choosing a framing would delete: 1\.1 "The researcher said this in the meeting\."\./);
+  assert.match(out.stdout, /move each one into the variant it belongs to, or remove it, then choose again/);
+  assert.equal(read(main), before);
+  assert.equal(read(file(root, 'decisions.md')), logBefore);
+});
+
+test('choose lists a [stated] statement in every question, cuts a long one to one line, and names both markers', () => {
+  const root = projectWithVariants();
+  const main = file(root, 'canvas.md');
+  const long = `The researcher said ${'a great deal '.repeat(20)}and then stopped.`;
+  putStatement(main, '1.1', 'The researcher said this in the meeting. [stated]');
+  putStatement(main, '2.1', `${long} [stated]`);
+  const before = read(main);
+  const logBefore = read(file(root, 'decisions.md'));
+
+  const out = run(root, ['choose', 'power', '--why', 'x']);
+  assert.equal(out.status, 1, out.stdout + out.stderr);
+  assert.match(out.stdout, /holds 2 \[stated\] statements, which choosing a framing would delete: 1\.1 "The researcher said this in the meeting\."; 2\.1 "The researcher said/);
+  assert.match(out.stdout, /…"/);
+  assert.doesNotMatch(out.stdout, /and then stopped/);
+  assert.equal(read(main), before);
+  assert.equal(read(file(root, 'decisions.md')), logBefore);
+
+  // Both markers in one message: the [accepted] wording keeps its own sentence.
+  putStatement(main, '1.2', 'An accepted question. [accepted]');
+  const both = run(root, ['choose', 'power', '--why', 'x']);
+  assert.equal(both.status, 1);
+  assert.match(both.stdout, /already holds 1 \[accepted\] statement \(1\.2\); a framing is chosen before anything is accepted, so nothing is changed\. The main canvas also holds 2 \[stated\] statements/);
+});
+
+test('a chosen variant that holds a [stated] statement still copies it into the main canvas', () => {
+  const root = projectWithVariants();
+  const v = file(root, 'variants', 'sense-making', 'canvas.md');
+  putStatement(v, '1.2', 'The room said it this way. [stated]');
+  const variantText = read(v);
+
+  const out = ok(run(root, ['choose', 'sense-making', '--why', 'It explains the two meetings the power lens cannot.']));
+  assert.match(out, /2 statements copied into research\/canvas\.md\./);
+  const mainAfter = read(file(root, 'canvas.md'));
+  assert.equal(mainAfter.slice(mainAfter.indexOf('\n---\n') + 5), variantText.slice(variantText.indexOf('\n---\n') + 5));
+  const statements = canvas.allStatements(canvas.parseCanvas(mainAfter)).filter((s) => s.marker !== null);
+  assert.deepEqual(statements.map((s) => [s.question, s.marker, s.text]), [
+    ['1.1', 'tentative', 'Uptake follows whether a proposal fits the frame the room already shares.'],
+    ['1.2', 'stated', 'The room said it this way.'],
+  ]);
 });
 
 test('mechanicalReview does not count a framing-chosen DECISION as an acceptance', () => {

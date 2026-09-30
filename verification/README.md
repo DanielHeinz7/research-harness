@@ -31,6 +31,26 @@ if the effect column shows the write changed something it should not have —
 moved. Most `ALLOW` rows are negative controls and are supposed to be there; a
 guard that denies everything is a wall, not a guard.
 
+## Negative control
+
+A green suite says nothing about a change unless the tests fail without it. That
+check runs in a throwaway worktree of `HEAD`, so the caller's tree, index and
+refs are never written to:
+
+    node verification/negative-control.js --base <rev> --revert <path>[,<path>...] [--test-cmd "<shell command>"]
+
+Each path is restored from `<base>` in that worktree — deleted there, when the
+change added the file — and only then does the test command run. It defaults to
+the plugin suite. Exit 0 means the tests failed under the revert: the control
+bit, and the failing tests are named. Exit 1 means they passed, so nothing pins
+the change. Exit 2 is for usage and setup errors, and for a run whose output
+holds no test result at all — that is not evidence either way. The worktree is
+removed again in every case, including on error or signal.
+
+Its own cases:
+
+    node --test verification/negative-control.test.js
+
 ## The corpus
 
 | Script | Attacks |

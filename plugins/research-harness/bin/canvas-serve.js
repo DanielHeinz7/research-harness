@@ -17,10 +17,12 @@ const childProcess = require('node:child_process');
 
 const stateLib = require('../hooks/lib/state');
 const profileLib = require('../hooks/lib/profile');
+const projectLib = require('../hooks/lib/project');
 const { parseDecisions } = require('../hooks/lib/decisions');
 const { textHash } = require('../hooks/lib/hash');
 const { mechanicalReview } = require('../hooks/lib/review');
-const { acceptStatement } = require('../hooks/lib/accept');
+const { acceptStatement, openChecks } = require('../hooks/lib/accept');
+const { chooseFraming } = require('../hooks/lib/choose');
 const { setStated } = require('../hooks/lib/stated');
 const { appendLog } = require('../hooks/lib/log');
 
@@ -40,16 +42,23 @@ function pluginVersion(pluginRoot) {
   }
 }
 
-// What the view renders. The sealing key is loaded to judge the ledger and is
-// never put into the payload.
-function viewState(root, pluginRoot) {
-  const state = stateLib.loadState(root, { pluginRoot });
-  if (state.error) return { ok: false, code: state.code, error: state.error };
+// What the view renders for one canvas — the main one or a variant's. The
+// sealing key is loaded to judge the ledger and is never put into the payload.
+// One function builds both, so a variant's state cannot drift from the main
+// canvas's.
+function canvasState(state, pluginRoot) {
   const statuses = profileLib.statusByNumber(state.parsed);
   const elements = state.parsed.elements.map((e) => ({
     ...e,
     status: statuses[e.number],
-    questions: e.questions.map((q) => ({ ...q, statements: q.statements.map((s) => ({ ...s, hash: textHash(s.text) })) })),
+    questions: e.questions.map((q) => ({
+      ...q,
+      statements: q.statements.map((s) => ({ ...s, hash: textHash(s.text) })),
+      // The check questions still open on this question, from the same library
+      // function the accept path records as `openAtAccept`: the view and the
+      // log must not hold two readings of what "open" means.
+      openChecks: openChecks(state.decisionsText, q.id).map((c) => ({ seq: c.seq, body: c.body })),
+    })),
   }));
   const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText, key: state.key });
   const { ledger } = report;
@@ -62,19 +71,35 @@ function viewState(root, pluginRoot) {
     return 'unverifiable';
   };
   return {
-    ok: true,
-    body: {
-      version: pluginVersion(pluginRoot),
-      project: state.parsed.frontmatter.project || null,
-      frontmatter: state.parsed.frontmatter,
-      elements,
-      violations: state.graph ? profileLib.dependencyViolations(state.parsed, state.graph) : [],
-      review: { ...report, ledger: { ...ledger, verified: [...ledger.verified] } },
-      decisions: parseDecisions(state.decisionsText).entries.map((e) => ({ ...e, sealStatus: sealStatus(e) })),
-      profileError: state.profileError || null,
-      keyError: state.keyError || null,
-    },
+    version: pluginVersion(pluginRoot),
+    project: state.parsed.frontmatter.project || null,
+    frontmatter: state.parsed.frontmatter,
+    elements,
+    violations: state.graph ? profileLib.dependencyViolations(state.parsed, state.graph) : [],
+    review: { ...report, ledger: { ...ledger, verified: [...ledger.verified] } },
+    decisions: parseDecisions(state.decisionsText).entries.map((e) => ({ ...e, sealStatus: sealStatus(e) })),
+    profileError: state.profileError || null,
+    keyError: state.keyError || null,
   };
+}
+
+// What GET /api/state answers: the main canvas's state, and the framings the
+// project holds as variants, each with its own state. A variant's state
+// carries no `variants` key of its own — a variant holds statements, not
+// further framings.
+function viewState(root, pluginRoot) {
+  const state = stateLib.loadState(root, { pluginRoot });
+  if (state.error) return { ok: false, code: state.code, error: state.error };
+  const variants = projectLib.variantNames(root).map((name) => {
+    const variant = stateLib.loadState(root, { pluginRoot, variant: name });
+    const lens = variant.parsed.frontmatter.lens;
+    return {
+      name,
+      lens: typeof lens === 'string' && lens.trim() ? lens.trim() : null,
+      state: canvasState(variant, pluginRoot),
+    };
+  });
+  return { ok: true, body: { ...canvasState(state, pluginRoot), variants } };
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -122,6 +147,9 @@ const ROUTES = {
   '/api/accept': (b, ctx) => (typeof b.expectedHash !== 'string' || !b.expectedHash
     ? { ok: false, code: 'invalid', error: 'An accept from the view needs the text hash of the statement you saw (expectedHash).' }
     : acceptStatement({ root: ctx.root, questionId: b.questionId, match: str(b.match), why: str(b.why), explained: str(b.explained), rejected: str(b.rejected), expectedHash: b.expectedHash, pluginRoot: ctx.pluginRoot })),
+  // Choosing a framing is the researcher's act, like an accept, and it is the
+  // same library function the CLI calls: the two routes write the same bytes.
+  '/api/choose': (b, ctx) => chooseFraming({ root: ctx.root, name: b.name, why: str(b.why), rejected: str(b.rejected), pluginRoot: ctx.pluginRoot }),
   '/api/stated': (b, ctx) => setStated({ root: ctx.root, questionId: b.questionId, match: str(b.match), expectedHash: b.expectedHash }),
   '/api/comment': (b, ctx) => appendLog({ root: ctx.root, kind: 'DISCOVERY', ref: b.ref, body: b.body, why: str(b.why), pluginRoot: ctx.pluginRoot }),
 };

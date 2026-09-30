@@ -342,6 +342,95 @@ test('review reports a verified, an unverifiable-here and a broken ledger, and n
   assert.match(broken.stdout, /1\.2 \(line \d+\): [^\n]+ — covered only by #4, broken/);
 });
 
+// The released key of a project on this machine, as a reviewer receives it.
+function keyFileOf(root) {
+  return path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key');
+}
+
+// A record received from the authors: the same canvas and log at another path,
+// under a state directory of its own, so this machine holds no key for it.
+function receivedCopy(root) {
+  const second = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-received-'));
+  fs.cpSync(path.join(root, 'research'), path.join(second, 'research'), { recursive: true });
+  return second;
+}
+
+function anchorLine(stdout) {
+  const found = stdout.match(/^## Anchor\nAnchor: (.*)$/m);
+  assert.ok(found, `no anchor line in:\n${stdout}`);
+  return found[1];
+}
+
+test('a record received from elsewhere verifies with --key <file>, and a wrong key reads as broken', () => {
+  const author = keyedProject();
+  const accepted = run(author, ['accept', '1.2', '--match', 'Speaking frequency']);
+  assert.equal(accepted.status, 0, accepted.stdout);
+  const reviewer = receivedCopy(author);
+
+  // Without the key the reviewer sees the seals and cannot judge them …
+  const blind = run(reviewer, ['review']);
+  assert.match(blind.stdout, /## Decision log\nunverifiable here: no sealing key on this machine \(expected at [^\n]+seal\.key\)/);
+  assert.match(run(reviewer, ['status']).stdout, /Ledger: unverifiable here \(no key on this machine\)/);
+  // … and the released key is what makes the same record verifiable off the
+  // authors' machine, for `review` and for `status`.
+  const verified = run(reviewer, ['review', '--key', keyFileOf(author)]);
+  assert.equal(verified.status, 0, verified.stdout);
+  assert.match(verified.stdout, /## Decision log\nverified: 1 sealed entry; entries #1, #2, #3 predate the seal/);
+  assert.doesNotMatch(verified.stdout, /BROKEN/);
+  const summary = run(reviewer, ['status', '--key', keyFileOf(author)]);
+  assert.equal(summary.status, 0, summary.stdout);
+  assert.match(summary.stdout, /Ledger: verified/);
+
+  // A 32-byte key that is not this project's reads as broken, not as a match.
+  const wrong = path.join(reviewer, 'another-projects.key');
+  fs.writeFileSync(wrong, 'ff'.repeat(32));
+  const broken = run(reviewer, ['review', '--key', wrong]);
+  assert.equal(broken.status, 0, broken.stdout);
+  assert.match(broken.stdout, /## Decision log\nBROKEN at #4 \(line \d+\): its own content or the unsealed block before it changed/);
+  assert.match(run(reviewer, ['status', '--key', wrong]).stdout, /Ledger: BROKEN at #4 \(anchor\)/);
+});
+
+test('--key refuses a file it cannot read, one that is not 32 bytes, and a missing path', () => {
+  const root = keyedProject();
+  const missing = run(root, ['review', '--key', path.join(root, 'nowhere', 'seal.key')]);
+  assert.equal(missing.status, 1);
+  assert.equal(missing.stdout.trimEnd().split('\n').length, 1, 'one line, and no report is printed');
+  assert.match(missing.stdout, /cannot be read \(ENOENT\); nothing was verified against it\./);
+
+  const short = path.join(root, 'short.key');
+  fs.writeFileSync(short, 'ab'.repeat(16));
+  const wrongSize = run(root, ['review', '--key', short]);
+  assert.equal(wrongSize.status, 1);
+  assert.equal(wrongSize.stdout.trimEnd().split('\n').length, 1);
+  assert.match(wrongSize.stdout, /is not a 32-byte key \(64 hex characters/);
+
+  const notHex = path.join(root, 'not-hex.key');
+  fs.writeFileSync(notHex, 'z'.repeat(64));
+  const garbled = run(root, ['status', '--key', notHex]);
+  assert.equal(garbled.status, 1);
+  assert.match(garbled.stdout, /is not a 32-byte key/);
+
+  const noPath = run(root, ['status', '--key']);
+  assert.equal(noPath.status, 2);
+  assert.match(noPath.stdout, /--key takes the file the sealing key was released as\./);
+});
+
+test('the anchor line is stable for an unchanged record and moves when a byte moves', () => {
+  const root = keyedProject();
+  assert.equal(run(root, ['accept', '1.2', '--match', 'Speaking frequency']).status, 0);
+  const parts = (line) => line.match(/^last seal ([0-9a-f]{16}), maxSeq (\d+), decisions\.md sha256 ([0-9a-f]{64})$/);
+  const before = parts(anchorLine(run(root, ['review']).stdout));
+  assert.ok(before, 'the anchor names the last seal, maxSeq and the file hash');
+  assert.equal(before[2], '4');
+  assert.equal(anchorLine(run(root, ['review']).stdout), anchorLine(run(root, ['review']).stdout), 'two runs over one unchanged file print one anchor');
+
+  fs.writeFileSync(path.join(root, 'research', 'decisions.md'), readLog(root).replace('the phenomenon, not a gap', 'the gap'));
+  const after = parts(anchorLine(run(root, ['review']).stdout));
+  assert.equal(after[2], before[2], 'the entry count is the same');
+  assert.equal(after[1], before[1], 'the stored seal is untouched by a body edit — the whole-file hash is what carries it');
+  assert.notEqual(after[3], before[3], 'one changed byte moves the anchor');
+});
+
 test('accept promotes the single candidate, keeps tags, logs a sealed DECISION with the text hash', () => {
   const root = keyedProject();
   // 3.1 depends on 1 (is-qualitative). Element 1 is stated, not accepted → refused first.

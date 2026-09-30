@@ -20,8 +20,8 @@ const { summarize } = require('../hooks/inject-state');
 const MODES = ['brainstorming', 'seed', 'import'];
 const USAGE = [
   'research-harness init --project <slug> --mode brainstorming|seed|import [--outlet <name>] [--title <text>] [--profile <id>]',
-  'research-harness status',
-  'research-harness review',
+  'research-harness status [--key <file>]',
+  'research-harness review [--key <file>]',
   'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
   'research-harness title [<text>]',
@@ -169,25 +169,48 @@ function loadState() {
   return stateLib.loadState(project.projectDir({}), { pluginRoot: pluginRoot() });
 }
 
+// `--key <file>` is the released key of a record received from elsewhere: what
+// `review` and `status` verify with instead of the key this machine would read
+// (§4.7). A key that cannot be read, or that is not 32 bytes, is refused in
+// one line before anything is judged. Verification only: no writing path takes
+// this. `{}` means no `--key` was given, which is not the same as a key of
+// null.
+function keyOverride(flags) {
+  if (flags.key === undefined) return {};
+  if (typeof flags.key !== 'string') return { error: `--key takes the file the sealing key was released as.\n${USAGE}`, code: 2 };
+  try {
+    return { key: seal.readKeyFile(flags.key) };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 // The session hook and this command must never render the same state twice:
 // summarize() is the one rendering, and it lives with the hook that injects it.
-function status() {
+function status(flags) {
   const root = project.projectDir({});
-  const summary = summarize(root, { seenSeq: 0 });
+  const given = keyOverride(flags);
+  if (given.error) return fail(given.error, given.code || 1);
+  const summary = summarize(root, { seenSeq: 0, key: given.key });
   if (!summary) return fail('This is not a paper project: no research/canvas.md (or the file has no elements). Run research-harness init first.');
   say(summary.text);
   return 0;
 }
 
-function review() {
+function review(flags) {
+  const given = keyOverride(flags);
+  if (given.error) return fail(given.error, given.code || 1);
   const state = loadState();
   if (state.error) return fail(state.error);
-  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText, key: state.key });
+  // With `--key`, the key this machine happens to hold is not what this run
+  // judges with, so a complaint about reading that one is not its business.
+  const key = given.key === undefined ? state.key : given.key;
+  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText, key });
   const list = (arr) => (arr.length ? arr.join(', ') : 'none');
   const stmt = (s) => `${s.question} [${s.marker === null ? 'unmarked' : s.marker}] (line ${s.line}): ${s.text}`;
   const lines = ['# Mechanical review', ''];
   if (state.profileError) lines.push(`> ${state.profileError}; dependencies not checked.`, '');
-  if (state.keyError) lines.push(`> ${state.keyError}; the ledger is judged as if there were none.`, '');
+  if (state.keyError && given.key === undefined) lines.push(`> ${state.keyError}; the ledger is judged as if there were none.`, '');
   if (report.problems.length) lines.push('## Parse problems', ...report.problems, '');
   // Same wording as the session summary in hooks/inject-state.js: the count
   // names proposals, and an open element takes no plus sign because there is
@@ -207,6 +230,10 @@ function review() {
   const hiddenWhy = { comment: 'inside an HTML comment', code: 'inside a code block or indented as code' };
   lines.push('## Committed but not visible', '(the file holds these; a reader of the rendered canvas does not see them)', ...(report.invisibleCommitments.length ? report.invisibleCommitments.map((s) => `${s.question} [${s.marker}] (line ${s.line}): ${s.text} — ${hiddenWhy[s.hidden] || s.hidden}`) : ['none']), '');
   lines.push('## Decision log', ...ledgerReport(report.ledger, seal.keyPath(state.root)), '');
+  // The head of the record as one line (SQ-124): the reviewer compares it with
+  // the anchor the authors published, which is what catches a rewrite after the
+  // fact. It needs no key of its own, so it prints on every run.
+  lines.push('## Anchor', `Anchor: ${seal.logAnchor(state.decisionsText)}`, '');
   lines.push('## Stale acceptances', ...(report.staleAcceptances.length ? report.staleAcceptances.map((s) => `#${s.seq} ${s.ref} — text ${s.hash} no longer matches any accepted statement`) : ['none']), '');
   lines.push('## Unlogged acceptances', '(no verified DECISION entry accounts for these)', ...(report.unloggedAcceptances.length ? report.unloggedAcceptances.map((s) => `${s.question} (line ${s.line}): ${s.text}${coverNote(s.coveredBy)}`) : ['none']), '');
   lines.push('## Unverified decisions', '(DECISION entries that give no cover)', ...(report.unverifiedDecisions.length ? report.unverifiedDecisions.map((d) => `#${d.seq} ${d.ref} — ${COVER_STATE[d.state]}`) : ['none']), '');
@@ -593,8 +620,8 @@ function main(argv) {
   const command = positional.shift();
   switch (command) {
     case 'init': return init(flags);
-    case 'status': return status();
-    case 'review': return review();
+    case 'status': return status(flags);
+    case 'review': return review(flags);
     case 'accept': return accept(positional, flags);
     case 'log': return log(positional, flags);
     case 'title': return title(positional);

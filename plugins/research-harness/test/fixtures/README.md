@@ -23,6 +23,18 @@ hand-written.
 fixture project (no real paper), used to exercise the canvas and decision-log format in `seed`
 mode with a mix of empty, proposed, stated, and accepted statements.
 
+## view-state-variants.json, view-state-chosen.json
+
+The exact `GET /api/state` response of an invented scratch project (`voice-uptake`, three
+framings: `power`, `sense-making`, `rituals`), read at two points of one run. `-variants` is
+before a choice: the main canvas holds a proposed and a tentative statement, the three variants
+differ in five fields, and two check questions (`#1`, `#2`) are open on 1.2. `-chosen` is after
+`choose power` and an accept of 1.2 with an explanation, despite those two questions: the log
+holds a framing-chosen entry and an explained accept with `Open at acceptance: #1, #2`, and
+choosing is off. `make-variants-fixtures.js` writes both through the CLI and `viewState`, so
+nothing in them is hand-written; run it again to regenerate (seals and text hashes change, the
+shape does not). `view.test.js` and the screenshots of the view read them.
+
 ## prechange-decisions.md
 
 `prechange-decisions.md` is a sealed decision log written at revision `3792c3e`, before the entry's

@@ -180,7 +180,8 @@
      wasted width there; #stage naturally reflows to the freed space. Other
      views (element, agenda, history) keep it — it is how a reader gets from
      one field to another once they are past the overview. */
-  #body-shell.poster-active #rail { display: none; }
+  #body-shell.poster-active #rail,
+  #body-shell.compare-active #rail { display: none; }
 
   .skip-link {
     position: absolute;
@@ -524,16 +525,6 @@
   .action-btn-primary:hover { background: var(--action-hover); }
   .action-btn-outline { background: transparent; color: var(--action); }
   .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .why-label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-soft); }
-  .why-label input {
-    border: 1px solid var(--border);
-    background: var(--bg);
-    border-radius: var(--r-input);
-    padding: 4px 8px;
-    font-size: 12px;
-    color: var(--ink);
-    width: 9rem;
-  }
 
   .comment-form {
     margin: 22px 0 0;
@@ -580,6 +571,132 @@
   }
   .history-meta { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 6px; }
   .history-body { margin: 0; color: var(--ink); font-size: 14.5px; }
+  .seq-link {
+    padding: 0;
+    background: none;
+    border: 0;
+    font: inherit;
+    color: var(--action);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
+  /* -- Framings (the variant comparison) --------------------------------
+     The poster's own cards, one column per framing and one row per field. A
+     field whose text differs between framings carries a "Differs" tag and the
+     accent edge the poster gives its open field; a field that reads the same
+     in every framing loses its shadow and fades to the muted ink. The column
+     heads stay in view while the rows scroll, so "Choose" is always at hand. */
+  .cmp-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--k, 3), minmax(15rem, 1fr));
+    gap: 6px 12px;
+    align-items: stretch;
+  }
+  /* The margin and padding cancel out, and widen each head's background over
+     the column gap so a card scrolling under the heads is not seen between them. */
+  .cmp-head { position: sticky; top: 0; z-index: 2; margin: 0 -6px; padding: 0 6px 6px; background: var(--bg); }
+  .cmp-head-box {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    box-shadow: var(--shadow-card);
+    padding: 10px 16px 12px;
+  }
+  .cmp-name { font-size: 17px; font-weight: 700; color: var(--ink); }
+  .cmp-lens { margin: 0 0 6px; font-size: 13px; color: var(--ink-soft); }
+  .cmp-head .action-btn { margin-top: auto; }
+  .cmp-row-label {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0 -2px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .cmp-row-caption { font-weight: 400; color: var(--ink-soft); }
+  .cmp-card { padding: 12px 14px 10px; gap: 6px; }
+  .cmp-diff { box-shadow: var(--shadow-card), inset 3px 0 0 var(--action); }
+  .cmp-same { background: transparent; box-shadow: none; }
+  .cmp-same .field-lead { color: var(--ink-soft); }
+  .diff-tag {
+    align-self: flex-start;
+    padding: 1px 8px;
+    border-radius: var(--r-pill);
+    background: var(--accent-surface);
+    color: var(--accent-ink);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .cmp-more { font-size: 13px; }
+  .cmp-more summary { cursor: pointer; font-size: 12px; font-weight: 700; color: var(--action); }
+  .cmp-more .field-para { margin: 6px 0 0; }
+  .choose-note {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border-radius: var(--r-input);
+    background: var(--suggestion-tint);
+    color: var(--suggestion-ink);
+    font-size: 13px;
+  }
+
+  /* -- Dialogs (accept, choose) ------------------------------------------
+     One native <dialog>: modal, focus kept inside, Escape closes it. Drawn
+     like the cards: surface, border, card radius, the same shadow. */
+  dialog.dlg {
+    width: min(36rem, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    padding: 22px 26px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-card), 0 24px 60px rgba(25, 60, 49, 0.25);
+    overflow-y: auto;
+  }
+  dialog.dlg::backdrop { background: rgba(25, 60, 49, 0.35); }
+  .dlg h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  .dlg-sub { margin: 4px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+  .dlg-quote {
+    margin: 12px 0 0;
+    padding: 8px 12px;
+    border-left: 2px solid var(--line);
+    background: var(--bg);
+    border-radius: 0 var(--r-input) var(--r-input) 0;
+    font-size: 14px;
+  }
+  .dlg label { display: block; margin-top: 14px; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .dlg-hint { font-weight: 400; color: var(--ink-soft); }
+  .dlg textarea, .dlg input[type="text"] {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: var(--r-input);
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .dlg-checks { margin-top: 16px; padding: 10px 14px; border-radius: var(--r-input); background: var(--suggestion-tint); }
+  .dlg-checks h3 { font-size: 13px; font-weight: 700; color: var(--suggestion-ink); }
+  .dlg-checks ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+  .dlg-checks .seq { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 700; margin-right: 6px; color: var(--suggestion-ink); }
+  .dlg-checks p { margin: 8px 0 0; font-size: 12.5px; color: var(--suggestion-ink); }
+  .dlg-error { margin: 12px 0 0; font-size: 13px; font-weight: 700; color: var(--suggestion-ink); }
+  .dlg-error:empty { display: none; }
+  .dlg-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
+  .dlg-actions .action-btn, .dlg-actions .ghost-btn { padding: 8px 18px; font-size: 13px; }
 
   /* Point 1: the footer (plugin version, "Canvas after Dorobantu et al.
      2024") is print-only now — it cost about 100px of always-visible screen
@@ -601,7 +718,8 @@
       flex-direction: column;
       max-height: 220px;
     }
-    #body-shell.poster-active #rail { display: none; }
+    #body-shell.poster-active #rail,
+    #body-shell.compare-active #rail { display: none; }
     .rail-list { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
     .rail-card { min-width: 190px; flex: 0 0 auto; }
     #stage { padding: 16px; }
@@ -613,7 +731,7 @@
   }
 
   @media print {
-    #notice, #topbar, #rail, .action-btn, .comment-form, .why-label, .stmt-actions,
+    #notice, #topbar, #rail, .action-btn, .comment-form, .stmt-actions,
     .element-nav, .field-foot, .status-tip, .skip-link {
       display: none !important;
     }
@@ -654,6 +772,7 @@
 <div id="app">
   <p style="padding:24px;">Loading…</p>
 </div>
+<dialog id="dlg" class="dlg" aria-labelledby="dlg-title"></dialog>
 <script>
 (function () {
   'use strict';
@@ -780,18 +899,22 @@
   }
 
   // A log entry body is the entry's text followed by optional labelled lines
-  // that hooks/lib/decisions.js writes as `**Why:** …`, `**Rejected:** …` and
-  // `**Supersedes:** #n`. Split those off first, so the main text ends at its
-  // own trailing "[marker, src: …]" annotation (the same free-text convention
-  // canvas.md uses for statements). That annotation is dropped and only the
-  // page reference is kept, quietly, the way a statement's source appears.
-  // Text on the lines after a labelled line belongs to that label.
-  var ENTRY_LABEL = /^\*\*(Why|Rejected|Supersedes):\*\*\s*(.*)$/;
+  // that hooks/lib/decisions.js writes as `**Why:** …`, `**Explained:** …`,
+  // `**Rejected:** …`, `**Open at acceptance:** #a, #b` and `**Supersedes:**
+  // #n`. Split those off first, so the main text ends at its own trailing
+  // "[marker, src: …]" annotation (the same free-text convention canvas.md
+  // uses for statements). That annotation is dropped and only the page
+  // reference is kept, quietly, the way a statement's source appears. Text on
+  // the lines after a labelled line belongs to that label. The label pattern
+  // is the library's (FIELD_RE in hooks/lib/decisions.js), and like the
+  // library the page never reads an entry's first line as a label: that line
+  // is the researcher's text, whatever it looks like.
+  var ENTRY_LABEL = /^\*\*(Why|Explained|Rejected|Open at acceptance|Supersedes):\*\* ?(.*)$/;
   function parseFindingBody(raw) {
     var main = [];
     var notes = [];
-    String(raw == null ? '' : raw).split('\n').forEach(function (line) {
-      var label = ENTRY_LABEL.exec(line.trim());
+    String(raw == null ? '' : raw).split('\n').forEach(function (line, i) {
+      var label = i ? ENTRY_LABEL.exec(line) : null;
       if (label) notes.push({ label: label[1], text: label[2].trim() });
       else if (notes.length) notes[notes.length - 1].text = (notes[notes.length - 1].text + ' ' + line.trim()).trim();
       else main.push(line);
@@ -811,8 +934,16 @@
     return esc(parsed.text)
       + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '')
       + parsed.notes.map(function (n) {
-        return '<span class="entry-note">' + esc(n.label) + ': ' + esc(n.text) + '</span>';
+        return '<span class="entry-note">' + esc(n.label) + ': '
+          + (n.label === 'Open at acceptance' ? seqLinks(n.text) : esc(n.text)) + '</span>';
       }).join('');
+  }
+
+  // "#4, #7" as links that open the History entry with that number.
+  function seqLinks(text) {
+    return esc(text).replace(/#(\d+)/g, function (all, n) {
+      return '<button type="button" class="seq-link" data-view-target="log" data-scroll-to="entry-' + n + '">#' + n + '</button>';
+    });
   }
 
   // The open field most others depend on, transitively, per SQ-83's recon:
@@ -940,8 +1071,7 @@
     if (opts.full && !fixtureMode) {
       var actions = [];
       if (['proposed', 'tentative', 'stated'].indexOf(s.marker) !== -1) {
-        actions.push('<button type="button" class="action-btn action-btn-primary" data-action="accept" data-question="' + esc(opts.questionId) + '" data-hash="' + esc(s.hash) + '">Mark decided</button>');
-        actions.push('<label class="why-label">Why (optional) <input type="text" data-why-for="accept-' + esc(opts.questionId) + '-' + esc(s.hash) + '"></label>');
+        actions.push('<button type="button" class="action-btn action-btn-primary" data-action="accept" data-question="' + esc(opts.questionId) + '" data-hash="' + esc(s.hash) + '">Accept&hellip;</button>');
       }
       if (['proposed', 'tentative'].indexOf(s.marker) !== -1) {
         actions.push('<button type="button" class="action-btn action-btn-outline" data-action="stated" data-question="' + esc(opts.questionId) + '" data-hash="' + esc(s.hash) + '">Mark as said</button>');
@@ -995,12 +1125,13 @@
 
   // The paper's title is the poster's large heading and appears nowhere else
   // in the chrome; the bar carries only the brand and the three views.
-  function renderTopbar() {
+  function renderTopbar(s) {
     return '<header id="topbar">'
       + '<div id="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>'
       + '<span class="brand-text">Research harness <span class="brand-sep">/</span> Canvas</span></div>'
       + '<nav id="view-tabs" aria-label="Views">'
       + tabButton('poster', 'Poster')
+      + (variantsOf(s).length ? tabButton('compare', 'Framings') : '')
       + tabButton('agenda', 'To talk about')
       + tabButton('log', 'History')
       + '</nav>'
@@ -1085,6 +1216,128 @@
       + '<h1 class="poster-title">' + esc(paperTitle(s)) + '</h1>'
       + '</div>'
       + '<ol class="poster-grid">' + cells.join('') + '</ol>'
+      + '</section>';
+  }
+
+  // -- Framings -------------------------------------------------------
+  // The project's variants, each a whole canvas state of its own (GET
+  // /api/state: `variants: [{name, lens, state}]`). An older payload has none.
+  function variantsOf(s) { return (s && s.variants) || []; }
+
+  function variantElement(v, number) {
+    return v.state.elements.filter(function (e) { return e.number === number; })[0] || null;
+  }
+
+  // What a field says, for comparing: each question's statements, text only,
+  // whitespace collapsed. Markers and sources are not compared — a field worded
+  // alike does not differ, and one worded differently does, whatever either
+  // calls it.
+  function fieldSignature(e) {
+    if (!e) return '';
+    return e.questions.map(function (q) {
+      return q.id + ':' + q.statements.map(function (st) { return String(st.text).replace(/\s+/g, ' ').trim(); }).join('|');
+    }).join('\n');
+  }
+
+  function fieldDiffers(variants, number) {
+    var seen = {};
+    variants.forEach(function (v) { seen[fieldSignature(variantElement(v, number))] = true; });
+    return Object.keys(seen).length > 1;
+  }
+
+  // The server's own default for what a choice sets aside: the other
+  // framings' names with their lenses (hooks/lib/choose.js), prefilled in the
+  // dialog and editable there.
+  function defaultRejected(variants, name) {
+    return variants.filter(function (v) { return v.name !== name; }).map(function (v) {
+      return v.lens ? v.name + ' (lens: ' + v.lens + ')' : v.name;
+    }).join('; ');
+  }
+
+  // Why choosing is off, in one line, or null. The library refuses while the
+  // main canvas holds an [accepted] statement (a framing is chosen before
+  // anything is accepted) or a [stated] one (a choice would delete the authors'
+  // own words). Saying so here saves the round trip; if the server still
+  // refuses, its message is shown as it is.
+  function chooseBlock(s) {
+    var accepted = [];
+    var stated = [];
+    s.elements.forEach(function (e) {
+      e.questions.forEach(function (q) {
+        q.statements.forEach(function (st) {
+          if (st.marker === 'accepted' && accepted.indexOf(q.id) === -1) accepted.push(q.id);
+          if (st.marker === 'stated' && stated.indexOf(q.id) === -1) stated.push(q.id);
+        });
+      });
+    });
+    var parts = [];
+    var why = [];
+    if (accepted.length) {
+      parts.push(accepted.length + ' accepted (' + accepted.join(', ') + ')');
+      why.push('A framing is chosen before anything is accepted.');
+    }
+    if (stated.length) {
+      parts.push(stated.length + ' said by the authors (' + stated.join(', ') + ')');
+      why.push('A choice would replace what the authors said.');
+    }
+    if (!parts.length) return null;
+    return 'Choosing is off: the main canvas already holds ' + parts.join(' and ') + '. ' + why.join(' ');
+  }
+
+  function renderCompareCard(v, e, differs, several) {
+    var ve = variantElement(v, e.number);
+    var question = HUMAN_QUESTIONS[e.number] || e.title;
+    var lead = ve ? leadStatementFor(ve) : null;
+    var all = [];
+    if (ve) ve.questions.forEach(function (q) { all = all.concat(q.statements); });
+    var classes = ['field-card', 'cmp-card'];
+    if (differs) classes.push('cmp-diff');
+    else if (several) classes.push('cmp-same');
+    var leadHtml = lead
+      ? '<p class="field-lead' + (lead.isIdea ? ' field-para-idea' : '') + '">' + (lead.isIdea ? '<span class="idea-tag">Idea</span>' : '') + esc(lead.statement.text) + '</p>'
+      : '<p class="field-lead field-gap-note">Not answered yet.</p>';
+    // The card leads with one sentence, like the poster; a difference can sit
+    // in a statement below it, so every statement of the field is one click away.
+    var more = all.length > 1
+      ? '<details class="cmp-more"><summary>All ' + all.length + ' statements<span class="sr-only"> of ' + esc(v.name) + ' on ' + esc(question) + '</span></summary>'
+        + all.map(function (st) {
+          return '<p class="field-para' + (st.marker === 'proposed' ? ' field-para-idea' : '') + '">'
+            + (st.marker === 'proposed' ? '<span class="idea-tag">Idea</span>' : '') + esc(st.text) + '</p>';
+        }).join('') + '</details>'
+      : '';
+    return '<article class="' + classes.join(' ') + '">'
+      + '<span class="sr-only">' + esc(v.name) + ', ' + esc(question) + (differs ? ', differs from the other framings' : '') + '. </span>'
+      + (differs ? '<span class="diff-tag" aria-hidden="true">Differs</span>' : '')
+      + leadHtml + more
+      + '</article>';
+  }
+
+  // The poster's cards, one column per framing and one row per field, each
+  // column headed by the framing's name and lens, with the action that chooses
+  // it. Nothing here edits a statement: the view only reads them.
+  function renderCompare(s) {
+    var variants = variantsOf(s);
+    if (!variants.length) return '';
+    var several = variants.length > 1;
+    var blocked = chooseBlock(s);
+    var heads = variants.map(function (v) {
+      return '<div class="cmp-head"><div class="cmp-head-box">'
+        + '<h3 class="cmp-name">' + esc(v.name) + '</h3>'
+        + '<p class="cmp-lens">' + (v.lens ? 'Lens: ' + esc(v.lens) : 'No lens recorded') + '</p>'
+        + '<button type="button" class="action-btn action-btn-primary" data-action="choose" data-variant="' + esc(v.name) + '"'
+        + (blocked ? ' disabled aria-describedby="choose-note"' : '') + '>Choose this framing<span class="sr-only">: ' + esc(v.name) + '</span></button>'
+        + '</div></div>';
+    }).join('');
+    var rows = s.elements.map(function (e) {
+      var differs = several && fieldDiffers(variants, e.number);
+      return '<h3 class="cmp-row-label"><span class="num-badge" aria-hidden="true">' + e.number + '</span>' + esc(HUMAN_QUESTIONS[e.number] || e.title)
+        + (several ? '<span class="cmp-row-caption">&middot; ' + (differs ? 'differs between framings' : 'the same in every framing') + '</span>' : '') + '</h3>'
+        + variants.map(function (v) { return renderCompareCard(v, e, differs, several); }).join('');
+    }).join('');
+    return '<section id="compare" data-view="compare" class="view page-section">'
+      + '<div class="view-head"><h2>Framings</h2><p class="view-sub">The same paper read through each lens. Fields that differ are marked; the rest are faded. Choosing one makes it the main canvas and keeps the others as the record.</p></div>'
+      + (blocked ? '<p class="choose-note" id="choose-note">' + esc(blocked) + '</p>' : '')
+      + '<div class="cmp-grid" style="--k:' + variants.length + '">' + heads + rows + '</div>'
       + '</section>';
   }
 
@@ -1181,9 +1434,17 @@
     return kind ? (kind.charAt(0) + kind.slice(1).toLowerCase()) : 'Entry';
   }
 
+  // The entry hooks/lib/choose.js writes when the researcher picks a framing:
+  // a DECISION whose ref is `framing chosen: <variant name>`.
+  var FRAMING_REF = /^framing chosen: (.+)$/;
+
+  // Each entry carries its `#seq`: "Open at acceptance" names entries by it,
+  // and its links land on the card with that id.
   function renderHistory(s) {
     var rows = s.decisions.map(function (d) {
-      return '<li class="history-card"><p class="history-meta">' + esc(historyLabel(d.kind)) + ' &middot; ' + esc(d.date) + ' &middot; ' + esc(refToQuestion(d.ref)) + '</p>'
+      var framing = d.kind === 'DECISION' ? FRAMING_REF.exec(d.ref || '') : null;
+      return '<li class="history-card" id="entry-' + esc(d.seq) + '" tabindex="-1"><p class="history-meta">#' + esc(d.seq) + ' &middot; '
+        + esc(framing ? 'Framing chosen' : historyLabel(d.kind)) + ' &middot; ' + esc(d.date) + ' &middot; ' + esc(framing ? framing[1] : refToQuestion(d.ref)) + '</p>'
         + '<p class="history-body">' + renderEntryBody(d.body) + '</p>'
         + '</li>';
     }).join('');
@@ -1198,11 +1459,14 @@
   }
 
   function renderStagePanels(s) {
-    return renderPoster(s) + renderAgenda(s) + s.elements.map(function (e) { return renderField(e, s.elements.length); }).join('') + renderHistory(s);
+    return renderPoster(s) + renderCompare(s) + renderAgenda(s) + s.elements.map(function (e) { return renderField(e, s.elements.length); }).join('') + renderHistory(s);
   }
 
   function render() {
-    app.innerHTML = renderTopbar()
+    // The Framings tab exists while the project holds variants; once the last
+    // one is gone a reload must not leave the reader on a view with no tab.
+    if (activeView === 'compare' && !variantsOf(state).length) activeView = 'poster';
+    app.innerHTML = renderTopbar(state)
       + renderNotices(state)
       + '<div id="body-shell">' + renderRail(state) + '<main id="stage">' + renderStagePanels(state) + '</main></div>'
       + renderFooter(state);
@@ -1225,7 +1489,10 @@
     // Point 1: the side rail is poster-only hidden; every other view keeps
     // it as the way to get from one field to another.
     var shell = document.getElementById('body-shell');
-    if (shell) shell.classList.toggle('poster-active', activeView === 'poster');
+    if (shell) {
+      shell.classList.toggle('poster-active', activeView === 'poster');
+      shell.classList.toggle('compare-active', activeView === 'compare');
+    }
     var tabs = app.querySelectorAll('.segment');
     for (i = 0; i < tabs.length; i++) {
       var tabMatch = tabs[i].getAttribute('data-view-target') === activeView;
@@ -1293,6 +1560,169 @@
     });
   }
 
+  // -- Dialogs ----------------------------------------------------------
+  // Accept and choose each ask for a sentence of the researcher's own, so both
+  // go through the one <dialog>. The dialog shows what the server answered
+  // when it refuses (a label line in the text, a [stated] statement in the
+  // way) inside itself: the notice bar sits under a modal dialog.
+  var dlg = document.getElementById('dlg');
+  var dialogState = null;
+  var dialogBusy = false;
+
+  function findStatement(s, questionId, hash) {
+    for (var i = 0; i < s.elements.length; i++) {
+      var qs2 = s.elements[i].questions;
+      for (var j = 0; j < qs2.length; j++) {
+        if (qs2[j].id !== questionId) continue;
+        for (var k = 0; k < qs2[j].statements.length; k++) {
+          if (qs2[j].statements[k].hash === hash) return { question: qs2[j], statement: qs2[j].statements[k] };
+        }
+      }
+    }
+    return null;
+  }
+
+  function showDialog(markup, what) {
+    dialogState = what;
+    dialogBusy = false;
+    dlg.innerHTML = markup;
+    if (!dlg.open) dlg.showModal();
+  }
+
+  function closeDialog() {
+    if (dlg.open) dlg.close();
+    dialogState = null;
+  }
+
+  function dialogError(message) {
+    var box = dlg.querySelector('.dlg-error');
+    if (box) box.textContent = message;
+  }
+
+  function dialogButtons(confirmLabel) {
+    return '<p class="dlg-error" role="alert"></p>'
+      + '<div class="dlg-actions"><button type="button" class="ghost-btn" data-dlg="cancel">Cancel</button>'
+      + '<button type="submit" class="action-btn action-btn-primary">' + esc(confirmLabel) + '</button></div>';
+  }
+
+  // The accept dialog: the statement as it stands (never editable here), the
+  // one required sentence, and the check questions still open on its question,
+  // each with the `#seq` of the log entry that asked it. Accepting with some
+  // open is allowed, so the button says so; the log records which were open.
+  function openAcceptDialog(questionId, hash) {
+    var found = findStatement(state, questionId, hash);
+    if (!found) {
+      showNotice('That statement is no longer on the canvas; reloading.');
+      refreshState();
+      return;
+    }
+    var checks = found.question.openChecks || [];
+    var checksHtml = checks.length
+      ? '<section class="dlg-checks" aria-labelledby="dlg-checks-title"><h3 id="dlg-checks-title">Open questions from the check</h3>'
+        + '<ul>' + checks.map(function (c) { return '<li><span class="seq">#' + esc(c.seq) + '</span>' + esc(c.body) + '</li>'; }).join('') + '</ul>'
+        + '<p>You can accept anyway. The record notes which of these were still open.</p></section>'
+      : '';
+    showDialog('<form id="dlg-form" novalidate>'
+      + '<h2 id="dlg-title">Accept this statement</h2>'
+      + '<p class="dlg-sub">' + esc(found.question.id) + ' &middot; ' + esc(found.question.text) + '</p>'
+      + '<blockquote class="dlg-quote">' + esc(found.statement.text) + '</blockquote>'
+      + '<label>In your own words, why does this hold? <span class="dlg-hint">(required, one sentence)</span>'
+      + '<textarea name="explained" rows="2" autofocus aria-required="true"></textarea></label>'
+      + '<label>Why accept it now? <span class="dlg-hint">(optional)</span><input type="text" name="why"></label>'
+      + checksHtml
+      + dialogButtons(checks.length ? 'Accept anyway' : 'Accept')
+      + '</form>', { kind: 'accept', questionId: questionId, hash: hash });
+  }
+
+  // The choose dialog: a required reason, and what is set aside, prefilled
+  // with the other framings and their lenses and open to edit.
+  function openChooseDialog(name) {
+    var variants = variantsOf(state);
+    var v = variants.filter(function (x) { return x.name === name; })[0];
+    if (!v) return;
+    showDialog('<form id="dlg-form" novalidate>'
+      + '<h2 id="dlg-title">Choose the &ldquo;' + esc(v.name) + '&rdquo; framing</h2>'
+      + '<p class="dlg-sub">' + (v.lens ? 'Lens: ' + esc(v.lens) + '. ' : '') + 'Its statements replace the main canvas. The other framings stay in place as the record of what was compared.</p>'
+      + '<label>Why this framing? <span class="dlg-hint">(required)</span>'
+      + '<textarea name="why" rows="2" autofocus aria-required="true"></textarea></label>'
+      + '<label>What you are setting aside <span class="dlg-hint">(filled in from the other framings; edit as you like)</span>'
+      + '<textarea name="rejected" rows="3">' + esc(defaultRejected(variants, v.name)) + '</textarea></label>'
+      + dialogButtons('Choose this framing')
+      + '</form>', { kind: 'choose', name: v.name });
+  }
+
+  function submitDialog(form) {
+    var what = dialogState;
+    if (!what || dialogBusy) return;
+    var field = function (name) { return form.elements[name] ? String(form.elements[name].value).trim() : ''; };
+    var payload;
+    var path;
+    if (what.kind === 'accept') {
+      var explained = field('explained');
+      if (!explained) { dialogError('Say in your own words why this holds. The record keeps it.'); return; }
+      payload = { questionId: what.questionId, expectedHash: what.hash, explained: explained };
+      if (field('why')) payload.why = field('why');
+      path = '/api/accept';
+    } else {
+      var why = field('why');
+      if (!why) { dialogError('Say why you choose this framing. The record keeps it.'); return; }
+      payload = { name: what.name, why: why };
+      if (field('rejected')) payload.rejected = field('rejected');
+      path = '/api/choose';
+    }
+    if (fixtureMode) { dialogError('Fixture mode: nothing is written.'); return; }
+    if (!token) { dialogError(LINK_USED); return; }
+    dialogBusy = true;
+    post(path, payload).then(function (res) {
+      dialogBusy = false;
+      if (res.status === 200 && res.json && res.json.ok) {
+        closeDialog();
+        // The chosen framing is now the main canvas: show it.
+        if (what.kind === 'choose') activeView = 'poster';
+        return refreshState();
+      }
+      if (res.status === 409) {
+        closeDialog();
+        showNotice('The canvas changed since this view loaded; reloading.');
+        return refreshState();
+      }
+      dialogError((res.json && res.json.error) || ('Request failed (' + res.status + ').'));
+    }).catch(function (err) {
+      dialogBusy = false;
+      dialogError('Request failed: ' + err.message);
+    });
+  }
+
+  dlg.addEventListener('submit', function (event) {
+    event.preventDefault();
+    submitDialog(event.target);
+  });
+  dlg.addEventListener('click', function (event) {
+    if (event.target.closest('[data-dlg="cancel"]')) closeDialog();
+  });
+  dlg.addEventListener('close', function () { dialogState = null; });
+
+  // Fixture mode only: `?view=<view>` and `?dialog=choose:<name>` or
+  // `?dialog=accept:<question id>` open a view or a dialog on load, so a
+  // screenshot of either needs no click. Nothing is written in fixture mode.
+  function openFromUrl() {
+    if (!fixtureMode) return;
+    var spec = (qs.get('dialog') || '').split(':');
+    if (spec[0] === 'choose' && spec[1]) openChooseDialog(spec[1]);
+    if (spec[0] === 'accept' && spec[1]) {
+      var target = null;
+      state.elements.forEach(function (e) {
+        e.questions.forEach(function (q) {
+          if (q.id !== spec[1]) return;
+          q.statements.forEach(function (st) {
+            if (!target && ['proposed', 'tentative', 'stated'].indexOf(st.marker) !== -1) target = st;
+          });
+        });
+      });
+      if (target) openAcceptDialog(spec[1], target.hash);
+    }
+  }
+
   app.addEventListener('click', function (event) {
     // Navigation (view switching) works in fixture mode too: it never writes.
     var navBtn = event.target.closest('[data-view-target]');
@@ -1308,19 +1738,16 @@
       return;
     }
     var btn = event.target.closest('button[data-action]');
-    if (!btn || fixtureMode) return;
+    if (!btn) return;
     var action = btn.getAttribute('data-action');
-    if (action === 'accept' || action === 'stated') {
-      var qid = btn.getAttribute('data-question');
-      var hash = btn.getAttribute('data-hash');
-      var payload = { questionId: qid, expectedHash: hash };
-      var path = action === 'accept' ? '/api/accept' : '/api/stated';
-      if (action === 'accept') {
-        var whyInput = document.querySelector('[data-why-for="accept-' + qid + '-' + hash + '"]');
-        var why = whyInput ? whyInput.value.trim() : '';
-        if (why) payload.why = why;
-      }
-      doPost(path, payload);
+    // Both dialogs open in fixture mode too; the confirm button there says
+    // nothing is written.
+    if (action === 'choose') { openChooseDialog(btn.getAttribute('data-variant')); return; }
+    if (fixtureMode) return;
+    if (action === 'accept') {
+      openAcceptDialog(btn.getAttribute('data-question'), btn.getAttribute('data-hash'));
+    } else if (action === 'stated') {
+      doPost('/api/stated', { questionId: btn.getAttribute('data-question'), expectedHash: btn.getAttribute('data-hash') });
     } else if (action === 'comment') {
       var num = btn.getAttribute('data-element');
       var title = btn.getAttribute('data-element-title');
@@ -1336,7 +1763,8 @@
   });
 
   if (!fixtureMode) openSession();
-  refreshState().catch(function (err) {
+  if (fixtureMode && qs.get('view')) activeView = qs.get('view');
+  refreshState().then(openFromUrl).catch(function (err) {
     app.innerHTML = '<p role="alert" style="padding:24px;">Could not load the canvas: ' + esc(err.message) + '</p>';
   });
 })();

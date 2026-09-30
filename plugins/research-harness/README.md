@@ -129,6 +129,8 @@ framing of their own study, and the authors neither wrote nor checked them. The 
 version, what the later versions hold, and the attribution are in
 `examples/ai-assistants-interviews/README.md`.
 
+A replacement is ready alongside it: [big-data communication amid COVID-19](../../examples/big-data-communication/README.md), Zenodo record 6344804 (CC BY 4.0). To switch, start a fresh project and run that example's `fetch.js` and `recorded.js` in place of the two paths below, then follow its `credibility` variant CLI steps; the primary walkthrough's interview-specific claims and printed lines do not transfer. The replacement README gives the pinned PDFs, page-citation rule, attribution and commands.
+
 Three steps are yours alone: `choose`, `accept`, and `serve`. The model never
 runs them and the guard denies them to it. Steps marked *Claude* are what the
 model does in a Claude Code session; the commands it runs are shown, so you can

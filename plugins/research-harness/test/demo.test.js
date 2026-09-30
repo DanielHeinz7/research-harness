@@ -224,6 +224,8 @@ test('the decision log holds what the README says the reviewer cites', () => {
   assert.deepEqual(first.openAtAccept, [], '1.1 had no open check question');
   assert.match(second.explained, /^The question is the one/);
   assert.deepEqual(second.openAtAccept, [2], '3.1 was accepted with the check question #2 open');
+  // the two framings that were not chosen stay where they were written
+  assert.deepEqual(fs.readdirSync(path.join(project, 'research', 'variants')).sort(), ['role', 'trust', 'workflow']);
   // nothing in the log is unsealed: the whole chain verifies under the key init printed
   const key = seal.readKeyFile(walk().found.keyFile);
   assert.equal(seal.verifyChain(fs.readFileSync(path.join(project, 'research', 'decisions.md'), 'utf8'), key).status, 'verified');

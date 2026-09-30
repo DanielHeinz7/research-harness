@@ -125,7 +125,7 @@ The material is 13 de-identified interviews with senior software developers
 about working with AI coding assistants (Hristova, Gala Scaramuzza, Popovici,
 Burelli & Tell, PROFES 2026), Zenodo record 22893731, CC BY 4.0. The canvases
 below show what a framing under each lens could say. They are not the authors'
-framing of their own study, and the authors have not seen them. The pinned
+framing of their own study, and the authors neither wrote nor checked them. The pinned
 version, what the later versions hold, and the attribution are in
 `examples/ai-assistants-interviews/README.md`.
 
@@ -139,7 +139,7 @@ shown as `<seal>`, `<sha256>` or `<hash>`.
 
 `~/research-harness` below is your clone of this repository, and
 `research-harness` is the command `install-cli` put on your terminal's PATH
-(see Install). Node 20 or newer.
+(see Install).
 
 ### 1. Get the interviews and start a project
 

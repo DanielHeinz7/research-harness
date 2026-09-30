@@ -672,6 +672,7 @@ const BASH_ALLOWED = [
   'cat bin/research-harness.js',
   'npx research-harness status',
   'research-harness doctor',
+  'research-harness install-cli --dir /tmp/rh-bin',
   'echo "see research/canvas.md"',
   'echo x > "$LOG"',
   'node -e \'console.log(1)\'',
@@ -1526,6 +1527,19 @@ test('Bash: neither route denies ordinary work', () => {
   // SQ-32's contract: a bare word whose basename is a CLI name is an operand,
   // not an invocation, and the two routes above do not bring that inference back.
   assert.equal(run(root, 'Bash', { command: 'cd research-harness && npm test' }), null);
+});
+
+// SQ-116. install-cli writes the shim for the researcher's own terminal and
+// touches no research state, so the model may run it in a project with state.
+// `serve` keeps the name rule it always had: what the browser sends approvals
+// to is the researcher's to start.
+test('Bash: the model may install the terminal command and still cannot start the server', () => {
+  const root = makeProject();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-bin-'));
+  assert.equal(run(root, 'Bash', { command: `research-harness install-cli --dir ${dir}` }), null);
+  const serve = run(root, 'Bash', { command: 'research-harness serve' });
+  assert.equal(serve && serve.permissionDecision, 'deny');
+  assert.match(serve.permissionDecisionReason, /not status, review, init, install-cli or log/);
 });
 
 // US-2 P4. The session server takes approvals from the browser, so only the

@@ -14,12 +14,30 @@ From Claude Code:
 
 Or from a local checkout: `/plugin marketplace add /path/to/research-harness`.
 
+### Private repository
+
+This repository is private, so your GitHub account needs an invitation, and git
+needs a credential Claude Code can use without prompting: either `gh auth login`
+followed by `gh auth setup-git`, or an SSH key loaded in ssh-agent with
+`github.com` in your `known_hosts`. Claude Code tries SSH first, then HTTPS. See
+"Grant access to a private marketplace" in
+<https://code.claude.com/docs/en/plugins/host-marketplace>.
+
 Run `research-harness doctor` first: it checks that the plugin is enabled in
-your settings and that the promotion guard is actually denying what it should,
-and prints one line per problem it finds. It reads settings files rather than
-Claude Code's own running state, so it cannot see whether a Claude Code
-process you already have open actually loaded the plugin — restart the
+your settings, that the promotion guard is actually denying what it should, that
+this project has its sealing key, and that this machine can run the CLI from a
+terminal, and prints one line per problem it finds. It reads settings files
+rather than Claude Code's own running state, so it cannot see whether a Claude
+Code process you already have open actually loaded the plugin — restart the
 session after installing or enabling it.
+
+Then run `research-harness install-cli` once. Claude Code puts the plugin's
+`bin/` directory on the Bash tool's PATH only, so the bare command works inside
+a session and nowhere else. `install-cli` writes a small `research-harness` shim
+into `~/.local/bin` (or `--dir <path>`) that finds the plugin's current install
+path at every run — plugin updates leave it working — and prints the one `PATH`
+line to add if that directory is not one your terminal reads. It edits no shell
+rc file, and it refuses to overwrite a file that is not its own shim.
 
 In any repository without `research/canvas.md` the plugin stays silent, with one
 exception: a command or tool call that names the `research/` location is still
@@ -64,10 +82,11 @@ and the template asks for the command, what happened, and your plugin version.
 
 Issues are public, so keep unpublished canvas and decision text out of them.
 
-## The seven commands
+## The eight commands
 
 The skills above are the normal way in. The CLI underneath them is
-`node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js"`:
+`node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js"` — the same program
+`install-cli` puts on your terminal's PATH under the bare name:
 
 | Command | What it does |
 |---|---|
@@ -78,12 +97,16 @@ The skills above are the normal way in. The CLI underneath them is
 | `log DISCOVERY\|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]` | appends a sealed entry — how the model records a finding |
 | `serve [--no-open]` | opens the session view in your browser; the model may not run it |
 | `doctor` | checks that the plugin is enabled and the guard denies what it should |
+| `install-cli [--dir <path>]` | writes the terminal shim (default `~/.local/bin`) that `serve` needs outside Claude Code |
 
 ## Session view
 
     research-harness serve
 
-Run this in your own terminal, not through Claude Code: the guard refuses both
+Run this in your own terminal, not through Claude Code, and run
+`research-harness install-cli` once there first: Claude Code puts the plugin's
+`bin/` on the Bash tool's PATH only, and the bare `serve` command has to be one
+your own shell can resolve. The guard refuses both
 the `serve` subcommand and a direct run of `bin/canvas-serve.js`, because
 starting the server is the researcher's act. It refuses to start at all
 without a `research/canvas.md` already in place.

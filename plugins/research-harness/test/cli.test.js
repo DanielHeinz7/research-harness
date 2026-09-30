@@ -396,18 +396,37 @@ function fakeConfigDir(enabledPlugins) {
   return dir;
 }
 
-test('doctor reports ok when the plugin is enabled in the user settings', () => {
+// SQ-116. doctor also looks for the shim install-cli writes, so a test must own
+// the home and the PATH it reads: a shim that happens to be installed on this
+// machine would otherwise decide the verdict. These are temp directories, never
+// the real ~/.local/bin.
+function fakeHome() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'rh-home-'));
+}
+
+function installShim(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'research-harness');
+  fs.writeFileSync(file, '#!/bin/sh\n# research-harness install-cli shim; a test fixture\n');
+  return file;
+}
+
+const NO_PATH = { PATH: '/usr/bin:/bin' };
+
+test('doctor reports ok when the plugin is enabled and the terminal command is installed', () => {
   const root = makeProject(false);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
-  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir });
+  const home = fakeHome();
+  installShim(path.join(home, '.local', 'bin'));
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, ...NO_PATH });
   assert.equal(out.status, 0, out.stdout + out.stderr);
-  assert.match(out.stdout, /^research-harness doctor: ok \(2 checks\)$/m);
+  assert.match(out.stdout, /^research-harness doctor: ok \(3 checks\)$/m);
 });
 
 test('doctor reports the plugin as not enabled when no settings file names it', () => {
   const root = makeProject(false);
   const configDir = fakeConfigDir();
-  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir });
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: fakeHome(), ...NO_PATH });
   assert.notEqual(out.status, 0, out.stdout + out.stderr);
   assert.match(out.stdout, /plugin enabled: no enabledPlugins entry for research-harness@/);
 });
@@ -415,8 +434,35 @@ test('doctor reports the plugin as not enabled when no settings file names it', 
 test("doctor's guard-denies check passes on its own throwaway project, independent of the plugin-enabled check", () => {
   const root = makeProject(false);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': false });
-  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir });
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: fakeHome(), ...NO_PATH });
   assert.notEqual(out.status, 0, out.stdout + out.stderr);
   assert.match(out.stdout, /plugin enabled: .*is disabled/);
   assert.doesNotMatch(out.stdout, /guard denies/);
+});
+
+test('doctor asks for the terminal command when nothing has installed it', () => {
+  const root = makeProject(false);
+  const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: fakeHome(), ...NO_PATH });
+  assert.notEqual(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /^research-harness doctor: 1 of 3 checks failed$/m);
+  assert.match(out.stdout, /^- terminal command: not installed; run research-harness install-cli so serve works in your own terminal$/m);
+
+  // The marker is what counts: another program of that name is not this CLI.
+  const foreignHome = fakeHome();
+  fs.mkdirSync(path.join(foreignHome, '.local', 'bin'), { recursive: true });
+  fs.writeFileSync(path.join(foreignHome, '.local', 'bin', 'research-harness'), '#!/bin/sh\necho some other tool\n');
+  const foreign = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: foreignHome, ...NO_PATH });
+  assert.notEqual(foreign.status, 0, foreign.stdout + foreign.stderr);
+  assert.match(foreign.stdout, /^- terminal command: not installed; run research-harness install-cli so serve works in your own terminal$/m);
+});
+
+test('doctor finds the terminal command on PATH, not only at ~/.local/bin', () => {
+  const root = makeProject(false);
+  const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
+  const installed = path.join(fakeHome(), 'bin');
+  installShim(installed);
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: fakeHome(), PATH: `/usr/bin:/bin:${installed}` });
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /^research-harness doctor: ok \(3 checks\)$/m);
 });

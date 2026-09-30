@@ -1,5 +1,6 @@
 ---
 project: constant-checking
+title: "Constant Checking Is Not Addiction: A Grounded Theory of IT-Mediated State-Tracking"
 outlet: MIS Quarterly
 profile: is-qualitative
 created: 2026-09-30
@@ -102,6 +103,8 @@ The authors themselves flag reliance on self-reports, which risks social-desirab
 # 7 · Findings
 
 ## 7.1 What does the material show — separated from what you make of it?
+
+Constant checking is not addiction: it is IT-mediated state-tracking, a largely automatic habit through which people close the gap between what they know and the current state of something they care about. [stated, src: gerlach-cenfetelli-2020 p. 1705]
 
 Constant checking is mostly habitual and automatic rather than deliberate. It is driven by a need to stay up to date that serves enduring personal goals, is enabled by highly accessible representations, and is sustained by an unpredictable reward pattern that keeps individuals checking to find out whether this time pays off. [stated, src: gerlach-cenfetelli-2020 p. 1712-1716]
 

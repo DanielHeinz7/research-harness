@@ -27,7 +27,17 @@
      prose; status as a soft cue, not a stamp; no counters, no seal status, no
      "DISCOVERY", no visible `src:` text; gaps invite rather than accuse. The data
      model and the write paths (accept/stated/comment, expectedHash, the token
-     exchange) are unchanged from B. */
+     exchange) are unchanged from B.
+
+     Second pass (SQ-112, after SQ-111's visual evaluation comment
+     c_munb4hx5_63f9e2): the poster fits 1440x900 without scrolling, each card
+     leads with one complete authors'-voice sentence plus "More" instead of a
+     multi-paragraph clamp; the side rail is poster-only hidden; the footer is
+     print-only; remaining machinery (counters, profile/mode chrome, statement
+     ids, the raw citekey, the canvas-term subtitle outside the element view) is
+     gone from the reading views; suggestions render as a quiet idea note, not a
+     highlighter band; the Agenda tab is "To talk about" and only lists fields
+     with something to discuss plus unanswered questions. */
   :root {
     color-scheme: light;
     --bg: #ebf2eb;
@@ -180,6 +190,27 @@
   .project-meta { display: block; font-size: 12px; color: var(--ink-soft); }
 
   #body-shell { flex: 1 1 auto; min-height: 0; display: flex; }
+  /* Point 1: the side rail repeats the poster's own nine cards, so it is
+     wasted width there; #stage naturally reflows to the freed space. Other
+     views (element, agenda, history) keep it — it is how a reader gets from
+     one field to another once they are past the overview. */
+  #body-shell.poster-active #rail { display: none; }
+
+  .skip-link {
+    position: absolute;
+    left: 12px;
+    top: -60px;
+    z-index: 50;
+    background: var(--action);
+    color: var(--action-ink);
+    padding: 10px 16px;
+    border-radius: var(--r-input);
+    font-weight: 700;
+    font-size: 13px;
+    text-decoration: none;
+    transition: top 0.12s ease;
+  }
+  .skip-link:focus { top: 12px; }
 
   #rail {
     flex: 0 0 280px;
@@ -214,10 +245,20 @@
   .rail-top { display: flex; align-items: center; gap: 8px; }
   .rail-question { font-size: 13px; font-weight: 600; color: var(--ink); }
   .rail-term { font-size: 11px; color: var(--ink-soft); padding-left: 30px; }
-  .rail-totalk-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--suggestion-ink);
-    display: inline-block;
+  /* Point 8: a colour-only dot fails "not by colour alone"; the badge carries
+     its own count as text, so it reads without hover or focus. */
+  .rail-totalk-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--r-pill);
+    background: var(--suggestion-tint);
+    color: var(--suggestion-ink);
+    font-size: 11px;
+    font-weight: 700;
     margin-left: auto;
   }
 
@@ -249,16 +290,21 @@
   /* -- Poster ------------------------------------------------------ */
   .poster-head { margin-bottom: 12px; max-width: 62rem; }
   .poster-eyebrow { margin: 0; font-size: 12px; color: var(--ink-soft); }
-  .poster-title { margin: 1px 0 0; font-size: 23px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
-  .poster-progress { margin: 5px 0 0; font-size: 13px; color: var(--ink-soft); }
+  .poster-title { margin: 1px 0 0; font-size: 26px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
 
+  /* Point 1: every card is short enough (one heading, one lead sentence, one
+     link) that all nine fit above the fold at 1440x900. The row label is its
+     own grid item now — spanning the full row for real, not nested inside
+     the first card's box, which used to push that card's content 14px below
+     its row-mates (SQ-111's "visual quality" note). */
   .poster-grid {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    gap: 8px 12px;
+    align-items: stretch;
   }
   .poster-row-label {
     grid-column: 1 / -1;
@@ -267,22 +313,20 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--ink-soft);
-    margin: 4px 0 -3px;
+    margin: 6px 0 -2px;
   }
   .poster-row-label:first-child { margin-top: 0; }
 
   .field-card {
-    width: 100%;
-    text-align: left;
-    cursor: pointer;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 6px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
     box-shadow: var(--shadow-card);
-    padding: 12px 15px 10px;
+    padding: 14px 16px 12px;
   }
   .field-card-accent { box-shadow: var(--shadow-card), inset 3px 0 0 var(--action); }
 
@@ -290,7 +334,7 @@
   .field-term { font-size: 11px; color: var(--ink-soft); }
 
   .field-question {
-    display: block;
+    margin: 0;
     font-size: 15.5px;
     font-weight: 700;
     color: var(--ink);
@@ -300,34 +344,26 @@
   .field-question-lg { font-size: 28px; }
 
   .field-body { font-size: 13.5px; color: var(--ink); }
-  .field-body p, .field-para { margin: 0 0 6px; }
+  .field-body p, .field-para { margin: 0 0 10px; }
   .field-body p:last-child, .field-para:last-child { margin-bottom: 0; }
 
-  .field-body-clamped { max-height: 78px; overflow: hidden; position: relative; }
-  .field-body-clamped::after {
-    content: '';
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    height: 26px;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--surface));
-  }
+  /* Point 1: the poster card's one complete sentence — never clamped, never
+     faded mid-thought. */
+  .field-lead { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
 
+  /* Point 8: a heading plus a link, not one giant button around the card. */
   .field-more {
     align-self: flex-start;
-    margin-top: 0;
+    margin-top: auto;
+    padding: 0;
+    background: none;
+    border: 0;
     font-size: 12px;
     font-weight: 700;
     color: var(--action);
+    cursor: pointer;
   }
-
-  .qid-anchor {
-    font-size: 10px;
-    color: var(--ink-soft);
-    opacity: 0.7;
-    margin-left: 4px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
+  .field-more:hover, .field-more:focus-visible { text-decoration: underline; }
 
   .field-gap { color: var(--ink-soft); }
   .field-gap-question { font-style: normal; }
@@ -337,22 +373,23 @@
     padding-left: 10px;
   }
 
-  .field-headline { font-size: 1.15em; font-weight: 600; line-height: 1.4; }
-
   .stmt-tentative { color: var(--ink-soft); }
-  .stmt-proposed {
-    font-style: italic;
-    background: var(--suggestion-tint);
-    color: var(--suggestion-ink);
-    border-radius: 6px;
-    padding: 1px 4px;
+  /* Point 5: a quiet idea note — a label plus a soft left border — instead of
+     a highlighter band across the line. Each statement is its own paragraph
+     (below), so a suggestion never glues onto an authors' sentence. */
+  .stmt-proposed { font-style: normal; }
+  .field-para-idea {
+    border-left: 2px solid var(--suggestion-ink);
+    padding-left: 10px;
   }
-  .suggestion-tag {
-    font-style: normal;
+  .idea-tag {
+    display: inline-block;
     font-weight: 700;
-    font-size: 0.78em;
+    font-size: 0.72em;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     color: var(--suggestion-ink);
-    margin-right: 3px;
+    margin-right: 6px;
   }
 
   .status-cue {
@@ -387,20 +424,6 @@
   .src-ref { font-size: 0.72em; color: var(--ink-soft); }
   .src-ref a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
 
-  .field-totalk {
-    margin-top: 2px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border);
-    font-size: 11.5px;
-  }
-  .field-totalk-label {
-    display: block;
-    font-weight: 700;
-    color: var(--ink);
-    margin-bottom: 1px;
-  }
-  .totalk-preview { color: var(--ink-soft); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-
   .field-totalk-full { margin-top: 20px; }
   .totalk-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .totalk-item {
@@ -416,7 +439,7 @@
   .source-key li { margin-bottom: 3px; }
   .source-key a { color: var(--ink-soft); }
 
-  /* -- Agenda -------------------------------------------------------- */
+  /* -- To talk about (was: Agenda) ------------------------------------ */
   .agenda-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
   .agenda-item-open {
     width: 100%;
@@ -430,9 +453,22 @@
   }
   .agenda-item-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
   .agenda-item-title { font-size: 15px; font-weight: 700; color: var(--ink); }
-  .agenda-item-term { font-size: 12px; color: var(--ink-soft); }
   .agenda-findings { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 13.5px; }
   .agenda-findings li { margin-bottom: 4px; }
+
+  .agenda-gap-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .agenda-gap-item {
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    background: transparent;
+    border: 1px dashed var(--line);
+    border-radius: var(--r-card);
+    padding: 10px 14px;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+  }
+  .agenda-gap-item strong { color: var(--ink); font-weight: 700; }
 
   /* -- Field (single) ------------------------------------------------- */
   .element-nav { display: flex; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
@@ -533,7 +569,12 @@
   .history-meta { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 6px; }
   .history-body { margin: 0; color: var(--ink); font-size: 14.5px; }
 
-  footer { flex: 0 0 auto; padding: 10px 24px 16px; font-size: 12px; color: var(--ink-soft); }
+  /* Point 1: the footer (plugin version, "Canvas after Dorobantu et al.
+     2024") is print-only now — it cost about 100px of always-visible screen
+     for a credit line, which mattered most at 390px (SQ-111's "half
+     screen"). */
+  .print-only { display: none; }
+  footer { padding: 10px 24px 16px; font-size: 12px; color: var(--ink-soft); }
 
   .empty-note { color: var(--ink-soft); font-style: italic; font-size: 14px; }
 
@@ -548,6 +589,7 @@
       flex-direction: column;
       max-height: 220px;
     }
+    #body-shell.poster-active #rail { display: none; }
     .rail-list { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
     .rail-card { min-width: 190px; flex: 0 0 auto; }
     #stage { padding: 16px; }
@@ -555,17 +597,16 @@
     #project-tag { margin-left: 0; text-align: left; }
     .poster-grid { grid-template-columns: 1fr; }
     .poster-title { font-size: 24px; }
-    .field-body-clamped { max-height: none; }
-    .field-body-clamped::after { display: none; }
     .field-body-full { padding: 16px 18px; max-width: none; }
     .comment-form { max-width: none; }
   }
 
   @media print {
     #notice, #topbar, #rail, .action-btn, .comment-form, .why-label, .stmt-actions,
-    .element-nav, .field-more, .status-tip {
+    .element-nav, .field-more, .status-tip, .skip-link {
       display: none !important;
     }
+    .print-only { display: block !important; }
     html, body, #app, #body-shell, #stage {
       height: auto !important;
       overflow: visible !important;
@@ -573,11 +614,6 @@
     }
     .view { display: block !important; }
     .field-card, .agenda-item-open { cursor: default; box-shadow: none; }
-    /* The poster stays a glance on paper too, same clamped cards as on
-       screen; full text is what the field views are for, and they print
-       unclamped as before (they never used .field-body-clamped). Keeping
-       the clamp here is what keeps the nine cards' row heights even and
-       the poster on one page. */
     body { background: #fff; }
   }
   @page { size: A4; margin: 2cm; }
@@ -587,6 +623,7 @@
 </style>
 </head>
 <body>
+<a href="#poster" class="skip-link">Skip to poster</a>
 <div id="notice" role="alert" hidden>
   <span class="notice-icon" aria-hidden="true">&#9888;</span>
   <span id="notice-text"></span>
@@ -675,16 +712,46 @@
     }).join(' ');
   }
 
+  // Point 2: frontmatter.title when the researcher gave one, else the
+  // project slug titleized as before.
+  function paperTitle(s) {
+    var t = s.frontmatter && s.frontmatter.title;
+    if (t && String(t).trim()) return String(t).trim();
+    return titleize(s.project || (s.frontmatter && s.frontmatter.project) || '') || 'Untitled project';
+  }
+
+  // Point 3: "the citekey in the source list" becomes "Gerlach & Cenfetelli
+  // 2020" — a citekey of the `author-author-year` or `author-etal-year`
+  // shape a researcher's own bibliography tool would produce. A citekey
+  // outside that shape (no trailing 4-digit year) is shown as written,
+  // because guessing at an unfamiliar convention is worse than the raw key.
+  function formatCitekey(key) {
+    var parts = String(key).split('-').filter(Boolean);
+    var year = parts[parts.length - 1];
+    if (!/^\d{4}$/.test(year)) return key;
+    var authors = parts.slice(0, -1);
+    if (!authors.length) return key;
+    var names = authors[authors.length - 1] === 'etal'
+      ? titleize(authors[0]) + ' et al.'
+      : authors.map(titleize).join(' & ');
+    return names + ' ' + year;
+  }
+
   // Extracts the page reference from a statement's `src:` tag so the view
   // never shows the raw tag text (point 4: "no src: text"). Falls back to
   // the whole tag value when no "p. …" portion is present, and handles the
-  // `unverified` tag from the sparse fixture.
+  // `unverified` tag from the sparse fixture. `full` is what the source-key
+  // list shows: "Gerlach & Cenfetelli 2020, p. 1706", not the citekey.
   function pageRef(statement) {
     var tag = (statement.tags || [])[0];
     if (!tag) return null;
     if (tag === 'unverified') return { label: 'unverified', full: 'No source found; unverified.' };
     if (tag.indexOf('src:') === 0) {
       var value = tag.slice(4).trim();
+      var split = /^([\w-]+)\s+(p\.\s*\S.*)$/.exec(value);
+      if (split) {
+        return { label: split[2].trim(), full: formatCitekey(split[1]) + ', ' + split[2].trim() };
+      }
       var match = /p\.\s*\S.*$/.exec(value);
       return { label: match ? match[0].trim() : value, full: value };
     }
@@ -739,26 +806,6 @@
     return best;
   }
 
-  // Point 7: the header line uses words, computed from the state.
-  // "from the paper" = statements committed by the text (stated or
-  // accepted); "suggestions" = proposed statements; "open questions" =
-  // questions with no statement at all yet.
-  function computeProgress(s) {
-    var thoughts = 0, fromPaper = 0, suggestions = 0, openQuestions = 0;
-    s.elements.forEach(function (e) {
-      e.questions.forEach(function (q) {
-        if (!q.statements.length) openQuestions += 1;
-        q.statements.forEach(function (st) {
-          thoughts += 1;
-          if (st.marker === 'stated' || st.marker === 'accepted') fromPaper += 1;
-          else if (st.marker === 'proposed') suggestions += 1;
-        });
-      });
-    });
-    return thoughts + ' thoughts · ' + fromPaper + ' from the paper · '
-      + suggestions + ' suggestions · ' + openQuestions + ' open questions';
-  }
-
   function findingsFor(decisions, number) {
     return decisions.filter(function (d) {
       if (d.kind !== 'DISCOVERY') return false;
@@ -767,20 +814,60 @@
     });
   }
 
-  // Renders one statement as a prose span. `compact` (poster card) shows a
-  // static glyph with screen-reader-only text; `full` (field view) adds a
-  // focusable cue whose word appears on hover or keyboard focus, plus the
-  // accept/mark-as-said actions.
+  // Point 2: the poster card's headline is "the first statement that is not
+  // a suggestion" — the paper's own voice, not a Claude paraphrase, even
+  // when the very first statement in document order happens to be
+  // `[proposed]` (element 1's 1.1 in the exemplar). If a field has nothing
+  // but suggestions, the lead falls back to the first statement there is,
+  // flagged so the card can still render it as a quiet idea rather than a
+  // false headline.
+  function leadStatementFor(e) {
+    var fallback = null;
+    for (var qi = 0; qi < e.questions.length; qi += 1) {
+      var q = e.questions[qi];
+      for (var si = 0; si < q.statements.length; si += 1) {
+        var st = q.statements[si];
+        if (!fallback) fallback = { statement: st, question: q };
+        if (st.marker !== 'proposed') return { statement: st, question: q, isIdea: false };
+      }
+    }
+    return fallback ? { statement: fallback.statement, question: fallback.question, isIdea: true } : null;
+  }
+
+  // Point 3: a DISCOVERY/History entry's `ref` is "5 Research Setting" (the
+  // canvas element number and its category); the reading views show the
+  // human question that element answers instead.
+  function refToQuestion(ref) {
+    var m = /^(\d+)/.exec(ref || '');
+    var n = m && Number(m[1]);
+    return (n && HUMAN_QUESTIONS[n]) || ref;
+  }
+
+  // Point 6: the questions nobody has answered yet, across every field —
+  // what "To talk about" adds to the fields that already have a finding.
+  function gapQuestions(s) {
+    var gaps = [];
+    s.elements.forEach(function (e) {
+      e.questions.forEach(function (q) {
+        if (!q.statements.length) gaps.push({ element: e, question: q });
+      });
+    });
+    return gaps;
+  }
+
+  // Renders one statement as a prose span. `full` (field view) adds a
+  // focusable status cue whose word appears on hover or keyboard focus, plus
+  // the accept/mark-as-said actions. Point 5: a suggestion carries one
+  // visible "Idea" label and nothing else names it, so it is announced once,
+  // not twice (point 8).
   function renderStatement(s, opts) {
     var text = esc(s.text);
     var cls = ['stmt'];
     if (s.marker) cls.push('stmt-' + s.marker);
-    if (opts.headline) cls.push('field-headline');
     var inner;
     var word = STATUS_WORD[s.marker];
     if (s.marker === 'proposed') {
-      inner = '<span class="suggestion-tag" aria-hidden="true">Suggestion</span>'
-        + '<span class="sr-only">Suggestion. </span>' + text;
+      inner = '<span class="idea-tag">Idea</span>' + text;
     } else if (s.marker === 'accepted' || s.marker === 'tentative') {
       var glyph = s.marker === 'accepted' ? '&#10003;' : '&#9675;';
       inner = '<span class="sr-only">' + esc(word) + '. </span>' + text
@@ -822,43 +909,40 @@
     return '<span class="' + cls.join(' ') + '">' + inner + '</span>' + refHtml + actionsHtml;
   }
 
-  // Shared prose renderer for both the poster card (compact, clamped, no
-  // links, no actions) and the full field view (linked sources, focusable
-  // status cues, accept/mark-as-said actions). Question numbers are quiet
-  // trailing anchors, never leading text (point 1); an empty question shows
-  // itself plus "Not answered yet", never a dashed error look (point 5).
-  var firstHeadlineDone;
+  // The full field view's prose renderer: one paragraph per statement, so a
+  // suggestion's quiet idea note (point 5) never glues onto an authors'
+  // sentence the way the old single-paragraph-per-question layout did. The
+  // question id (1.1 … 9.3) is kept as the paragraph's own `id`, an anchor a
+  // reader can still link to, but not as visible text (point 3); an empty
+  // question shows itself plus "Not answered yet", never a dashed error
+  // look.
   function renderFieldBody(e, opts) {
-    firstHeadlineDone = false;
     var footnotes = opts.linked ? [] : null;
     var paras = e.questions.map(function (q) {
       if (!q.statements.length) {
-        return '<p class="field-para field-gap" data-qid="' + esc(q.id) + '">'
+        return '<p class="field-para field-gap" id="q-' + esc(q.id) + '" data-qid="' + esc(q.id) + '">'
           + '<span class="field-gap-question">' + esc(q.text) + '</span> '
-          + '<span class="field-gap-note">Not answered yet.</span>'
-          + '<span class="qid-anchor">' + esc(q.id) + '</span></p>';
+          + '<span class="field-gap-note">Not answered yet.</span></p>';
       }
-      var sentences = q.statements.map(function (s) {
-        var headline = !firstHeadlineDone;
-        firstHeadlineDone = true;
-        return renderStatement(s, {
-          headline: headline,
+      return q.statements.map(function (s, i) {
+        var body = renderStatement(s, {
           full: opts.linked,
           linked: opts.linked,
           footnotes: footnotes,
           elementNumber: e.number,
           questionId: q.id
         });
-      }).join(' ');
-      return '<p class="field-para" data-qid="' + esc(q.id) + '">' + sentences
-        + '<span class="qid-anchor">' + esc(q.id) + '</span></p>';
+        var paraClasses = ['field-para'];
+        if (s.marker === 'proposed') paraClasses.push('field-para-idea');
+        return '<p class="' + paraClasses.join(' ') + '" id="q-' + esc(q.id) + (i ? '-' + i : '') + '" data-qid="' + esc(q.id) + '">' + body + '</p>';
+      }).join('');
     }).join('');
     return { html: paras, footnotes: footnotes || [] };
   }
 
   // Point 1: the field is headed by the plain human question, in large
-  // type; the canvas term sits under it, small, and the question number is
-  // only a quiet anchor next to that term (never leading text).
+  // type; the canvas term sits under it, small — kept here because this is
+  // the element view, the one place point 3 still allows it.
   function fieldHeader(e, big) {
     return '<' + (big ? 'h1' : 'span') + ' class="field-question' + (big ? ' field-question-lg' : '') + '">'
       + esc(HUMAN_QUESTIONS[e.number] || e.title) + '</' + (big ? 'h1' : 'span') + '>'
@@ -866,20 +950,22 @@
       + '<span class="field-term">' + esc(e.title) + '</span></span>';
   }
 
+  // Point 2/3: the paper's own title, not the project slug, and no more
+  // "MIS Quarterly · import" — the profile and the import mode are the
+  // harness's own bookkeeping, not something a reader of the paper needs.
   function renderTopbar(s) {
-    var project = titleize(s.project || (s.frontmatter && s.frontmatter.project) || '') || '—';
+    var title = paperTitle(s);
     var meta = [];
     if (s.frontmatter && s.frontmatter.outlet) meta.push(esc(s.frontmatter.outlet));
-    if (s.frontmatter && s.frontmatter.mode) meta.push(esc(s.frontmatter.mode));
     return '<header id="topbar">'
       + '<div id="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>'
       + '<span class="brand-text">Research harness <span class="brand-sep">/</span> Canvas</span></div>'
       + '<nav id="view-tabs" aria-label="Views">'
       + tabButton('poster', 'Poster')
-      + tabButton('agenda', 'Agenda')
+      + tabButton('agenda', 'To talk about')
       + tabButton('log', 'History')
       + '</nav>'
-      + '<div id="project-tag"><span class="project-name">' + esc(project) + '</span>'
+      + '<div id="project-tag"><span class="project-name">' + esc(title) + '</span>'
       + (meta.length ? '<span class="project-meta">' + meta.join(' &middot; ') + '</span>' : '')
       + '</div>'
       + '</header>';
@@ -900,7 +986,7 @@
       return '<li><button type="button" class="' + classes.join(' ') + '" data-view-target="element-' + e.number + '">'
         + '<span class="rail-top"><span class="num-badge">' + e.number + '</span>'
         + '<span class="rail-question">' + esc(HUMAN_QUESTIONS[e.number] || e.title) + '</span>'
-        + (totalk ? '<span class="rail-totalk-dot" aria-label="' + totalk + ' to talk about" title="' + totalk + ' to talk about"></span>' : '')
+        + (totalk ? '<span class="rail-totalk-badge"><span aria-hidden="true">' + totalk + '</span><span class="sr-only"> to talk about</span></span>' : '')
         + '</span>'
         + '<span class="rail-term">' + esc(e.title) + '</span>'
         + '</button></li>';
@@ -908,54 +994,55 @@
     return '<nav id="rail" aria-label="Fields overview"><p class="rail-label">Fields</p><ol class="rail-list">' + cards + '</ol></nav>';
   }
 
-  // The poster: the whole paper at a glance, in argument order (point 6
-  // folds the meeting agenda into each field instead of a separate band).
+  // Point 1/8: one card, one heading, one complete lead sentence in the
+  // authors' own voice (point 2), one "More" link — not a button wrapping
+  // the whole card. The row label is now its own grid item (see the CSS
+  // comment), so it genuinely spans the row instead of only sitting inside
+  // the first card.
+  function renderPosterCard(e, accent) {
+    var question = HUMAN_QUESTIONS[e.number] || e.title;
+    var lead = leadStatementFor(e);
+    var classes = ['field-card'];
+    if (accent === e.number) classes.push('field-card-accent');
+    var leadHtml;
+    if (lead) {
+      var leadClasses = ['field-lead'];
+      if (lead.isIdea) leadClasses.push('field-para-idea');
+      var leadTag = lead.isIdea ? '<span class="idea-tag">Idea</span>' : '';
+      leadHtml = '<p class="' + leadClasses.join(' ') + '">' + leadTag + esc(lead.statement.text) + '</p>';
+    } else {
+      leadHtml = '<p class="field-lead field-gap-note">Not answered yet.</p>';
+    }
+    return '<li class="poster-cell">'
+      + '<article class="' + classes.join(' ') + '">'
+      + '<span class="field-eyebrow" aria-hidden="true"><span class="num-badge">' + e.number + '</span></span>'
+      + '<h3 class="field-question">' + esc(question) + '</h3>'
+      + leadHtml
+      + '<button type="button" class="field-more" data-view-target="element-' + e.number + '">More<span class="sr-only"> about ' + esc(question) + '</span></button>'
+      + '</article></li>';
+  }
+
+  // The poster: the whole paper on one screen, argument order, print-only
+  // footer, no side rail (both hidden by CSS while this view is active).
   function renderPoster(s) {
     var elements = s.elements;
     var graph = (s.frontmatter && PROFILE_GRAPHS[s.frontmatter.profile]) || null;
     var accent = s.profileError ? null : computeAccent(elements, graph);
     var outlet = s.frontmatter && s.frontmatter.outlet;
-    var profile = s.frontmatter && s.frontmatter.profile;
-    var mode = s.frontmatter && s.frontmatter.mode;
-    var eyebrowParts = [];
-    if (outlet) eyebrowParts.push(esc(outlet));
-    if (profile) eyebrowParts.push(esc(String(profile).replace(/-/g, ' ')));
-    if (mode) eyebrowParts.push(esc(mode));
 
-    var cells = elements.map(function (e, i) {
+    var cells = [];
+    elements.forEach(function (e) {
       var rowLabel = ROW_LABELS.filter(function (r) { return r.from === e.number; })[0];
-      var body = renderFieldBody(e, { linked: false });
-      var totalkRaw = findingsFor(s.decisions, e.number);
-      var totalkHtml = '';
-      if (totalkRaw.length) {
-        var first = parseFindingBody(totalkRaw[0].body);
-        totalkHtml = '<span class="field-totalk">'
-          + '<span class="field-totalk-label">To talk about</span>'
-          + '<span class="totalk-preview">' + esc(first.text)
-          + (first.pageRef ? ' <sup class="src-ref">' + esc(first.pageRef) + '</sup>' : '')
-          + (totalkRaw.length > 1 ? ' (+' + (totalkRaw.length - 1) + ' more)' : '')
-          + '</span></span>';
-      }
-      var classes = ['field-card'];
-      if (accent === e.number) classes.push('field-card-accent');
-      var card = '<li class="poster-cell">'
-        + (rowLabel ? '<p class="poster-row-label">' + esc(rowLabel.label) + '</p>' : '')
-        + '<button type="button" class="' + classes.join(' ') + '" data-view-target="element-' + e.number + '">'
-        + fieldHeader(e, false)
-        + '<span class="field-body field-body-clamped">' + body.html + '</span>'
-        + totalkHtml
-        + '<span class="field-more" aria-hidden="true">More &rarr;</span>'
-        + '</button></li>';
-      return card;
-    }).join('');
+      if (rowLabel) cells.push('<li class="poster-row-label" aria-hidden="true">' + esc(rowLabel.label) + '</li>');
+      cells.push(renderPosterCard(e, accent));
+    });
 
-    return '<section id="poster" data-view="poster" class="view page-section">'
+    return '<section id="poster" data-view="poster" class="view page-section" tabindex="-1">'
       + '<div class="poster-head">'
-      + (eyebrowParts.length ? '<p class="poster-eyebrow">' + eyebrowParts.join(' &middot; ') + '</p>' : '')
-      + '<h1 class="poster-title">' + esc(titleize(s.project || (s.frontmatter && s.frontmatter.project) || '') || 'Untitled project') + '</h1>'
-      + '<p class="poster-progress">' + computeProgress(s) + '</p>'
+      + (outlet ? '<p class="poster-eyebrow">' + esc(outlet) + '</p>' : '')
+      + '<h1 class="poster-title">' + esc(paperTitle(s)) + '</h1>'
       + '</div>'
-      + '<ol class="poster-grid">' + cells + '</ol>'
+      + '<ol class="poster-grid">' + cells.join('') + '</ol>'
       + '</section>';
   }
 
@@ -1002,25 +1089,42 @@
       + '</section>';
   }
 
+  // Point 6: "To talk about" is a meeting starter, not a nine-row form — it
+  // lists only fields that actually have a finding, plus the questions
+  // nobody has answered yet, named by the field's human question.
   function renderAgenda(s) {
     var openElements = s.elements.filter(function (e) { return e.status.status !== 'accepted'; });
     var items = openElements.map(function (e) {
       var findings = findingsFor(s.decisions, e.number);
+      if (!findings.length) return '';
       return '<li><button type="button" class="agenda-item-open" data-view-target="element-' + e.number + '">'
         + '<span class="agenda-item-head"><span class="num-badge">' + e.number + '</span>'
-        + '<span class="agenda-item-title">' + esc(HUMAN_QUESTIONS[e.number] || e.title) + '</span>'
-        + '<span class="agenda-item-term">' + esc(e.title) + '</span></span>'
-        + (findings.length
-          ? '<ul class="agenda-findings">' + findings.map(function (d) {
-              var parsed = parseFindingBody(d.body);
-              return '<li>' + esc(parsed.text) + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '') + '</li>';
-            }).join('') + '</ul>'
-          : '<p class="empty-note">Nothing to talk about here yet.</p>')
+        + '<span class="agenda-item-title">' + esc(HUMAN_QUESTIONS[e.number] || e.title) + '</span></span>'
+        + '<ul class="agenda-findings">' + findings.map(function (d) {
+            var parsed = parseFindingBody(d.body);
+            return '<li>' + esc(parsed.text) + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '') + '</li>';
+          }).join('') + '</ul>'
         + '</button></li>';
     }).join('');
+
+    var gapItems = gapQuestions(s).map(function (g) {
+      var question = HUMAN_QUESTIONS[g.element.number] || g.element.title;
+      return '<li><button type="button" class="agenda-gap-item" data-view-target="element-' + g.element.number + '">'
+        + 'Not answered yet: <strong>' + esc(question) + '</strong> &mdash; ' + esc(g.question.text)
+        + '</button></li>';
+    }).join('');
+
+    var sections = '';
+    if (items) sections += '<ul class="agenda-list">' + items + '</ul>';
+    if (gapItems) {
+      sections += '<h3 class="view-sub" style="color:var(--ink);font-weight:700;margin-top:20px;">Not answered yet</h3>'
+        + '<ul class="agenda-gap-list">' + gapItems + '</ul>';
+    }
+    if (!sections) sections = '<p class="empty-note">Nothing to talk about right now.</p>';
+
     return '<section id="agenda" data-view="agenda" class="view page-section">'
-      + '<div class="view-head"><h2>Agenda</h2><p class="view-sub">Where the meeting starts.</p></div>'
-      + (items ? '<ul class="agenda-list">' + items + '</ul>' : '<p class="empty-note">Nothing open right now.</p>')
+      + '<div class="view-head"><h2>To talk about</h2><p class="view-sub">Where the meeting starts.</p></div>'
+      + sections
       + '</section>';
   }
 
@@ -1034,7 +1138,7 @@
   function renderHistory(s) {
     var rows = s.decisions.map(function (d) {
       var parsed = parseFindingBody(d.body);
-      return '<li class="history-card"><p class="history-meta">' + esc(historyLabel(d.kind)) + ' &middot; ' + esc(d.date) + ' &middot; ' + esc(d.ref) + '</p>'
+      return '<li class="history-card"><p class="history-meta">' + esc(historyLabel(d.kind)) + ' &middot; ' + esc(d.date) + ' &middot; ' + esc(refToQuestion(d.ref)) + '</p>'
         + '<p class="history-body">' + esc(parsed.text) + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '') + '</p>'
         + '</li>';
     }).join('');
@@ -1045,7 +1149,7 @@
   }
 
   function renderFooter(s) {
-    return '<footer class="page-section"><p>research-harness ' + esc(s.version || 'unknown') + ' &middot; Canvas after Dorobantu et al. 2024</p></footer>';
+    return '<footer class="page-section print-only"><p>research-harness ' + esc(s.version || 'unknown') + ' &middot; Canvas after Dorobantu et al. 2024</p></footer>';
   }
 
   function renderStagePanels(s) {
@@ -1073,6 +1177,10 @@
     for (var i = 0; i < views.length; i++) {
       views[i].classList.toggle('active', views[i].getAttribute('data-view') === activeView);
     }
+    // Point 1: the side rail is poster-only hidden; every other view keeps
+    // it as the way to get from one field to another.
+    var shell = document.getElementById('body-shell');
+    if (shell) shell.classList.toggle('poster-active', activeView === 'poster');
     var tabs = app.querySelectorAll('.segment');
     for (i = 0; i < tabs.length; i++) {
       var tabMatch = tabs[i].getAttribute('data-view-target') === activeView;

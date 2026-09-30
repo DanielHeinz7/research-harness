@@ -18,7 +18,7 @@ const { summarize } = require('../hooks/inject-state');
 
 const MODES = ['brainstorming', 'seed', 'import'];
 const USAGE = [
-  'research-harness init --project <slug> --mode brainstorming|seed|import [--outlet <name>] [--profile <id>]',
+  'research-harness init --project <slug> --mode brainstorming|seed|import [--outlet <name>] [--title <text>] [--profile <id>]',
   'research-harness status',
   'research-harness review',
   'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
@@ -70,9 +70,9 @@ function refused(result) {
 
 // ---------- init ----------
 
-// Two frontmatter values are the researcher's own text: the project slug and
-// the outlet. Written bare, an outlet like `open: ISR / MISQ` makes the whole
-// frontmatter unreadable for a real YAML reader — pandoc refuses the canvas
+// Three frontmatter values are the researcher's own text: the project slug, the
+// title and the outlet. Written bare, an outlet like `open: ISR / MISQ` makes
+// the whole frontmatter unreadable for a real YAML reader — pandoc refuses the canvas
 // with "mapping values are not allowed in this context" (SQ-73) — while this
 // plugin's own lenient reader hid the breach. A double-quoted scalar is valid
 // YAML everywhere, and canvas.js reads the quotes and their escapes back off.
@@ -97,6 +97,12 @@ function init(flags) {
   // clone, or a project started before the seal existed. init creates the
   // missing key and touches nothing else; with both present it does nothing.
   if (fs.existsSync(canvasFile)) {
+    // A canvas that exists is never rewritten, so a title given here would be
+    // dropped in silence. The researcher edits that one line by hand instead:
+    // the frontmatter is theirs, not the command's.
+    if (typeof flags.title === 'string') {
+      say(`--title was not applied: ${path.relative(root, canvasFile)} already exists, so edit title: in its frontmatter by hand.`);
+    }
     const key = seal.createKey(root);
     if (!key.created) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
     say(`${path.relative(root, canvasFile)} already exists; kept.`);
@@ -109,9 +115,14 @@ function init(flags) {
   // heading grammar the parser depends on has one source.
   const template = fs.readFileSync(path.join(pluginRoot(), 'references', 'canvas-elements.md'), 'utf8');
   const body = template.replace(/^---[\s\S]*?\n---\n/, '');
-  const frontmatter = [
+  const frontmatterLines = [
     '---',
     `project: ${yamlString(flags.project)}`,
+  ];
+  // A title is optional and the view falls back to the slug without one, so a
+  // project that was given none carries no title line rather than an empty one.
+  if (typeof flags.title === 'string') frontmatterLines.push(`title: ${yamlString(flags.title)}`);
+  frontmatterLines.push(
     `outlet: ${yamlString(typeof flags.outlet === 'string' ? flags.outlet : '')}`,
     `profile: ${profileId}`,
     `created: ${today()}`,
@@ -119,7 +130,8 @@ function init(flags) {
     'canvas-schema: 2',
     '---',
     '',
-  ].join('\n');
+  );
+  const frontmatter = frontmatterLines.join('\n');
   fs.mkdirSync(path.dirname(canvasFile), { recursive: true });
   fs.writeFileSync(canvasFile, `${frontmatter}${body}`);
   const decisionsFile = project.decisionsPath(root);

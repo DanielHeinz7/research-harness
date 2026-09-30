@@ -25,6 +25,7 @@ const USAGE = [
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
   'research-harness serve [--no-open]',
   'research-harness doctor',
+  'research-harness install-cli [--dir <path>]',
 ].join('\n');
 
 function pluginRoot() {
@@ -393,13 +394,121 @@ function checkProjectState() {
   return { ok: true, name: 'project state', detail: `sealing key present at ${seal.keyPath(state.root)}` };
 }
 
+// The shim `install-cli` writes and `doctor` looks for: the file a terminal
+// resolves when the researcher types the bare command. Only a file carrying the
+// marker counts as ours — another program of that name on PATH is not this CLI.
+const SHIM_NAME = 'research-harness';
+const SHIM_MARKER = '# research-harness install-cli shim';
+
+// The directories a terminal resolves the bare command from: the default one,
+// which need not be on PATH at all, and every directory PATH does carry.
+function shimDirs() {
+  const dirs = [path.join(os.homedir(), '.local', 'bin')];
+  for (const entry of (process.env.PATH || '').split(path.delimiter)) if (entry) dirs.push(entry);
+  return [...new Set(dirs)];
+}
+
+function checkTerminalCommand() {
+  for (const dir of shimDirs()) {
+    const file = path.join(dir, SHIM_NAME);
+    let raw = null;
+    try {
+      raw = project.readIfExists(file);
+    } catch (_) {
+      continue; // unreadable is not installed; doctor says so in one line
+    }
+    if (raw !== null && raw.includes(SHIM_MARKER)) {
+      return { ok: true, name: 'terminal command', detail: `shim at ${file}` };
+    }
+  }
+  return { ok: false, name: 'terminal command', detail: 'not installed; run research-harness install-cli so serve works in your own terminal' };
+}
+
 function doctor() {
   const root = project.projectDir({});
-  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState()].filter(Boolean);
+  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState(), checkTerminalCommand()].filter(Boolean);
   const failed = checks.filter((c) => !c.ok);
   say(`research-harness doctor: ${failed.length === 0 ? `ok (${checks.length} checks)` : `${failed.length} of ${checks.length} checks failed`}`);
   for (const c of failed) say(`- ${c.name}: ${c.detail}`);
   return failed.length === 0 ? 0 : 1;
+}
+
+// ---------- install-cli ----------
+
+// Claude Code puts the plugin's bin/ on the Bash tool's PATH while the plugin is
+// enabled, so the bare command works inside a session — and nowhere else. The
+// researcher's own terminal is a different shell with a different PATH, which is
+// where `serve` has to run. This writes one small shim into a directory a login
+// shell already carries.
+//
+// The shim holds the resolution itself: it reads the plugin's current install
+// path out of installed_plugins.json at every run, so a plugin update — a new
+// versioned directory under the cache — leaves it working. Nothing here reads or
+// writes the paper project.
+function defaultBinDir() {
+  return path.join(os.homedir(), '.local', 'bin');
+}
+
+function shimText() {
+  // A single-quoted program: the shell expands nothing in it, so `$` would be
+  // literal there — this text holds none, and no apostrophe either.
+  const resolver = [
+    'const fs = require("node:fs");',
+    'let data;',
+    'try { data = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch (err) { process.exit(1); }',
+    'const entries = data && data.plugins && data.plugins["research-harness@research-harness"];',
+    'for (const entry of [].concat(entries || [])) {',
+    '  if (entry && typeof entry.installPath === "string" && fs.existsSync(entry.installPath)) {',
+    '    process.stdout.write(entry.installPath);',
+    '    process.exit(0);',
+    '  }',
+    '}',
+    'process.exit(1);',
+  ].join('\n');
+  return [
+    '#!/bin/sh',
+    `${SHIM_MARKER}; do not edit, \`research-harness install-cli\` rewrites it.`,
+    '# It finds the plugin from installed_plugins.json at every run, so the shim',
+    '# survives the plugin being updated.',
+    '',
+    'config="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"',
+    "if ! install_path=$(node -e '",
+    resolver,
+    '\' "$config/plugins/installed_plugins.json"); then',
+    '  echo "research-harness: the plugin is not installed for Claude Code; install it with /plugin install research-harness@research-harness."',
+    '  exit 1',
+    'fi',
+    'exec node "$install_path/bin/research-harness.js" "$@"',
+    '',
+  ].join('\n');
+}
+
+function installCli(flags) {
+  if (flags.dir !== undefined && typeof flags.dir !== 'string') return fail(`--dir needs a path.\n${USAGE}`, 2);
+  const dir = path.resolve(typeof flags.dir === 'string' ? flags.dir : defaultBinDir());
+  const target = path.join(dir, SHIM_NAME);
+  if (fs.existsSync(target)) {
+    let existing = null;
+    try {
+      existing = fs.readFileSync(target, 'utf8');
+    } catch (_) {
+      existing = null; // unreadable, a directory, or binary: not a shim we wrote
+    }
+    if (existing === null || !existing.includes(SHIM_MARKER)) {
+      return fail(`${target} already exists and is not the shim this command writes; refusing to overwrite it. Remove or rename that file first.`);
+    }
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(target, shimText(), { mode: 0o755 });
+  fs.chmodSync(target, 0o755); // writeFileSync's mode applies only to a new file
+  say(`Wrote ${target}.`);
+  if ((process.env.PATH || '').split(path.delimiter).includes(dir)) {
+    say(`${dir} is on PATH.`);
+    return 0;
+  }
+  say(`${dir} is not on PATH. Add this line to ~/.zshrc:`);
+  say(`export PATH="${dir}:$PATH"`);
+  return 0;
 }
 
 // ---------- entry ----------
@@ -423,6 +532,7 @@ function main(argv) {
     case 'log': return log(positional, flags);
     case 'serve': return serve(flags);
     case 'doctor': return doctor();
+    case 'install-cli': return installCli(flags);
     case undefined:
       say(USAGE);
       return 0;
@@ -451,4 +561,6 @@ function run(argv) {
 
 if (require.main === module) process.exitCode = run(process.argv.slice(2));
 
-module.exports = { main, replaceMarker: stateLib.replaceMarker };
+// `run`, not `main`: the bare `bin/research-harness` is a one-line door to this
+// file and every entry has to answer alike, filesystem errors included.
+module.exports = { main, run, replaceMarker: stateLib.replaceMarker };

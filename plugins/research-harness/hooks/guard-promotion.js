@@ -234,7 +234,11 @@ const MAX_EXPANSIONS = 256;
 
 const RUNNERS = new Set(['node', 'nodejs', 'npx', 'bun', 'deno', 'pnpm', 'yarn']);
 const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
-const CLI_READ_SUBS = new Set(['status', 'review', 'init', 'doctor']);
+// SQ-116: `install-cli` writes a shim into the researcher's own PATH
+// (~/.local/bin by default) and touches no research state, so it is a read of
+// the paper, like doctor. `accept` and `serve` stay out: the name rule for the
+// two acts the researcher keeps is unchanged.
+const CLI_READ_SUBS = new Set(['status', 'review', 'init', 'doctor', 'install-cli']);
 // US-2: the session server takes approvals from the browser, so only the
 // researcher starts it. `research-harness serve` is already refused as a
 // subcommand outside CLI_READ_SUBS; running the server script itself is the
@@ -1517,11 +1521,11 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
   if (invocation && invocation.harness && !invocation.action) {
     if (invocation.server) return 'it starts the session server, which only the researcher starts';
     if (!invocation.sub) return null;
-    if (invocation.sub.opaque) return 'the CLI is being run with a subcommand that is not status, review, init or log';
+    if (invocation.sub.opaque) return 'the CLI is being run with a subcommand that is not status, review, init, install-cli or log';
     if (invocation.sub.text === 'log') {
       return logKindOf(invocation) === 'open' ? null : 'the CLI\'s log command takes DISCOVERY or CONSTRAINT as a literal word';
     }
-    return CLI_READ_SUBS.has(invocation.sub.text) ? null : 'the CLI is being run with a subcommand that is not status, review, init or log';
+    return CLI_READ_SUBS.has(invocation.sub.text) ? null : 'the CLI is being run with a subcommand that is not status, review, init, install-cli or log';
   }
   if (args[0].opaque) return 'the command name is assembled at runtime';
   const verb = baseNameOf(args[0].text);

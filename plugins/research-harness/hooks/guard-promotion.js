@@ -238,7 +238,7 @@ const CLI_NAMES = new Set(['research-harness', 'research-harness.js']);
 // (~/.local/bin by default) and touches no research state, so it is a read of
 // the paper, like doctor. `accept` and `serve` stay out: the name rule for the
 // two acts the researcher keeps is unchanged.
-const CLI_READ_SUBS = new Set(['status', 'review', 'init', 'doctor', 'install-cli']);
+const CLI_READ_SUBS = new Set(['status', 'review', 'init', 'doctor', 'install-cli', 'title']);
 // US-2: the session server takes approvals from the browser, so only the
 // researcher starts it. `research-harness serve` is already refused as a
 // subcommand outside CLI_READ_SUBS; running the server script itself is the

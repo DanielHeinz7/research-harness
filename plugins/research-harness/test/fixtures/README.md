@@ -35,6 +35,14 @@ choosing is off. `make-variants-fixtures.js` writes both through the CLI and `vi
 nothing in them is hand-written; run it again to regenerate (seals and text hashes change, the
 shape does not). `view.test.js` and the screenshots of the view read them.
 
+## view-state-broken.json
+
+The same scratch project right after `choose power`, with the framing entry's Why reworded in
+`decisions.md` after it was sealed: the ledger breaks at `#3`, the two check questions before it
+still verify (`sealStatus` `verified, verified, broken`). `make-variants-fixtures.js` writes it
+through `viewState` like the two above. `view.test.js` reads it for the seal marker and the
+ledger banner (SQ-139).
+
 ## prechange-decisions.md
 
 `prechange-decisions.md` is a sealed decision log written at revision `3792c3e`, before the entry's

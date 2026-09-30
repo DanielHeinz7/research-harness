@@ -352,14 +352,62 @@ test('fixture mode opens a view or a dialog from the URL, and its confirm button
 test('History shows the framing choice and the explained accept with #seq links that land on their entries', async () => {
   const page = await mount({ state: chosenState, query: '&view=log' });
   const markup = page.app.innerHTML;
-  assert.match(markup, /<li class="history-card" id="entry-3" tabindex="-1"><p class="history-meta">#3 &middot; Framing chosen &middot; \d{4}-\d{2}-\d{2} &middot; power<\/p>/);
+  assert.match(markup, /<li class="history-card" id="entry-3" tabindex="-1"><p class="history-meta">#3 &middot; Framing chosen &middot; \d{4}-\d{2}-\d{2} &middot; power &middot; verified<\/p>/);
   assert.match(markup, /Framing power \(lens: power and hierarchy\) chosen; its statements are copied into the main canvas\.<span class="entry-note">Why: Every one of the twelve meetings records rank/);
   assert.match(markup, /<span class="entry-note">Rejected: rituals \(lens: meeting routines and turn-taking\); sense-making/);
-  assert.match(markup, /<li class="history-card" id="entry-4" tabindex="-1"><p class="history-meta">#4 &middot; Decision &middot; \d{4}-\d{2}-\d{2} &middot; What puzzles us\?<\/p>/);
+  assert.match(markup, /<li class="history-card" id="entry-4" tabindex="-1"><p class="history-meta">#4 &middot; Decision &middot; \d{4}-\d{2}-\d{2} &middot; What puzzles us\? &middot; verified<\/p>/);
   assert.match(markup, /<span class="entry-note">Explained: Earlier work counts who speaks/);
   assert.match(markup, /Open at acceptance: <button[^>]*data-scroll-to="entry-1">#1<\/button>, <button[^>]*data-scroll-to="entry-2">#2<\/button>/);
   for (const id of ['entry-1', 'entry-2']) assert.ok(markup.includes(`id="${id}"`), `${id} exists for the link to land on`);
   assert.doesNotMatch(markup.replace(/<[^>]*>/g, ' '), /\*\*/, 'no raw label survives in any view');
+});
+
+// SQ-139 (F6 of SQ-132): the state already says which entries verify; the view
+// has to say it too, or a forged `framing chosen` reads like the researcher's own.
+const brokenState = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'view-state-broken.json'), 'utf8'));
+const cardOf = (markup, seq) => markup.match(new RegExp(`<li class="history-card" id="entry-${seq}"[\\s\\S]*?</li>`))[0];
+
+test('History: a DECISION that does not verify carries a visible "does not verify" marker, and the ledger banner names where it breaks', async () => {
+  assert.deepEqual(brokenState.decisions.map((d) => d.sealStatus), ['verified', 'verified', 'broken'], 'the fixture is a real broken log');
+  const page = await mount({ state: brokenState, query: '&view=log' });
+  const markup = page.app.innerHTML;
+
+  const forged = cardOf(markup, 3);
+  assert.match(forged, /#3 &middot; Framing chosen &middot; \d{4}-\d{2}-\d{2} &middot; power &middot; broken<\/p>/, 'the status word sits in the quiet meta line');
+  assert.match(forged, /<p class="seal-flag" role="note"><span aria-hidden="true">&#9888;<\/span> Does not verify: the log breaks here: its own heading or body changed\.<\/p>/);
+  assert.match(visibleText(forged), /Does not verify/, 'the marker is text, not only colour');
+
+  assert.match(markup, /<div class="notices-banner" role="alert"><p>Decision log: does not verify\. It breaks at <button type="button" class="seq-link" data-view-target="log" data-scroll-to="entry-3">#3<\/button> \(its own heading or body changed\)\./);
+});
+
+test('History: a verified entry renders its status word and no marker, and a verified log has no banner', async () => {
+  const broken = await mount({ state: brokenState, query: '&view=log' });
+  for (const seq of [1, 2]) {
+    const card = cardOf(broken.app.innerHTML, seq);
+    assert.match(card, /&middot; verified<\/p>/);
+    assert.doesNotMatch(card, /seal-flag|does not verify/i);
+  }
+  const chosen = await mount({ state: chosenState, query: '&view=log' });
+  assert.doesNotMatch(chosen.app.innerHTML, /seal-flag|does not verify|notices-banner/i, 'a verified DECISION (framing or accept) is marked nowhere');
+  assert.match(cardOf(chosen.app.innerHTML, 4), /#4 &middot; Decision &middot; \d{4}-\d{2}-\d{2} &middot; What puzzles us\? &middot; verified<\/p>/);
+});
+
+test('History: a legacy or unverifiable DECISION is marked too, a legacy DISCOVERY only names its status, and there is no banner without a break', async () => {
+  const state = JSON.parse(JSON.stringify(chosenState));
+  state.decisions[0].sealStatus = 'legacy';
+  state.decisions[2].sealStatus = 'unverifiable';
+  const page = await mount({ state, query: '&view=log' });
+  const markup = page.app.innerHTML;
+  assert.match(cardOf(markup, 1), /&middot; legacy \(no seal\)<\/p>/);
+  assert.doesNotMatch(cardOf(markup, 1), /seal-flag/);
+  assert.match(cardOf(markup, 3), /&middot; unverifiable here<\/p><p class="seal-flag"[^>]*><span aria-hidden="true">&#9888;<\/span> Does not verify: it cannot be checked on this machine\.<\/p>/);
+  assert.doesNotMatch(markup, /notices-banner/);
+  // A state from before the view read seal status shows nothing extra.
+  const older = JSON.parse(JSON.stringify(chosenState));
+  older.decisions.forEach((d) => { delete d.sealStatus; });
+  delete older.review;
+  const plain = await mount({ state: older, query: '&view=log' });
+  assert.doesNotMatch(plain.app.innerHTML, /seal-flag|notices-banner|&middot; verified/);
 });
 
 test('statement text is never editable in the view, and a state without variants shows no Framings tab', async () => {

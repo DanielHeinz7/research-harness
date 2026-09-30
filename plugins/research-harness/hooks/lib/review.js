@@ -56,14 +56,17 @@ function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
   const staleAcceptances = [];
   const unverifiedDecisions = [];
   for (const e of log.entries) {
-    if (e.kind !== 'DECISION' || !e.hash) continue;
-    const m = ACCEPT_REF_RE.exec(e.ref);
-    if (!m) continue;
+    if (e.kind !== 'DECISION') continue;
     const state = stateOf(e);
+    // Every DECISION that does not verify is listed, whatever its ref: a
+    // `framing chosen` entry is as much the researcher's act as an acceptance
+    // (SQ-139). Only the cover and stale bookkeeping below is about acceptances.
+    if (state !== 'verified') unverifiedDecisions.push({ seq: e.seq, ref: e.ref, hash: e.hash, line: e.line, state });
+    const m = e.hash ? ACCEPT_REF_RE.exec(e.ref) : null;
+    if (!m) continue;
     const cover = { seq: e.seq, state };
     const covered = coverByHash.get(e.hash);
     if (!covered || (state === 'verified' && covered.state !== 'verified')) coverByHash.set(e.hash, cover);
-    if (state !== 'verified') unverifiedDecisions.push({ seq: e.seq, ref: e.ref, hash: e.hash, line: e.line, state });
     const live = (acceptedByQuestion.get(m[1]) || []).some((s) => s.hash === e.hash);
     if (!live) staleAcceptances.push({ seq: e.seq, ref: e.ref, hash: e.hash });
   }

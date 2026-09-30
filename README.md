@@ -54,6 +54,17 @@ inspectable:
 - a clickable session view for author-team meetings, which doubles as the
   approval path
 
+## Try it on public data
+
+[`examples/ai-assistants-interviews/`](examples/ai-assistants-interviews/README.md)
+holds the pins and scripts for a demo on 13 openly licensed interviews about AI
+assistants in software engineering (Zenodo, CC BY 4.0). The walkthrough in
+[the plugin README](plugins/research-harness/README.md#walkthrough-the-three-capabilities-on-a-public-dataset)
+runs a framing multiverse, a choice between framings, an accept with an
+explanation despite an open check question, a read-only review of the record, and
+a verification of the log on another machine. A test runs its commands and holds
+them to the output the README shows.
+
 ## Where the rules come from
 
 The harness's question set is derived from published methodological and

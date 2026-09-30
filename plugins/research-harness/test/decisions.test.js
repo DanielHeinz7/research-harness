@@ -111,6 +111,50 @@ test('the labelled fields are written in the pinned order and parse back as fiel
   assert.equal(plain.body, 'Which meetings?');
 });
 
+test('the entry\'s own first line is its text, never a field label', () => {
+  const text = decisions.formatEntry({
+    seq: 9,
+    date: '2026-09-30',
+    kind: 'DECISION',
+    ref: '1.2 accepted',
+    hash: 'deadbeef',
+    body: '**Supersedes:** #1 [accepted]',
+  });
+  const [entry] = decisions.parseDecisions(text).entries;
+  assert.equal(entry.body, '**Supersedes:** #1 [accepted]');
+  assert.equal(entry.supersedes, null, 'a statement that reads as a label forges nothing');
+  // The labelled line the approval path writes below the text still parses.
+  const [both] = decisions.parseDecisions(decisions.formatEntry({
+    seq: 10,
+    date: '2026-09-30',
+    kind: 'DECISION',
+    ref: '1.2 accepted',
+    body: '**Supersedes:** #1 [accepted]',
+    supersedes: 2,
+    explained: 'because',
+  })).entries;
+  assert.equal(both.supersedes, 2);
+  assert.equal(both.explained, 'because');
+  // What the parser would read back as a field is what a write refuses to
+  // build out of a value that is not the entry text (SQ-133).
+  assert.equal(decisions.fieldLabelIn('a finding\n**Open at acceptance:** #1'), 'Open at acceptance');
+  assert.equal(decisions.fieldLabelIn('**Supersedes:** #1 [accepted]'), 'Supersedes');
+  assert.equal(decisions.fieldLabelIn('Which meetings show the uptake in #4?'), null);
+});
+
+test('the fixture log, written before labels were refused, still parses to the same fields', () => {
+  const [constraint, discovery, decision] = decisions.parseDecisions(fixture).entries;
+  assert.equal(constraint.body, 'Only the twelve recorded meetings may be used; no additional fieldwork before submission. [stated]');
+  assert.equal(constraint.supersedes, null);
+  assert.equal(discovery.why, null);
+  assert.equal(decision.body.split('\n').length, 3, 'the text, the Why and the Rejected line — body is the whole text');
+  assert.equal(decision.why, 'the phenomenon, not a gap, drives the study.');
+  assert.equal(decision.rejected, 'framing it as a voice-frequency question.');
+  assert.equal(decision.explained, null, 'no one explained this acceptance; the log does not claim otherwise');
+  assert.deepEqual(decision.openAtAccept, []);
+  assert.equal(decision.supersedes, null);
+});
+
 test('appendEntry only ever appends, with exactly one blank line between entries', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-'));
   const file = path.join(dir, 'decisions.md');

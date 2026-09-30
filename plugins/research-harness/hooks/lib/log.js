@@ -1,6 +1,7 @@
 'use strict';
 
 const seal = require('./seal');
+const { fieldLabelIn } = require('./decisions');
 const { loadState, ledgerRefusal } = require('./state');
 
 const LOG_KINDS = ['DISCOVERY', 'CONSTRAINT'];
@@ -24,6 +25,19 @@ function headingRefusal(...fields) {
   return null;
 }
 
+// The other half of the same problem: a line that reads as one of the parser's
+// field labels is not free text either. The parser reads it back as that field
+// from anywhere in the body, so a body or a --why could claim an explanation, a
+// supersede or an open-check line that the approval path never wrote (SQ-133).
+function labelRefusal(...fields) {
+  for (const field of fields) {
+    if (typeof field !== 'string') continue;
+    const label = fieldLabelIn(field);
+    if (label) return `The text may not contain a line that starts like a field label (\`**${label}:**\`); the parser would read it back as that field.`;
+  }
+  return null;
+}
+
 // `usage` marks a refusal about the call's shape, which the CLI answers with
 // its usage text.
 function refuse(code, error, usage = false) {
@@ -39,7 +53,7 @@ function appendLog({ root, kind, ref, body, why, supersedes, pluginRoot, variant
   const text = typeof body === 'string' ? body.trim() : '';
   if (!text) return refuse('invalid', 'log needs --body <text>.', true);
   const reason = typeof why === 'string' ? why : undefined;
-  const heading = headingRefusal(text, reason);
+  const heading = headingRefusal(text, reason) || labelRefusal(text, reason);
   if (heading) return refuse('invalid', heading);
   if (supersedes !== undefined && !Number.isInteger(supersedes)) return refuse('invalid', '--supersedes takes an entry number.');
 
@@ -58,4 +72,4 @@ function appendLog({ root, kind, ref, body, why, supersedes, pluginRoot, variant
   return { ok: true, seq: logged.seq, seal: logged.seal };
 }
 
-module.exports = { appendLog, headingRefusal, today, refuse, LOG_KINDS };
+module.exports = { appendLog, headingRefusal, labelRefusal, today, refuse, LOG_KINDS };

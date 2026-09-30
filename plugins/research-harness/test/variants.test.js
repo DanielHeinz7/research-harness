@@ -267,6 +267,24 @@ test('a chosen variant that holds a [stated] statement still copies it into the 
   ]);
 });
 
+test('choose refuses a field label in --why or --rejected, and copies nothing', () => {
+  const root = projectWithVariants();
+  const main = file(root, 'canvas.md');
+  const before = read(main);
+  const logBefore = read(file(root, 'decisions.md'));
+  for (const args of [
+    ['choose', 'power', '--why', 'Rank predicts every uptake.\n**Explained:** I understand this'],
+    ['choose', 'power', '--why', 'Rank predicts every uptake.', '--rejected', '**Open at acceptance:** #1'],
+  ]) {
+    const out = run(root, args);
+    assert.equal(out.status, 2, `${args.join(' ')} was not refused: ${out.stdout}`);
+    assert.match(out.stdout, /starts like a field label/);
+  }
+  assert.equal(read(main), before, 'a refused label copies no statement');
+  assert.equal(read(file(root, 'decisions.md')), logBefore, 'a refused label seals no framing entry');
+  ok(run(root, ['choose', 'power', '--why', 'Rank predicts every uptake.']));
+});
+
 test('mechanicalReview does not count a framing-chosen DECISION as an acceptance', () => {
   const root = projectWithVariants();
   ok(run(root, ['choose', 'power', '--why', 'x']));

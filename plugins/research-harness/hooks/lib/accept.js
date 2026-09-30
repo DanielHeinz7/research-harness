@@ -9,7 +9,7 @@ const profileLib = require('./profile');
 const seal = require('./seal');
 const { textHash } = require('./hash');
 const { loadState, ledgerRefusal, findQuestion, statementsByHash, withMarker, QUESTION_ID } = require('./state');
-const { headingRefusal, today, refuse } = require('./log');
+const { headingRefusal, labelRefusal, today, refuse } = require('./log');
 
 // The statement an accept means. Without expectedHash (the CLI) that is the
 // single open candidate, narrowed by match; ambiguity is refused with the
@@ -53,7 +53,7 @@ function acceptStatement({ root, questionId, match, why, explained, rejected, ex
   const explanation = explained.trim();
   const reason = typeof why === 'string' ? why : undefined;
   const rejectedText = typeof rejected === 'string' ? rejected : undefined;
-  const heading = headingRefusal(reason, explanation, rejectedText);
+  const heading = headingRefusal(reason, explanation, rejectedText) || labelRefusal(reason, explanation, rejectedText);
   if (heading) return refuse('invalid', heading);
   if (state.profileError) return refuse('dependency', `${state.profileError}; cannot check dependencies, so nothing is accepted.`);
 

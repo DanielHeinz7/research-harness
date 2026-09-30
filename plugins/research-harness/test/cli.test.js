@@ -540,6 +540,72 @@ test('log and accept refuse an entry heading in any free-text field, not only --
   assert.equal(accepted.status, 0, accepted.stdout);
 });
 
+test('log and accept refuse a field label in any free-text field', () => {
+  const root = keyedProject();
+  const before = readLog(root);
+  const canvasBefore = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+
+  // A label is read back as that field from anywhere below an entry's own
+  // text, so a body or a --why could claim an explanation, a supersede or an
+  // open-check line that no approval path wrote (SQ-133). One helper covers
+  // every write path, accept's free-text fields included.
+  for (const args of [
+    ['log', 'DISCOVERY', '1.2', '--body', 'a finding\n**Explained:** I understand this'],
+    ['log', 'DISCOVERY', '1.2', '--body', 'a finding', '--why', 'because\n**Supersedes:** #2'],
+    ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency', '--why', 'because\n**Open at acceptance:** #1'],
+    ['accept', '1.2', '--explained', 'I accept this\n**Explained:** twice over', '--match', 'Speaking frequency'],
+    ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency', '--rejected', '**Rejected:** nothing'],
+  ]) {
+    const out = run(root, args);
+    assert.equal(out.status, 2, `${args.join(' ')} was not refused: ${out.stdout}`);
+    assert.match(out.stdout, /starts like a field label/);
+    assert.match(out.stdout, /\*\*(Explained|Supersedes|Open at acceptance|Rejected):\*\*/, 'the refusal names the label');
+  }
+  assert.equal(readLog(root), before, 'a refused label writes nothing');
+  assert.equal(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), canvasBefore, 'a refused label accepts nothing');
+
+  // An ordinary question body is text, not a label (SQ-128 writes these).
+  const check = run(root, ['log', 'DISCOVERY', '1.2 check', '--body', 'Which meetings show the uptake in #4?']);
+  assert.equal(check.status, 0, check.stdout);
+  // The ledger is still whole, so the researcher's own accept still lands.
+  const accepted = run(root, ['accept', '1.2', '--explained', EXPLAINED, '--match', 'Speaking frequency']);
+  assert.equal(accepted.status, 0, accepted.stdout);
+});
+
+test('a statement text that reads as a field label stays the entry text and forges nothing', () => {
+  const root = keyedProject();
+  const canvasPath = path.join(root, 'research', 'canvas.md');
+  // The researcher's own text, accepted as it stands: refusing it would be
+  // refusing their words, so the parser stops reading the first line as a
+  // field instead (SQ-133).
+  fs.writeFileSync(canvasPath, fs.readFileSync(canvasPath, 'utf8').replace(
+    'Speaking frequency is well documented; whether a proposal is taken up is not.',
+    '**Supersedes:** #1',
+  ));
+  const out = run(root, ['accept', '1.2', '--explained', EXPLAINED, '--match', '**Supersedes:**']);
+  assert.equal(out.status, 0, out.stdout);
+  const last = decisions.parseDecisions(readLog(root)).entries.at(-1);
+  assert.equal(last.ref, '1.2 accepted');
+  assert.equal(last.body, `**Supersedes:** #1 [accepted]\n**Explained:** ${EXPLAINED}`, 'body stays the whole text under the heading');
+  assert.equal(last.hash, textHash('**Supersedes:** #1'), 'the acceptance binds the text it accepted');
+  assert.equal(last.supersedes, null, 'the statement text is not read back as a field');
+  assert.equal(last.explained, EXPLAINED, 'the explanation the approval path wrote still parses');
+
+  // A label the approval path never wrote is not forged by the text either:
+  // the parser used to read this text back as `rejected: "nothing [accepted]"`.
+  const other = keyedProject();
+  const otherCanvas = path.join(other, 'research', 'canvas.md');
+  fs.writeFileSync(otherCanvas, fs.readFileSync(otherCanvas, 'utf8').replace(
+    'Speaking frequency is well documented; whether a proposal is taken up is not.',
+    '**Rejected:** nothing',
+  ));
+  const forged = run(other, ['accept', '1.2', '--explained', EXPLAINED, '--match', '**Rejected:**']);
+  assert.equal(forged.status, 0, forged.stdout);
+  const forgedEntry = decisions.parseDecisions(readLog(other)).entries.at(-1);
+  assert.equal(forgedEntry.rejected, null, 'the statement text forges no field the approval path did not write');
+  assert.equal(forgedEntry.explained, EXPLAINED);
+});
+
 test('accept refuses ambiguity, unknown questions, and already-accepted statements', () => {
   const root = makeProject();
   const ambiguous = run(root, ['accept', '1.2', '--explained', EXPLAINED]);

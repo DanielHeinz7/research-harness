@@ -8,7 +8,7 @@ const project = require('./project');
 const seal = require('./seal');
 const { textHash } = require('./hash');
 const { loadState, ledgerRefusal } = require('./state');
-const { headingRefusal, today, refuse } = require('./log');
+const { headingRefusal, labelRefusal, today, refuse } = require('./log');
 
 // The frontmatter block and the body below it, split where parseCanvas splits
 // them: a first line of `---` up to the next `---`. A text without that block
@@ -95,7 +95,7 @@ function chooseFraming({ root, name, why, rejected, pluginRoot } = {}) {
     if (others.length) rejectedText = others.join('; ');
   }
   const body = `Framing ${name}${lens ? ` (lens: ${lens})` : ''} chosen; its statements are copied into the main canvas.`;
-  const heading = headingRefusal(reason, rejectedText, body);
+  const heading = headingRefusal(reason, rejectedText, body) || labelRefusal(reason, rejectedText, body);
   if (heading) return refuse('invalid', heading);
 
   const refusal = ledgerRefusal(main);

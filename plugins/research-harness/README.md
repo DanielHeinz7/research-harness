@@ -82,7 +82,7 @@ and the template asks for the command, what happened, and your plugin version.
 
 Issues are public, so keep unpublished canvas and decision text out of them.
 
-## The eight commands
+## The nine commands
 
 The skills above are the normal way in. The CLI underneath them is
 `node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js"` — the same program
@@ -95,6 +95,7 @@ The skills above are the normal way in. The CLI underneath them is
 | `review` | the mechanical half of `canvas-review` |
 | `accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]` | the researcher's act; the model may not run it |
 | `log DISCOVERY\|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]` | appends a sealed entry — how the model records a finding |
+| `title [<text>]` | sets the paper's title in the canvas frontmatter, or prints the one it has |
 | `serve [--no-open]` | opens the session view in your browser; the model may not run it |
 | `doctor` | checks that the plugin is enabled and the guard denies what it should |
 | `install-cli [--dir <path>]` | writes the terminal shim (default `~/.local/bin`) that `serve` needs outside Claude Code |
@@ -133,6 +134,10 @@ The view opens on the poster and reads like the paper's argument, not a form:
   statements as prose. A suggestion made by the model appears as an "Idea"
   note, sources appear as page numbers, and an open question says "Not
   answered yet".
+
+The poster's large heading is the paper's title, from the `title:` line in the
+canvas frontmatter, which `research-harness title "<text>"` sets; without one
+it falls back to the project slug.
 
 The markers, seals and `src:` paths stay in `canvas.md` and `decisions.md`;
 the view just does not show them as codes.

@@ -7,6 +7,7 @@ const path = require('node:path');
 const childProcess = require('node:child_process');
 
 const project = require('../hooks/lib/project');
+const canvasLib = require('../hooks/lib/canvas');
 const decisions = require('../hooks/lib/decisions');
 const profileLib = require('../hooks/lib/profile');
 const seal = require('../hooks/lib/seal');
@@ -23,6 +24,7 @@ const USAGE = [
   'research-harness review',
   'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
+  'research-harness title [<text>]',
   'research-harness serve [--no-open]',
   'research-harness doctor',
   'research-harness install-cli [--dir <path>]',
@@ -99,10 +101,10 @@ function init(flags) {
   // missing key and touches nothing else; with both present it does nothing.
   if (fs.existsSync(canvasFile)) {
     // A canvas that exists is never rewritten, so a title given here would be
-    // dropped in silence. The researcher edits that one line by hand instead:
-    // the frontmatter is theirs, not the command's.
+    // dropped in silence. `title` is the one door for that line: init points at
+    // it rather than editing a frontmatter the researcher already has.
     if (typeof flags.title === 'string') {
-      say(`--title was not applied: ${path.relative(root, canvasFile)} already exists, so edit title: in its frontmatter by hand.`);
+      say(`--title was not applied: ${path.relative(root, canvasFile)} already exists; run research-harness title "<text>" to set it.`);
     }
     const key = seal.createKey(root);
     if (!key.created) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
@@ -236,6 +238,56 @@ function log(positional, flags) {
   });
   if (!result.ok) return refused(result);
   say(`Logged #${result.seq} ${kind} ${ref.trim()}, sealed ${result.seal}.`);
+  return 0;
+}
+
+// ---------- title ----------
+
+// Where the title line is, or where it goes: the `title:` line already in the
+// frontmatter, or the position directly after `project:` that init --title
+// writes it to. `replace` says which of the two this is. Against a canvas this
+// cannot place a line in — no frontmatter, no project: anchor — the answer is
+// null, because any other position would be a guess at a file the researcher
+// owns.
+function titleLine(lines) {
+  const end = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
+  if (end < 0) return null;
+  const block = lines.slice(1, end);
+  const existing = block.findIndex((line) => /^title:/.test(line));
+  if (existing >= 0) return { index: existing + 1, replace: true };
+  const anchor = block.findIndex((line) => /^project:/.test(line));
+  return anchor >= 0 ? { index: anchor + 2, replace: false } : null;
+}
+
+// The title is presentational: the view prints it and no marker, seal or
+// acceptance reads it, so the model may set it here even though the guard keeps
+// refusing a Write or Edit on the frontmatter. The file is rewritten one line at
+// a time — insert the line, or replace it — and every other byte stays as it was.
+function title(positional) {
+  const root = project.projectDir({});
+  const canvasFile = project.canvasPath(root);
+  if (!fs.existsSync(canvasFile)) {
+    return fail(`This is not a paper project: no ${path.relative(root, canvasFile)}. Run research-harness init first.`);
+  }
+  const text = fs.readFileSync(canvasFile, 'utf8');
+  if (!positional.length) {
+    const current = canvasLib.parseCanvas(text).frontmatter.title;
+    say(current === undefined || String(current).trim() === '' ? 'No title set.' : String(current));
+    return 0;
+  }
+  // An unquoted title arrives as several words; they are one title, not the
+  // first word of one. A title that is empty once trimmed is refused rather
+  // than written as an empty line the view would show as a blank header.
+  const wanted = positional.join(' ').trim();
+  if (!wanted) return fail(`A title cannot be empty. Pass it as the argument: research-harness title "<text>"`);
+  const lines = text.split('\n');
+  const at = titleLine(lines);
+  if (!at) return fail(`${path.relative(root, canvasFile)} has no frontmatter with a project: line, so there is nowhere to set a title.`);
+  const line = `title: ${yamlString(wanted)}`;
+  if (at.replace) lines[at.index] = line;
+  else lines.splice(at.index, 0, line);
+  fs.writeFileSync(canvasFile, lines.join('\n'));
+  say(`Title set: ${wanted}`);
   return 0;
 }
 
@@ -534,6 +586,7 @@ function main(argv) {
     case 'review': return review();
     case 'accept': return accept(positional, flags);
     case 'log': return log(positional, flags);
+    case 'title': return title(positional);
     case 'serve': return serve(flags);
     case 'doctor': return doctor();
     case 'install-cli': return installCli(flags);

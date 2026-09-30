@@ -1542,6 +1542,38 @@ test('Bash: the model may install the terminal command and still cannot start th
   assert.match(serve.permissionDecisionReason, /not status, review, init, install-cli or log/);
 });
 
+// SQ-118. `title` writes the paper's own title line in the canvas frontmatter
+// and touches nothing the guard judges, so the model may run it in a project
+// with state. A title that happens to hold the words accept or serve is an
+// argument, not a second command: the name rule is only consulted once
+// something in the line was already refused.
+test('Bash: the model may set the canvas title, even one that reads like a write verb', () => {
+  const root = makeProject();
+  assert.equal(run(root, 'Bash', { command: 'research-harness title "Working title"' }), null);
+  assert.equal(run(root, 'Bash', { command: 'research-harness title "What we accept and serve"' }), null);
+});
+
+test('Bash: with title allowed, bare accept and serve stay denied', () => {
+  const root = makeProject();
+  const accept = run(root, 'Bash', { command: 'research-harness accept 1.1' });
+  assert.equal(accept && accept.permissionDecision, 'deny');
+  assert.match(accept.permissionDecisionReason, /Accepting a statement is the researcher's act/);
+  const serve = run(root, 'Bash', { command: 'research-harness serve' });
+  assert.equal(serve && serve.permissionDecision, 'deny');
+  assert.match(serve.permissionDecisionReason, /read-only shell access/);
+});
+
+test('Write: adding a title to the frontmatter stays the researcher\'s', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  const added = run(root, 'Write', {
+    file_path: file,
+    content: canvasText.replace('project: voice-uptake', 'project: voice-uptake\ntitle: "What we accept and serve"'),
+  });
+  assert.equal(added.permissionDecision, 'deny');
+  assert.match(added.permissionDecisionReason, /Adding the frontmatter key "title"/);
+});
+
 // US-2 P4. The session server takes approvals from the browser, so only the
 // researcher starts it: `research-harness serve` and the server script, on
 // either route, with or without research state in the project.

@@ -3,7 +3,7 @@ name: check
 description: Advisory check of one canvas statement before the researcher accepts it. Reads the statement, its tags and the sources they name, and records each open question as a DISCOVERY. Never accepts, never edits, never approves. Usage — /research-harness:check <n.m>
 disable-model-invocation: true
 argument-hint: <n.m>
-allowed-tools: Read, Grep, Glob, Bash(node:*)
+allowed-tools: Read, Grep, Glob, Bash(research-harness status:*), Bash(research-harness log DISCOVERY:*)
 ---
 
 # Checking one statement before it is accepted
@@ -15,7 +15,7 @@ so they can weigh them.
 
 ## 1. Read
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" status` and open
+1. Run `research-harness status` and open
    `research/canvas.md`. Find statement `$ARGUMENTS`. If there is none, say so
    and stop.
 2. Read the statement, its marker and its evidence tags. For every
@@ -46,7 +46,7 @@ manufacture one, and do not describe the statement as fine, sound or ready.
 One entry per open question, one question per entry, through the harness so
 it is sealed:
 
-    node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" log DISCOVERY "<n.m> check" --body "<question>"
+    research-harness log DISCOVERY "<n.m> check" --body "<question>"
 
 The ref is exactly `<n.m> check`; the harness counts entries with that ref as
 the open check questions of the statement. Word the body as a question, and

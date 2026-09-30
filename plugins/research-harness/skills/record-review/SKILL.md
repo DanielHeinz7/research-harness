@@ -3,7 +3,7 @@ name: record-review
 description: Read-only reviewer mode. Answers questions about a paper project only from its canvas, its decision log, the mechanical review and git history, and cites each answer; otherwise says "not in the record". Usage — /research-harness:record-review [--key <file>] [--variant <name>]
 disable-model-invocation: true
 argument-hint: [--key <file>] [--variant <name>]
-allowed-tools: Read, Grep, Glob, Bash(node *research-harness.js review:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git blame:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git ls-files:*), Bash(git cat-file:*)
+allowed-tools: Read, Grep, Glob, Bash(research-harness review:*), Bash(research-harness status:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git blame:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git ls-files:*), Bash(git cat-file:*)
 ---
 
 # Reviewing the record
@@ -23,7 +23,7 @@ The review of the record, run for you (`--key <file>` is the released key of a
 record received from elsewhere; without it the review uses this machine's
 key, if there is one):
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/research-harness.js" review $ARGUMENTS`
+!`research-harness review $ARGUMENTS`
 
 Report what it says about the seal chain, and its `Anchor:` line, before you
 answer anything: verified, unverifiable here (no key), or broken at a named

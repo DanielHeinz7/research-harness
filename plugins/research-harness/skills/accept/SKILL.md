@@ -2,7 +2,6 @@
 name: accept
 description: Accept one statement of the research canvas as a commitment of the project (researcher only). Usage — /research-harness:accept <n.m> --explained "<one sentence>" [--match <substring>] [--why <text>] [--rejected <text>]
 disable-model-invocation: true
-allowed-tools: Bash(node:*)
 ---
 
 Accepting a canvas statement:

@@ -1,6 +1,6 @@
 {
   "name": "research-harness",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "A research harness for paper projects: the AMJ research canvas as version-controlled project state, with an enforced line between what an agent proposed and what the researcher accepted.",
   "author": {
     "name": "Daniel Heinz"

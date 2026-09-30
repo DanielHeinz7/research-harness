@@ -187,6 +187,22 @@ test('the shim says the plugin is not installed and exits 1', () => {
   }
 });
 
+// A terminal whose PATH has no node (nvm loaded only in some shells) must hear
+// that, not that the plugin is missing.
+test('the shim says node is missing when PATH has none, and exits 1', () => {
+  const home = scratch('rh-cli-home-');
+  const bin = path.join(scratch('rh-cli-bin-'), 'bin');
+  const config = configDirWith(entry(pluginRoot));
+  assert.equal(runCli(['install-cli', '--dir', bin], { HOME: home, CLAUDE_CONFIG_DIR: config }).status, 0);
+  const out = childProcess.spawnSync('/bin/sh', [path.join(bin, 'research-harness'), '--help'], {
+    env: { HOME: home, CLAUDE_CONFIG_DIR: config, PATH: scratch('rh-cli-empty-path-') },
+    encoding: 'utf8',
+  });
+  assert.equal(out.status, 1);
+  assert.match(out.stdout, /^research-harness: node is not on this terminal's PATH;/);
+  assert.equal(out.stdout.trim().split('\n').length, 1);
+});
+
 test('install-cli refuses to overwrite a file that is not its shim', () => {
   const home = scratch('rh-cli-home-');
   const bin = path.join(scratch('rh-cli-bin-'), 'bin');

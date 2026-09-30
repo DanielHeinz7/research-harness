@@ -1,0 +1,1 @@
+- The terminal shim says so when `node` is not on the terminal's PATH, instead of reporting the plugin as not installed.

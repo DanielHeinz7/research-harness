@@ -16,6 +16,16 @@ const legacyLog = fs.readFileSync(
   'utf8',
 );
 
+// Sealed at 3792c3e, before a labelled line below an entry's text became a
+// refusal (SQ-133). Its bytes and its key are frozen here together, so the
+// check is that a log written before the change still verifies and parses as
+// it did, not that today's code can seal and read its own output.
+const prechangeLog = fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'prechange-decisions.md'),
+  'utf8',
+);
+const PRECHANGE_KEY = Buffer.from('ab'.repeat(32), 'hex');
+
 function withState(fn) {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
   const previous = process.env.RESEARCH_HARNESS_STATE_DIR;
@@ -93,6 +103,29 @@ test('a legacy log with no seals is unverifiable, not broken, and names its lega
   assert.deepEqual([...result.verified], []);
   assert.equal(seal.verifyChain('', KEY).status, 'verified', 'an empty log has nothing to verify');
   assert.equal(seal.verifyChain(decisions.header('x'), KEY).status, 'verified');
+});
+
+test('a log sealed before the field labels were refused still verifies and parses as it did', () => {
+  const result = seal.verifyChain(prechangeLog, PRECHANGE_KEY);
+  assert.equal(result.status, 'verified');
+  assert.deepEqual([...result.verified], [1, 2]);
+  const [decision, discovery] = decisions.parseDecisions(prechangeLog).entries;
+  assert.deepEqual(
+    [decision.why, decision.explained, decision.rejected, decision.openAtAccept, decision.supersedes],
+    [
+      'the phenomenon, not a gap, drives the study.\nIt holds across both sites.',
+      'I accept that uptake, not voice, is the gap.',
+      'framing it as a voice-frequency question.',
+      [4, 12],
+      null,
+    ],
+  );
+  assert.equal(decision.body.split('\n')[0], "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]", 'the entry text is still the whole text below the heading');
+  assert.deepEqual(
+    [discovery.why, discovery.supersedes, discovery.openAtAccept],
+    ['the claim is stronger if uptake is observable in more than one meeting.', 1, []],
+  );
+  assert.equal(discovery.body, 'Which meetings actually show the uptake the claims rest on?\n**Why:** the claim is stronger if uptake is observable in more than one meeting.\n**Supersedes:** #1');
 });
 
 test('sealedAppend chains the first sealed entry onto the hash of everything before it and every later one onto the previous seal', () => {

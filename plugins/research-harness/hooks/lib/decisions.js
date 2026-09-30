@@ -48,13 +48,29 @@ const FIELDS = [
 ];
 const FIELD_RE = /^\*\*(Why|Explained|Rejected|Open at acceptance|Supersedes):\*\* ?(.*)$/;
 
-// The fields of a body, read back from its labelled lines. A field runs from
-// its label to the next label, so a multi-line value round-trips. `body` stays
-// the whole text: the seal covers it, not these fields.
+// The label a value opens a line with, or null. A line that reads as one of the
+// fields is not free text wherever it sits in a body, so every write refuses
+// such a value before it lands — the check and the parser ask FIELD_RE, so the
+// two can never drift apart (SQ-133).
+function fieldLabelIn(text) {
+  for (const line of String(text).split('\n')) {
+    const m = FIELD_RE.exec(line);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// The first line of an entry's body is its text — the statement an acceptance
+// binds, the question a check asks — never one of those labels, however it
+// reads. A text of `**Supersedes:** #2` is the researcher's own words about
+// something else, and reading it as a field would put a supersede in the record
+// that the approval path never wrote (SQ-133).
 function bodyFields(body) {
   const found = {};
   let current = null;
-  for (const line of body.split('\n')) {
+  const lines = String(body).split('\n');
+  for (let i = 1; i < lines.length; i += 1) {
+    const line = lines[i];
     const m = FIELD_RE.exec(line);
     if (m) {
       current = FIELDS.find(([, label]) => label === m[1])[0];
@@ -105,4 +121,4 @@ function appendEntry(filePath, entryText) {
   fs.appendFileSync(filePath, `${separatorAfter(current)}${entryText}`);
 }
 
-module.exports = { KINDS, header, parseDecisions, formatEntry, separatorAfter, appendEntry };
+module.exports = { KINDS, header, parseDecisions, formatEntry, separatorAfter, appendEntry, fieldLabelIn };

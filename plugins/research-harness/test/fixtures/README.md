@@ -22,3 +22,12 @@ hand-written.
 `voice-uptake/research/canvas.md` and `voice-uptake/research/decisions.md` are an invented
 fixture project (no real paper), used to exercise the canvas and decision-log format in `seed`
 mode with a mix of empty, proposed, stated, and accepted statements.
+
+## prechange-decisions.md
+
+`prechange-decisions.md` is a sealed decision log written at revision `3792c3e`, before the entry's
+own first line stopped being read as a field label and before a value carrying such a line became a
+refusal (SQ-133). It is sealed with the key `Buffer.from('ab'.repeat(32), 'hex')`, which
+`seal.test.js` keeps beside its assertions. Its point is to stay frozen: a test proves the current
+code still verifies these bytes and parses the same fields out of them, so the seal and the label
+grammar have to face a log that this code did not write.

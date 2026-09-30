@@ -99,6 +99,7 @@ test('--help and -h print the usage and exit 0, with a subcommand and without on
     assert.equal(out.status, 0, `${label}: ${out.stdout}${out.stderr}`);
     assert.equal(out.stderr, '', `${label} wrote to stderr`);
     assert.match(out.stdout, /^research-harness init --project <slug>/, label);
+    assert.match(out.stdout, /\[--title <text>\]/, label);
     assert.match(out.stdout, /research-harness serve \[--no-open\]/, label);
   }
   assert.equal(fs.existsSync(path.join(root, 'research')), false, 'a help call writes nothing');
@@ -123,6 +124,37 @@ test('init quotes the frontmatter values that are the researcher\'s own text, so
   const bareParsed = canvas.parseCanvas(fs.readFileSync(path.join(bare, 'research', 'canvas.md'), 'utf8'));
   assert.equal(bareParsed.frontmatter.outlet, '');
   assert.equal(bareParsed.frontmatter.project, 'x');
+});
+
+test('init --title writes the paper\'s own text as a quoted scalar after project:, and no title line without it', () => {
+  const root = makeProject(false);
+  const title = 'Voice uptake: the "unheard" patient in ISR';
+  const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed', '--title', title]);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  const text = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+  const parsed = canvas.parseCanvas(text);
+  assert.deepEqual(parsed.problems, [], 'the frontmatter must still parse');
+  assert.equal(parsed.frontmatter.title, title, 'the value reads back unchanged, with no quotes left on it');
+  assert.equal(parsed.frontmatter.project, 'voice-uptake', 'the title line leaves the fields around it alone');
+  assert.equal(parsed.frontmatter.outlet, '');
+  // The line sits directly after project:, quoted the way outlet and project are.
+  assert.ok(text.includes(`project: "voice-uptake"\ntitle: ${JSON.stringify(title)}\n`), text.split('\n').slice(0, 9).join('\n'));
+  // Without --title there is no line at all, so the view falls back to the slug.
+  const bare = makeProject(false);
+  assert.equal(run(bare, ['init', '--project', 'x', '--mode', 'seed']).status, 0);
+  const bareText = fs.readFileSync(path.join(bare, 'research', 'canvas.md'), 'utf8');
+  assert.equal(canvas.parseCanvas(bareText).frontmatter.title, undefined);
+  assert.ok(!/^title:/m.test(bareText), bareText.split('\n').slice(0, 9).join('\n'));
+});
+
+test('init --title on an existing project leaves the canvas byte-identical and names the hand edit', () => {
+  const root = makeProject();
+  const before = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+  const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed', '--title', 'A title that must not land']);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /--title was not applied/);
+  assert.match(out.stdout, /by hand/);
+  assert.equal(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), before);
 });
 
 test('init on an existing project only creates the missing key, and never replaces one', () => {

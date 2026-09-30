@@ -121,7 +121,7 @@ const str = (v) => (typeof v === 'string' ? v : undefined);
 const ROUTES = {
   '/api/accept': (b, ctx) => (typeof b.expectedHash !== 'string' || !b.expectedHash
     ? { ok: false, code: 'invalid', error: 'An accept from the view needs the text hash of the statement you saw (expectedHash).' }
-    : acceptStatement({ root: ctx.root, questionId: b.questionId, match: str(b.match), why: str(b.why), expectedHash: b.expectedHash, pluginRoot: ctx.pluginRoot })),
+    : acceptStatement({ root: ctx.root, questionId: b.questionId, match: str(b.match), why: str(b.why), explained: str(b.explained), rejected: str(b.rejected), expectedHash: b.expectedHash, pluginRoot: ctx.pluginRoot })),
   '/api/stated': (b, ctx) => setStated({ root: ctx.root, questionId: b.questionId, match: str(b.match), expectedHash: b.expectedHash }),
   '/api/comment': (b, ctx) => appendLog({ root: ctx.root, kind: 'DISCOVERY', ref: b.ref, body: b.body, why: str(b.why), pluginRoot: ctx.pluginRoot }),
 };

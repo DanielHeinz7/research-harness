@@ -30,17 +30,59 @@ function parseDecisions(text) {
     }
     offset += lines[i].length + 1;
   }
-  entries.forEach((e, k) => { e.body = bodies[k].join('\n').trim(); });
+  entries.forEach((e, k) => {
+    e.body = bodies[k].join('\n').trim();
+    Object.assign(e, bodyFields(e.body));
+  });
   const maxSeq = entries.reduce((max, e) => Math.max(max, e.seq), 0);
   return { entries, maxSeq };
 }
 
-function formatEntry({ seq, date, kind, ref, hash, seal, body, why, rejected, supersedes }) {
+// The labelled lines formatEntry writes after the text, in their pinned order.
+const FIELDS = [
+  ['why', 'Why'],
+  ['explained', 'Explained'],
+  ['rejected', 'Rejected'],
+  ['openAtAccept', 'Open at acceptance'],
+  ['supersedes', 'Supersedes'],
+];
+const FIELD_RE = /^\*\*(Why|Explained|Rejected|Open at acceptance|Supersedes):\*\* ?(.*)$/;
+
+// The fields of a body, read back from its labelled lines. A field runs from
+// its label to the next label, so a multi-line value round-trips. `body` stays
+// the whole text: the seal covers it, not these fields.
+function bodyFields(body) {
+  const found = {};
+  let current = null;
+  for (const line of body.split('\n')) {
+    const m = FIELD_RE.exec(line);
+    if (m) {
+      current = FIELDS.find(([, label]) => label === m[1])[0];
+      found[current] = [m[2]];
+    } else if (current) {
+      found[current].push(line);
+    }
+  }
+  const value = (key) => (found[key] ? found[key].join('\n').trim() : null);
+  const supersedes = /^#(\d+)$/.exec(value('supersedes') || '');
+  const open = value('openAtAccept');
+  return {
+    why: value('why'),
+    explained: value('explained'),
+    rejected: value('rejected'),
+    openAtAccept: open ? open.split(',').map((s) => Number(s.trim().replace(/^#/, ''))).filter(Number.isInteger) : [],
+    supersedes: supersedes ? Number(supersedes[1]) : null,
+  };
+}
+
+function formatEntry({ seq, date, kind, ref, hash, seal, body, why, explained, rejected, openAtAccept, supersedes }) {
   if (!KINDS.includes(kind)) throw new Error(`unknown decision kind: ${kind}`);
   const heading = `## [#${seq}] ${date} · ${kind} · ${ref}${hash ? ` · text ${hash}` : ''}${seal ? ` · seal ${seal}` : ''}`;
   const lines = [heading, String(body).trim()];
   if (why) lines.push(`**Why:** ${why}`);
+  if (explained) lines.push(`**Explained:** ${explained}`);
   if (rejected) lines.push(`**Rejected:** ${rejected}`);
+  if (openAtAccept && openAtAccept.length) lines.push(`**Open at acceptance:** ${openAtAccept.map((n) => `#${n}`).join(', ')}`);
   if (supersedes) lines.push(`**Supersedes:** #${supersedes}`);
   return `${lines.join('\n')}\n`;
 }

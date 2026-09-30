@@ -80,6 +80,37 @@ test('an entry formatted with a hash round-trips through the parser', () => {
   assert.equal(parsed.entries[0].hash, textHash('When do members\'  suggestions\n  get taken up?'));
 });
 
+test('the labelled fields are written in the pinned order and parse back as fields, alongside body', () => {
+  const fields = {
+    why: 'because\nit holds across both sites',
+    explained: 'I accept that uptake, not voice, is the gap.',
+    rejected: 'voice as the gap',
+    openAtAccept: [4, 12],
+    supersedes: 3,
+  };
+  const text = decisions.formatEntry({ seq: 13, date: '2026-09-30', kind: 'DECISION', ref: '1.2 accepted', hash: 'deadbeef', body: 'Text. [accepted]', ...fields });
+  assert.equal(
+    text,
+    '## [#13] 2026-09-30 · DECISION · 1.2 accepted · text deadbeef\n' +
+      'Text. [accepted]\n' +
+      '**Why:** because\nit holds across both sites\n' +
+      '**Explained:** I accept that uptake, not voice, is the gap.\n' +
+      '**Rejected:** voice as the gap\n' +
+      '**Open at acceptance:** #4, #12\n' +
+      '**Supersedes:** #3\n',
+  );
+  const [entry] = decisions.parseDecisions(text).entries;
+  for (const [k, v] of Object.entries(fields)) assert.deepEqual(entry[k], v, k);
+  assert.equal(entry.body, text.split('\n').slice(1).join('\n').trim(), 'body is still the whole text under the heading');
+  // Formatting the parsed fields again gives the same bytes.
+  assert.equal(decisions.formatEntry({ seq: 13, date: '2026-09-30', kind: 'DECISION', ref: '1.2 accepted', hash: 'deadbeef', body: 'Text. [accepted]', ...Object.fromEntries(Object.keys(fields).map((k) => [k, entry[k]])) }), text);
+
+  // An entry without labelled lines has no fields; the fixture's #3 has a Why.
+  const plain = decisions.parseDecisions(decisions.formatEntry({ seq: 1, date: '2026-09-30', kind: 'DISCOVERY', ref: '1.2 check', body: 'Which meetings?' })).entries[0];
+  assert.deepEqual([plain.why, plain.explained, plain.rejected, plain.openAtAccept, plain.supersedes], [null, null, null, [], null]);
+  assert.equal(plain.body, 'Which meetings?');
+});
+
 test('appendEntry only ever appends, with exactly one blank line between entries', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-'));
   const file = path.join(dir, 'decisions.md');

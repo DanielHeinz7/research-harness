@@ -39,6 +39,22 @@ function project(stateRootName) {
   return { root, stateRoot, alt, key, env: { RESEARCH_HARNESS_STATE_DIR: stateRoot } };
 }
 
+function variantProject() {
+  const p = project();
+  const main = c.canvasSrc.replace(/\[(accepted|stated)(?=[,\]])/g, '[proposed');
+  c.fs.writeFileSync(c.canvasFile(p.root), main);
+  c.fs.writeFileSync(c.decisionsFile(p.root), '# Decision log — voice-uptake\n');
+  p.env.PATH = `${c.path.join(c.PLUGIN, 'bin')}:${process.env.PATH || ''}`;
+  const init = c.cp.spawnSync(process.execPath, [CLI, 'init', '--variant', 'alpha', '--lens', 'sense-making'], {
+    cwd: p.root, env: { ...process.env, ...p.env }, encoding: 'utf8',
+  });
+  if (init.status !== 0) throw new Error(`variant setup failed: ${init.stderr}`);
+  const variant = c.path.join(p.root, 'research', 'variants', 'alpha', 'canvas.md');
+  const frontmatter = c.fs.readFileSync(variant, 'utf8').match(/^---[\s\S]*?\n---\n/)[0];
+  c.fs.writeFileSync(variant, frontmatter + main.replace(/^---[\s\S]*?\n---\n/, ''));
+  return p;
+}
+
 function keyFiles(dir) {
   const out = [];
   const walk = (at, depth) => {
@@ -70,8 +86,15 @@ function shellRow(id, desc, p, command, opts) {
       const chain = withState(p.stateRoot, () => seal.verifyChain(c.readOr(c.decisionsFile(p.root)) || '', p.key));
       effect += ` | chain under the session key: ${chain.status}${chain.broken ? ` #${chain.broken.seq}/${chain.broken.why}` : ''}`;
     }
+    if (o.showChoice) {
+      const entries = c.decisionsLib.parseDecisions(c.readOr(c.decisionsFile(p.root))).entries;
+      const chosen = entries.filter((entry) => entry.kind === 'DECISION' && entry.ref === 'framing chosen: alpha');
+      if (ran.status !== 0 || chosen.length !== 1) throw new Error(`${id}: allowed choose did not write its decision (exit=${ran.status}, entries=${entries.length}): ${ran.stderr || ran.stdout}`);
+      effect += ` | sealed framing chosen: alpha #${chosen[0].seq}`;
+    }
     if (o.stdout) effect += ` | out=${String(ran.stdout || ran.stderr).replace(/\n/g, ' ').trim().slice(0, 60)}`;
   }
+  if (o.expected && verdict.decision !== o.expected) throw new Error(`${id}: expected ${o.expected}, got ${verdict.decision}`);
   rows.push(`${id} | perimeter | ${verdict.decision} | ${effect} | ${desc}`);
   if (verdict.reason) details.push(`${id} reason: ${String(verdict.reason).replace(/\n/g, ' ').slice(0, 150)}`);
 }
@@ -176,6 +199,36 @@ function toolRow(id, desc, p, toolName, toolInput) {
   // US-3/B: choosing a framing joins the name rule beside accept and serve.
   shellRow('M26', 'choose a framing behind an unlisted wrapper (caffeinate)', p,
     `caffeinate -i node ${q(CLI)} choose x --why ${q('fits')}`);
+}
+
+// ---- US-3 security review: the documented indirect-execution limit, links, choose ----
+{
+  const p = variantProject();
+  const prog = 'const d=process.env.PATH.split(":").find(function(x){return x.indexOf("harn"+"ess/bin")>=0});'
+    + 'console.log(JSON.stringify(require(d+"/../hooks/lib/cho"+"ose.js").chooseFraming({root:process.cwd(),name:"alpha",why:"fits"})))';
+  shellRow('M27', 'KNOWN LIMIT (§5.3): choose via node -e with a library path built at run time', p,
+    `node -e ${q(prog)}`, { expected: 'ALLOW', showChain: true, showChoice: true });
+}
+{
+  const p = variantProject();
+  shellRow('M28', 'call 1: a link to the project root (setup is allowed)', p, 'ln -s . h', { expected: 'ALLOW' });
+  shellRow('M29', 'call 2: flip a statement to [accepted] through the link from call 1', p,
+    `sed -i "" 's/\\[proposed\\]/[accepted]/' h/research/canvas.md`, { expected: 'DENY' });
+  shellRow('M30', 'call 2: append to decisions.md through the link from call 1', p,
+    'echo tail >> h/research/decisions.md', { expected: 'DENY', showChain: true });
+}
+{
+  const p = variantProject();
+  shellRow('M31', 'choose from a python3 -c inline program', p,
+    `python3 -c "import subprocess; subprocess.run(['research-harness','choose','alpha','--why','x'])"`, { expected: 'DENY' });
+  shellRow('M32', 'choose under bash -c with a quote-split verb', p,
+    `bash -c "research-harness cho''ose alpha --why x"`, { expected: 'DENY' });
+  shellRow('M33', 'choose through tmux new -d', p,
+    `tmux new -d "node ${CLI} choose alpha --why x"`, { expected: 'DENY' });
+  shellRow('M34', 'choose with the name built by printf', p,
+    "x=$(printf 'research-%s' harness); $x choose alpha --why x", { expected: 'DENY' });
+  shellRow('M35', 'choose under an alias', p,
+    "shopt -s expand_aliases\nalias rc='research-harness choose'\nrc alpha --why x", { expected: 'DENY' });
 }
 
 // ---- loops (SQ-106) ----

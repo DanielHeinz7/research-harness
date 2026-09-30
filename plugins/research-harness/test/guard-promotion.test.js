@@ -557,6 +557,25 @@ test('Bash: a symlinked ancestor of the state root, on disk or made by an earlie
   assert.equal(run(root, 'Bash', { command: 'ln -sfn . h && cat h/research/canvas.md' }, env), null);
 });
 
+test('Bash: earlier-call and pre-existing links to the project cannot hide a canvas or log write', (t) => {
+  const root = makeProject();
+  if (!canSymlink(root)) return t.skip('this platform does not allow symlinks');
+  // This call is allowed and makes the link before the writes are judged.
+  assert.equal(run(root, 'Bash', { command: 'ln -s . h' }), null);
+  fs.symlinkSync('.', path.join(root, 'h'));
+  fs.symlinkSync(path.join(root, 'research'), path.join(root, 'already'));
+  for (const command of [
+    `sed -i '' 's/\\[proposed\\]/[accepted]/' h/research/canvas.md`,
+    'echo tail >> h/research/decisions.md',
+    'echo tail >> already/decisions.md',
+    'echo tail >> h/research/variants/alpha/decisions.md',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  assert.equal(run(root, 'Bash', { command: 'cat h/research/canvas.md' }), null);
+});
+
 test('the default harness state directory under the home directory is protected without any environment set', () => {
   const root = makeProject();
   const { RESEARCH_HARNESS_STATE_DIR: _state, ...rest } = process.env;
@@ -2004,6 +2023,24 @@ test('US-3: a variant decisions.md write is denied, whether it exists or not', (
     assert.equal(out && out.permissionDecision, 'deny', `${tool} ${input.file_path}`);
     assert.match(out.permissionDecisionReason, /written only by the harness/);
   }
+});
+
+test('an outward-linked variants directory cannot turn a new state file into an unguarded write', (t) => {
+  const root = makeProject();
+  if (!canSymlink(root)) return t.skip('this platform does not allow symlinks');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-variants-out-'));
+  fs.symlinkSync(outside, path.join(root, 'research', 'variants'));
+  const base = path.join(root, 'research', 'variants', 'new');
+  for (const [name, content] of [
+    ['decisions.md', '# Decision log\n\n## [#1] forged DECISION\n'],
+    ['canvas.md', canvasText],
+  ]) {
+    const out = run(root, 'Write', { file_path: path.join(base, name), content });
+    assert.equal(out && out.permissionDecision, 'deny', name);
+    assert.match(out.permissionDecisionReason, /[Uu]njudgeable|[Cc]annot judge/, name);
+  }
+  const unknown = run(root, 'mcp__filesystem__write_file', { destination: 'research/variants/new/decisions.md', text: 'forged' });
+  assert.equal(unknown && unknown.permissionDecision, 'deny');
 });
 
 test('US-3: [proposed] writes into a variant are allowed, including creating its canvas', () => {

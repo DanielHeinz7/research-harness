@@ -1199,7 +1199,7 @@ function opaqueReachesState(text, stateNames, dirName) {
 // (SQ-96: `sed -i '' 's|x|**/_raw/*|' .gitignore` was denied because `**`
 // matched `research`). The word itself and a `k=v` value stay patterns, since
 // the shell does expand those.
-function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText) {
+function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText, stateRoot) {
   // A brace expansion or loop too large to compute (SQ-75) is unknown where
   // state is there to land on; where it is not, it is read on the names it
   // spells, the way an opaque word is.
@@ -1214,6 +1214,12 @@ function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText) 
     const denotes = denotesState(candidate, base, stateParts, literal);
     if (denotes === null) unjudgeable = true;
     else if (denotes && !namesAbsentStateDir(candidate, base, stateParts, hasState)) return true;
+    else if (!candidate.startsWith('~') && !candidate.includes(EXP_OPEN)) {
+      const landed = canonical(path.resolve(base, candidate), 0);
+      if (underState(landed, stateRoot)
+        && (hasState || hasPathSeparator(candidate) || !samePath(landed, stateRoot))
+        && !namesAbsentStateDir(landed, base, stateRoot.split(path.sep).filter(Boolean), hasState)) return true;
+    }
   }
   return unjudgeable ? null : false;
 }
@@ -1496,7 +1502,7 @@ function logKindOf(invocation) {
 
 // Returns null when the simple command is a named read-only form, or the
 // reason it is not.
-function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, splitsBlanks) {
+function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, splitsBlanks, stateRoot) {
   for (const redirect of sc.redirects) {
     if (!redirect.write) continue;
     // SQ-106: a loop counts as read-only only when nothing in it writes, so a
@@ -1508,7 +1514,7 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
     for (const target of redirect.targets || [redirect.target]) {
       if (target.opaque) return 'it redirects into a path assembled at runtime';
       if (base === null && !target.text.startsWith('/')) return 'it redirects into a relative path after a `cd` this guard cannot follow';
-      const touches = wordTouchesState(target, base, stateParts, stateNames, hasState);
+      const touches = wordTouchesState(target, base, stateParts, stateNames, hasState, false, stateRoot);
       if (touches === null) return UNCOMPUTABLE_PATTERN_WHY;
       if (touches) return 'it redirects into the research state';
     }
@@ -1651,6 +1657,7 @@ function bashVerdict(command, projectRoot) {
   if (!cmd.trim()) return null;
   const root = projectRoot || project.projectDir({});
   const stateDir = project.stateDir(root);
+  const stateRoot = canonical(stateDir, 0);
   const stateParts = stateDir.split(path.sep).filter(Boolean);
   const stateNames = new Set([project.CANVAS_FILE, project.DECISIONS_FILE, path.basename(stateDir)]);
   // SQ-71: state that is not there cannot be touched. A word the guard cannot
@@ -1785,17 +1792,17 @@ function bashVerdict(command, projectRoot) {
     if (base === null && hasState) touches = true;
     const inertText = !runsProgramText(sc.words);
     for (const w of sc.words) {
-      const verdict = wordTouchesState(w, base, stateParts, stateNames, hasState, inertText);
+      const verdict = wordTouchesState(w, base, stateParts, stateNames, hasState, inertText, stateRoot);
       if (verdict === null && hasState) uncomputable = true;
       else if (verdict) touches = true;
     }
     for (const redirect of sc.redirects) {
-      if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames, hasState)) touches = true;
+      if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames, hasState, false, stateRoot)) touches = true;
       // A redirect target is a write position, so a pattern there the guard
       // cannot compute counts as touching: `readOnlyRefusal` below supplies the
       // reason.
       for (const target of redirect.targets) {
-        if (touched(wordTouchesState(target, base, stateParts, stateNames, hasState))) touches = true;
+        if (touched(wordTouchesState(target, base, stateParts, stateNames, hasState, false, stateRoot))) touches = true;
         if (hasState && redirect.write && target.opaque && (assembledTarget(target.text) || hasUnknownSubstitution(target.text))) touches = true;
       }
     }
@@ -1843,7 +1850,7 @@ function bashVerdict(command, projectRoot) {
       else if (named === 'serve') serveAttempt = true;
     }
 
-    const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState, splitsBlanks);
+    const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState, splitsBlanks, stateRoot);
     if (!refusal) refusal = scRefusal;
     // A launcher reading its program from a heredoc is not a read-only verb here:
     // a body in another language was never lexed into commands of its own.
@@ -1963,7 +1970,7 @@ function identity(file) {
 // answers to: the resolved path, its canonical spelling, and its identity.
 function landingOf(projectRoot, raw) {
   const written = path.resolve(projectRoot, raw);
-  return { canonicalPath: canonical(written, 0), id: identity(written) };
+  return { writtenPath: written, canonicalPath: canonical(written, 0), id: identity(written) };
 }
 
 // US-3: every variant's canvas and log is state too. The ones that exist are
@@ -1993,9 +2000,12 @@ function nestedStateAt(projectRoot, landing) {
   const base = path.basename(landing.canonicalPath);
   const kind = STATE_KIND_BY_NAME.get(base) || STATE_KIND_BY_NAME.get(base.toLowerCase());
   if (!kind) return null;
-  const stateRoot = canonical(project.stateDir(projectRoot), 0);
-  if (!underState(path.dirname(landing.canonicalPath), stateRoot)) return null;
-  return { kind, file: landing.canonicalPath, id: landing.id };
+  const writtenRoot = path.resolve(project.stateDir(projectRoot));
+  const stateRoot = canonical(writtenRoot, 0);
+  const landsInState = underState(path.dirname(landing.canonicalPath), stateRoot);
+  const spelledInState = underState(path.dirname(landing.writtenPath), writtenRoot);
+  if (!landsInState && !spelledInState) return null;
+  return { kind, file: landing.canonicalPath, id: landing.id, unjudgeable: spelledInState && !landsInState };
 }
 
 function stateFileAt(landing, states) {
@@ -2011,7 +2021,7 @@ function targetOf(projectRoot, toolInput) {
   const raw = toolInput.file_path || toolInput.notebook_path || toolInput.path;
   if (typeof raw !== 'string' || !raw) return null;
   const landing = landingOf(projectRoot, raw);
-  return stateFileAt(landing, stateFiles(projectRoot)) || nestedStateAt(projectRoot, landing);
+  return nestedStateAt(projectRoot, landing) || stateFileAt(landing, stateFiles(projectRoot));
 }
 
 // ---------- tool coverage ----------
@@ -2086,7 +2096,9 @@ function unknownToolVerdict(projectRoot, toolName, toolInput) {
   for (const candidate of payloadStrings(toolInput, [], 0)) {
     const landing = landingOf(projectRoot, candidate);
     const hit = stateFileAt(landing, states);
-    if (!hit && !(hasPathSeparator(candidate) && underState(landing.canonicalPath, stateRoot))) continue;
+    if (!hit && !(hasPathSeparator(candidate) && (
+      underState(landing.canonicalPath, stateRoot)
+      || underState(landing.writtenPath, path.resolve(project.stateDir(projectRoot)))))) continue;
     const label = toolName ? `\`${toolName.slice(0, 40)}\`` : 'an unnamed tool';
     const name = shortName(projectRoot, hit ? hit.file : landing.canonicalPath);
     return `research-harness cannot judge what ${label} would do to ${name}, so it is denied: it reads Edit, Write and Bash well enough to tell a proposal from a promotion, and nothing else. Read the file with Read, cat or grep; change it with the Edit or Write tool. ${NEXT_STEP}`;
@@ -2115,6 +2127,7 @@ function harnessStateVerdict(projectRoot, toolName, toolInput) {
 }
 
 function fileVerdict(target, toolName, toolInput) {
+  if (target.unjudgeable) return `Cannot judge this write: ${target.file} is spelled under the research state but lands outside it through a symlink. ${NEXT_STEP}`;
   const name = path.basename(target.file);
   if (target.kind === 'decisions') return DECISIONS_DENIAL;
   if (toolName === 'NotebookEdit') {

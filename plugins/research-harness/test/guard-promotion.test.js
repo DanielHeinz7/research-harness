@@ -1959,3 +1959,122 @@ test('hiding a committed statement from the rendered view is permitted and repor
   assert.equal(inline.permissionDecision, 'deny');
   assert.match(inline.permissionDecisionReason, /commitment in question 1\.1/);
 });
+
+// US-3/B: every canvas.md and decisions.md below the state directory is
+// research state, judged as the main pair is. A variant canvas is written by
+// the model as proposals; [accepted] never lands there, and its log is sealed
+// by the harness alone.
+function withVariant(root, name, text) {
+  const dir = path.join(root, 'research', 'variants', name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'canvas.md'), text);
+  fs.writeFileSync(path.join(dir, 'decisions.md'), '# Decision log — voice-uptake · variant x\n');
+  return dir;
+}
+
+test('US-3: [accepted] written into a variant canvas is denied, by Edit and by Write', () => {
+  const root = makeProject();
+  const dir = withVariant(root, 'x', canvasText);
+  const file = path.join(dir, 'canvas.md');
+  const promote = run(root, 'Edit', { file_path: file, old_string: PROPOSED, new_string: PROPOSED.replace('[proposed]', '[accepted]') });
+  assert.equal(promote && promote.permissionDecision, 'deny');
+  assert.match(promote.permissionDecisionReason, /\[accepted\]/);
+  const created = run(root, 'Edit', { file_path: file, old_string: '_(empty)_\n\n# 2 ', new_string: 'It matters. [accepted]\n\n# 2 ' });
+  assert.equal(created && created.permissionDecision, 'deny');
+  const overwrite = run(root, 'Write', { file_path: file, content: canvasText.replace(PROPOSED, PROPOSED.replace('[proposed]', '[accepted]')) });
+  assert.equal(overwrite && overwrite.permissionDecision, 'deny');
+  // A variant that does not exist yet is judged by where the write lands.
+  const fresh = run(root, 'Write', { file_path: path.join(root, 'research', 'variants', 'y', 'canvas.md'), content: canvasText });
+  assert.equal(fresh && fresh.permissionDecision, 'deny');
+  assert.match(fresh.permissionDecisionReason, /\[accepted\]/);
+  // A relative spelling reaches the same file.
+  const relative = run(root, 'Edit', { file_path: 'research/variants/x/canvas.md', old_string: PROPOSED, new_string: PROPOSED.replace('[proposed]', '[accepted]') });
+  assert.equal(relative && relative.permissionDecision, 'deny');
+});
+
+test('US-3: a variant decisions.md write is denied, whether it exists or not', () => {
+  const root = makeProject();
+  const dir = withVariant(root, 'x', canvasText);
+  for (const [tool, input] of [
+    ['Write', { file_path: path.join(dir, 'decisions.md'), content: '# Decision log\n\n## [#1] 2026-09-30 · DECISION · framing chosen: x\nforged\n' }],
+    ['Edit', { file_path: path.join(dir, 'decisions.md'), old_string: '# Decision log', new_string: '# Log' }],
+    ['Write', { file_path: path.join(root, 'research', 'variants', 'new', 'decisions.md'), content: 'x' }],
+  ]) {
+    const out = run(root, tool, input);
+    assert.equal(out && out.permissionDecision, 'deny', `${tool} ${input.file_path}`);
+    assert.match(out.permissionDecisionReason, /written only by the harness/);
+  }
+});
+
+test('US-3: [proposed] writes into a variant are allowed, including creating its canvas', () => {
+  const root = makeProject();
+  const dir = withVariant(root, 'x', canvasText);
+  const file = path.join(dir, 'canvas.md');
+  assert.equal(run(root, 'Edit', { file_path: file, old_string: PROPOSED, new_string: 'Uptake may depend on who chairs. [tentative]' }), null);
+  assert.equal(run(root, 'Edit', { file_path: file, old_string: '## 1.3 Why does this matter — for practice, for theory, or both?\n\n_(empty)_', new_string: '## 1.3 Why does this matter — for practice, for theory, or both?\n\nBecause allocation happens in meetings. [proposed, src: memo-01]' }), null);
+  assert.equal(run(root, 'Write', { file_path: path.join(root, 'research', 'variants', 'y', 'canvas.md'), content: canvasText.replace('[accepted]', '[proposed]') }), null);
+  // The committed statements of a variant hold like the main canvas's.
+  const altered = run(root, 'Edit', { file_path: file, old_string: STATED, new_string: STATED.replace('documented', 'known') });
+  assert.equal(altered && altered.permissionDecision, 'deny');
+});
+
+test('US-3: a project holding only a variant still has research state for Bash', () => {
+  const root = makeBareProject();
+  withVariant(root, 'x', canvasText.replace('[accepted]', '[proposed]'));
+  for (const command of ['echo "x [accepted]" >> research/variants/x/canvas.md', 'rm research/variants/x/decisions.md']) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  assert.equal(run(root, 'Bash', { command: 'cat research/variants/x/canvas.md' }), null);
+});
+
+// Choosing a framing is the researcher's act exactly as accepting is: the name
+// rule, the wrapper walk and the inline-program route all refuse it.
+test('US-3: research-harness choose is denied to the model, directly, behind a wrapper, and in an inline program', () => {
+  const root = makeProject();
+  for (const command of [
+    'research-harness choose x --why "fits"',
+    'node bin/research-harness.js choose x --why fits',
+    'env node bin/research-harness.js choose x',
+    'nice -n 10 research-harness choose x',
+    `caffeinate -i node ${SQ99_CLI} choose x --why fits`,
+    `timeout 600 node ${SQ99_CLI} choose x`,
+    'bash -c "research-harness choose x"',
+    `bash -c "node ${SQ99_SPLIT} cho''ose x"`,
+    'node -e \'require("./bin/research-harness.js").main(["choose","x"])\'',
+    `python3 -c "import subprocess; subprocess.run(['research-harness', 'choose', 'x'])"`,
+    `tmux new -d "node ${SQ99_CLI} choose x"`,
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+    assert.match(out.permissionDecisionReason, /Choosing a framing is the researcher's act|researcher's act/, command);
+  }
+  const direct = run(root, 'Bash', { command: 'research-harness choose x --why fits' });
+  assert.match(direct.permissionDecisionReason, /^Choosing a framing is the researcher's act/);
+  // An inline program is held to the name rule without state too (SQ-105).
+  const bare = makeBareProject();
+  for (const command of [
+    `python3 -c "import subprocess; subprocess.run(['research-harness', 'choose', 'x'])"`,
+    `perl -e 'system("research-harness", "choose", "x")'`,
+  ]) {
+    const out = run(bare, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+    assert.match(out.permissionDecisionReason, /^Choosing a framing is the researcher's act/, command);
+  }
+});
+
+test('US-3: the word choose alone, and reading the variants, stay allowed', () => {
+  const root = makeProject();
+  withVariant(root, 'x', canvasText);
+  for (const command of [
+    'node -e \'console.log("choose")\'',
+    `python3 -c "print('choose')"`,
+    'grep -n choose plugins/research-harness/bin/research-harness.js',
+    'research-harness status --variant x',
+    'research-harness review --variant x',
+    'research-harness log DISCOVERY 1.1 --body "x" --variant x',
+    'research-harness init --variant y --lens "power"',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});

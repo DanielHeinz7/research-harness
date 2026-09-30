@@ -44,8 +44,8 @@ function pluginRoot() {
 // ledger line is judged with it instead of the key this machine would read
 // (§4.7). Left undefined, the key is read here, as the hook reads it. Nothing
 // below writes, so a released key cannot reach the append path through it.
-function summarize(projectRoot, { seenSeq = 0, key: releaseKey = undefined } = {}) {
-  const canvasText = project.readIfExists(project.canvasPath(projectRoot));
+function summarize(projectRoot, { seenSeq = 0, variant, key: releaseKey = undefined } = {}) {
+  const canvasText = project.readIfExists(project.canvasPath(projectRoot, variant));
   if (canvasText === null) return null;
   const parsed = canvas.parseCanvas(canvasText);
   if (!parsed.elements.length) return null;
@@ -62,7 +62,7 @@ function summarize(projectRoot, { seenSeq = 0, key: releaseKey = undefined } = {
     profileNote = `profile ${profileId} (not found; dependencies not checked)`;
   }
 
-  const decisionsText = project.readIfExists(project.decisionsPath(projectRoot)) || '';
+  const decisionsText = project.readIfExists(project.decisionsPath(projectRoot, variant)) || '';
   let key = releaseKey;
   if (key === undefined) {
     key = null;
@@ -100,7 +100,7 @@ function summarize(projectRoot, { seenSeq = 0, key: releaseKey = undefined } = {
     : 'none';
 
   const text = [
-    `research-harness · paper project "${fm.project || '?'}" · ${profileNote} · mode ${fm.mode || '?'}`,
+    `research-harness · paper project "${fm.project || '?'}"${variant !== undefined ? ` · variant ${variant} (lens: ${fm.lens || '?'})` : ''} · ${profileNote} · mode ${fm.mode || '?'}`,
     `Elements: ${statusLine}`,
     `Empty: ${list(report.empty)} · Open (proposals only): ${list(report.open)}`,
     `Dependency violations: ${violationLine} · Stale acceptances: ${staleLine} · Ledger: ${ledgerSummary(report.ledger)}`,

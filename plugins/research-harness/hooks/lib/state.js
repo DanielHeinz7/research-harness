@@ -13,11 +13,19 @@ function defaultPluginRoot() {
 }
 
 // The project state every write reads first. The CLI and the session server
-// both call this in-process, so there is one reading of the files.
-function loadState(root, { pluginRoot } = {}) {
-  const paths = { canvas: project.canvasPath(root), decisions: project.decisionsPath(root) };
+// both call this in-process, so there is one reading of the files. `variant`
+// reads a variant's state directory instead of the main one; the sealing key
+// is the project's either way, since it belongs to the root.
+function loadState(root, { pluginRoot, variant } = {}) {
+  if (variant !== undefined && !project.isVariantName(variant)) {
+    return { root, error: `--variant takes a name of lowercase letters, digits and hyphens, not ${JSON.stringify(variant)}.`, code: 'invalid' };
+  }
+  const paths = { canvas: project.canvasPath(root, variant), decisions: project.decisionsPath(root, variant) };
   const canvasText = project.readIfExists(paths.canvas);
   if (canvasText === null) {
+    if (variant !== undefined) {
+      return { root, paths, error: `There is no variant "${variant}": no ${path.relative(root, paths.canvas)}. Create it with research-harness init --variant ${variant} --lens "<text>".`, code: 'not-found' };
+    }
     return {
       root,
       paths,
@@ -43,7 +51,7 @@ function loadState(root, { pluginRoot } = {}) {
   } catch (err) {
     keyError = `the sealing key at ${seal.keyPath(root)} exists but cannot be read (${(err && err.code) || 'unknown error'})`;
   }
-  return { root, paths, canvasText, parsed, decisionsText, graph, profileError, key, keyError };
+  return { root, variant, paths, canvasText, parsed, decisionsText, graph, profileError, key, keyError };
 }
 
 // Why the ledger cannot take a new entry right now, or null. Checked before
@@ -56,7 +64,7 @@ function ledgerRefusal(state) {
   }
   const chain = seal.verifyChain(state.decisionsText, state.key);
   if (chain.status === 'broken') {
-    return refuse(`research/decisions.md is broken at #${chain.broken.seq} (line ${chain.broken.line}); nothing is written. The harness never repairs a ledger — run research-harness review, then decide which version is true.`);
+    return refuse(`${path.relative(state.root, state.paths.decisions)} is broken at #${chain.broken.seq} (line ${chain.broken.line}); nothing is written. The harness never repairs a ledger — run research-harness review, then decide which version is true.`);
   }
   return null;
 }

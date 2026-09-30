@@ -32,7 +32,7 @@ function refuse(code, error, usage = false) {
 
 // The append path for what the model and the researcher find out: sealed,
 // so it verifies, and never a DECISION, which is the approval path's alone.
-function appendLog({ root, kind, ref, body, why, supersedes, pluginRoot } = {}) {
+function appendLog({ root, kind, ref, body, why, supersedes, pluginRoot, variant } = {}) {
   if (kind === 'DECISION') return refuse('invalid', 'A DECISION is the researcher\'s act: it is written by /research-harness:accept, never by log.', true);
   if (!LOG_KINDS.includes(kind)) return refuse('invalid', `log needs a kind, ${LOG_KINDS.join(' or ')}.`, true);
   if (typeof ref !== 'string' || !ref.trim() || /[·\n]/.test(ref)) return refuse('invalid', 'log needs a reference — an element number or title, or a question id like 3.1 — without a middle dot or a line break.', true);
@@ -43,7 +43,7 @@ function appendLog({ root, kind, ref, body, why, supersedes, pluginRoot } = {}) 
   if (heading) return refuse('invalid', heading);
   if (supersedes !== undefined && !Number.isInteger(supersedes)) return refuse('invalid', '--supersedes takes an entry number.');
 
-  const state = loadState(root, { pluginRoot });
+  const state = loadState(root, { pluginRoot, variant });
   if (state.error) return refuse(state.code, state.error);
   const refusal = ledgerRefusal(state);
   if (refusal) return refuse(refusal.code, `Cannot log: ${refusal.error}`);

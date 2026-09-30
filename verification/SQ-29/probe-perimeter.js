@@ -173,6 +173,9 @@ function toolRow(id, desc, p, toolName, toolInput) {
     `tmux new -d "node ${CLI} serve --no-open"`);
   shellRow('M24', 'the server script behind an unlisted wrapper (stdbuf)', p,
     `stdbuf -o0 node ${q(c.path.join(c.PLUGIN, 'bin', 'canvas-serve.js'))} --no-open`);
+  // US-3/B: choosing a framing joins the name rule beside accept and serve.
+  shellRow('M26', 'choose a framing behind an unlisted wrapper (caffeinate)', p,
+    `caffeinate -i node ${q(CLI)} choose x --why ${q('fits')}`);
 }
 
 // ---- loops (SQ-106) ----

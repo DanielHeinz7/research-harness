@@ -1348,28 +1348,34 @@ function readsProgramFromStdin(words) {
 // (the session server's script counts as the CLI here), and null when it names
 // neither — `node -e 'console.log(1)'` is ordinary work and stays outside the
 // harness.
+// `choose` (US-3) counts only beside the CLI's name: unlike `accept`, the word
+// is common enough in ordinary program text that on its own it names nothing.
 function programNames(text) {
   let cli = false;
+  let choose = false;
   for (const fragment of text.replace(EXP_RE, ' ').split(FRAGMENT_SPLIT)) {
     if (!fragment) continue;
     if (fragment === 'accept') return 'accept';
+    if (fragment === 'choose') choose = true;
     if (!cli) {
       for (const part of fragment.split('/')) {
         if (CLI_NAMES.has(part) || SERVER_NAMES.has(part)) cli = true;
       }
     }
   }
+  if (cli && choose) return 'choose';
   return cli ? 'cli' : null;
 }
 
 // A program text that reaches the CLI is a harness invocation with a subcommand
-// the guard cannot read: `accept` where the text says so, unreadable otherwise.
-// Both are judged as the researcher's act, as `research-harness "$SUB"` already
-// is — the guard cannot lex the program, so it cannot see the read-only form.
+// the guard cannot read: `accept` or `choose` where the text says so,
+// unreadable otherwise. All are judged as the researcher's act, as
+// `research-harness "$SUB"` already is — the guard cannot lex the program, so
+// it cannot see the read-only form.
 function opaqueProgram(word) {
   const names = programNames(word.text);
   if (!names) return null;
-  const sub = names === 'accept' ? { text: 'accept', opaque: false } : { text: word.text, opaque: true };
+  const sub = names === 'accept' || names === 'choose' ? { text: names, opaque: false } : { text: word.text, opaque: true };
   return { harness: true, sub, rest: [] };
 }
 
@@ -1562,6 +1568,10 @@ const UNCOMPUTABLE_PATTERN_WHY = 'it carries a pattern this guard cannot compute
 // Acceptance is the researcher's act wherever it is invoked from: running it
 // from the shell would be the model declaring a commitment (§4.3).
 const ACCEPT_DENIAL = 'Accepting a statement is the researcher\'s act, so `research-harness accept` cannot be run from the shell — under any name, quoting, or variable. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m>.';
+// US-3: choosing a framing replaces the main canvas with one variant's and
+// seals a DECISION, so it is the researcher's act exactly as accepting is, and
+// it is found on the same routes and by the same name rule.
+const CHOOSE_DENIAL = 'Choosing a framing is the researcher\'s act, so `research-harness choose` cannot be run from the shell — under any name, quoting, or variable. Compare the variants with `research-harness status --variant <name>` and `review --variant <name>`, and ask the researcher to choose one.';
 const LOG_DECISION_DENIAL = 'A DECISION entry is the researcher\'s act, so `research-harness log DECISION` cannot be run from the shell — nor `log` with a kind the guard cannot read. Record a finding with `research-harness log DISCOVERY|CONSTRAINT <ref> --body "<text>"`, and ask the researcher for /research-harness:accept <n.m>.';
 // The CLI reads its configuration from the session. A command line that hands
 // it another home, state directory or project would make it seal with a key
@@ -1579,9 +1589,18 @@ function harnessStateDenial(label) {
 // holds neither — `mkdir research` on its own — is not state: there is nothing
 // there to read and nothing to promote, so the read-only rule has nothing to
 // refuse (SQ-71).
+// US-3: a variant's canvas or log is research state as much as the main pair.
 function statePresent(stateDir) {
-  return fs.existsSync(path.join(stateDir, project.CANVAS_FILE))
-    || fs.existsSync(path.join(stateDir, project.DECISIONS_FILE));
+  if (fs.existsSync(path.join(stateDir, project.CANVAS_FILE))
+    || fs.existsSync(path.join(stateDir, project.DECISIONS_FILE))) return true;
+  let entries = [];
+  try {
+    entries = fs.readdirSync(path.join(stateDir, project.VARIANTS_DIR));
+  } catch (_) {
+    return false;
+  }
+  return entries.some((name) => fs.existsSync(path.join(stateDir, project.VARIANTS_DIR, name, project.CANVAS_FILE))
+    || fs.existsSync(path.join(stateDir, project.VARIANTS_DIR, name, project.DECISIONS_FILE)));
 }
 
 // SQ-99: a backstop next to the wrapper and opaque-program routes. Whatever
@@ -1590,7 +1609,8 @@ function statePresent(stateDir) {
 // two write verbs, or names the server script, reaches them. Quotes, escapes
 // and empty quote pairs are dropped first, so `research-harn''ess` reads as the
 // name the shell makes of it. A name built at run time is not seen (spec §5.3).
-const NAMED_WRITE_VERBS = new Set(['accept', 'serve']);
+// US-3 adds `choose`, the researcher's other act on the record.
+const NAMED_WRITE_VERBS = new Set(['accept', 'choose', 'serve']);
 const NAME_SPLIT = /[^A-Za-z0-9._\-/~+@:]+/;
 
 function namedWrite(text) {
@@ -1598,8 +1618,8 @@ function namedWrite(text) {
   const names = fragments.map((f) => f.split('/').filter(Boolean).pop() || '');
   if (names.some((n) => SERVER_NAMES.has(n))) return 'serve';
   if (!names.some((n) => CLI_NAMES.has(n))) return null;
-  if (fragments.includes('accept')) return 'accept';
-  return fragments.includes('serve') ? 'serve' : null;
+  for (const verb of NAMED_WRITE_VERBS) if (fragments.includes(verb)) return verb;
+  return null;
 }
 
 // SQ-105: the program text an interpreter takes on its command line —
@@ -1671,6 +1691,7 @@ function bashVerdict(command, projectRoot) {
   let touches = false;
   let uncomputable = false;
   let acceptAttempt = false;
+  let chooseAttempt = false;
   let serveAttempt = false;
   let decisionAttempt = false;
   let envAttempt = false;
@@ -1802,6 +1823,7 @@ function bashVerdict(command, projectRoot) {
       if (invocation.harness) touches = true;
       if (invocation.harness && verbAt > 0) envAttempt = true;
       if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'accept') acceptAttempt = true;
+      else if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'choose') chooseAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.opaque) acceptAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
     }
@@ -1817,6 +1839,7 @@ function bashVerdict(command, projectRoot) {
     for (const text of programs) {
       const named = namedWrite(text);
       if (named === 'accept') acceptAttempt = true;
+      else if (named === 'choose') chooseAttempt = true;
       else if (named === 'serve') serveAttempt = true;
     }
 
@@ -1839,6 +1862,7 @@ function bashVerdict(command, projectRoot) {
   }
 
   if (acceptAttempt) return ACCEPT_DENIAL;
+  if (chooseAttempt) return CHOOSE_DENIAL;
   if (serveAttempt) return bashDenial(NAMED_SERVER_WHY);
   if (decisionAttempt) return LOG_DECISION_DENIAL;
   if (envAttempt) return ENV_DENIAL;
@@ -1847,6 +1871,7 @@ function bashVerdict(command, projectRoot) {
   if (hasState && !allReadOnly) {
     const named = namedWrite(cmd);
     if (named === 'accept') return ACCEPT_DENIAL;
+    if (named === 'choose') return CHOOSE_DENIAL;
     if (named === 'serve') return bashDenial(NAMED_SERVER_WHY);
   }
   return null;
@@ -1941,9 +1966,36 @@ function landingOf(projectRoot, raw) {
   return { canonicalPath: canonical(written, 0), id: identity(written) };
 }
 
+// US-3: every variant's canvas and log is state too. The ones that exist are
+// listed here so that a link to one is caught by its identity; one that does
+// not exist yet is caught by where it lands (stateFileAt).
 function stateFiles(projectRoot) {
-  return [['canvas', project.canvasPath(projectRoot)], ['decisions', project.decisionsPath(projectRoot)]]
-    .map(([kind, statePath]) => ({ kind, file: canonical(statePath, 0), id: identity(statePath) }));
+  const pairs = [['canvas', project.canvasPath(projectRoot)], ['decisions', project.decisionsPath(projectRoot)]];
+  let variants = [];
+  try {
+    variants = fs.readdirSync(project.variantsDir(projectRoot));
+  } catch (_) {
+    variants = [];
+  }
+  for (const name of variants) {
+    const dir = path.join(project.variantsDir(projectRoot), name);
+    pairs.push(['canvas', path.join(dir, project.CANVAS_FILE)], ['decisions', path.join(dir, project.DECISIONS_FILE)]);
+  }
+  return pairs.map(([kind, statePath]) => ({ kind, file: canonical(statePath, 0), id: identity(statePath) }));
+}
+
+// US-3: a canvas.md or decisions.md anywhere below the state directory is
+// state, whether or not it exists yet and whatever the directory between is
+// called — the guard does not decide which subdirectories hold a variant.
+const STATE_KIND_BY_NAME = new Map([[project.CANVAS_FILE, 'canvas'], [project.DECISIONS_FILE, 'decisions']]);
+
+function nestedStateAt(projectRoot, landing) {
+  const base = path.basename(landing.canonicalPath);
+  const kind = STATE_KIND_BY_NAME.get(base) || STATE_KIND_BY_NAME.get(base.toLowerCase());
+  if (!kind) return null;
+  const stateRoot = canonical(project.stateDir(projectRoot), 0);
+  if (!underState(path.dirname(landing.canonicalPath), stateRoot)) return null;
+  return { kind, file: landing.canonicalPath, id: landing.id };
 }
 
 function stateFileAt(landing, states) {
@@ -1958,7 +2010,8 @@ function stateFileAt(landing, states) {
 function targetOf(projectRoot, toolInput) {
   const raw = toolInput.file_path || toolInput.notebook_path || toolInput.path;
   if (typeof raw !== 'string' || !raw) return null;
-  return stateFileAt(landingOf(projectRoot, raw), stateFiles(projectRoot));
+  const landing = landingOf(projectRoot, raw);
+  return stateFileAt(landing, stateFiles(projectRoot)) || nestedStateAt(projectRoot, landing);
 }
 
 // ---------- tool coverage ----------

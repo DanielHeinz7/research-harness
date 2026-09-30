@@ -21,12 +21,52 @@ function stateDir(projectRoot) {
   return path.resolve(projectRoot, configured);
 }
 
-function canvasPath(projectRoot) {
-  return path.join(stateDir(projectRoot), CANVAS_FILE);
+// A variant canvas is a full state directory of its own under
+// research/variants/<name>/: its own canvas.md and its own decisions.md, so
+// its log is a separate chain and appends to it never race the main log's
+// (sealedAppend takes no lock). The name becomes a directory, so it is held to
+// a shape no path can escape from.
+const VARIANTS_DIR = 'variants';
+const VARIANT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+function isVariantName(name) {
+  return typeof name === 'string' && VARIANT_NAME_RE.test(name);
 }
 
-function decisionsPath(projectRoot) {
-  return path.join(stateDir(projectRoot), DECISIONS_FILE);
+function variantsDir(projectRoot) {
+  return path.join(stateDir(projectRoot), VARIANTS_DIR);
+}
+
+// The state directory a write means: the main one, or a variant's. A name
+// that is not a variant name is thrown at, never joined into a path.
+function stateDirOf(projectRoot, variant) {
+  if (variant === undefined || variant === null) return stateDir(projectRoot);
+  if (!isVariantName(variant)) throw new Error(`not a variant name: ${JSON.stringify(variant)}`);
+  return path.join(variantsDir(projectRoot), variant);
+}
+
+function canvasPath(projectRoot, variant) {
+  return path.join(stateDirOf(projectRoot, variant), CANVAS_FILE);
+}
+
+function decisionsPath(projectRoot, variant) {
+  return path.join(stateDirOf(projectRoot, variant), DECISIONS_FILE);
+}
+
+// The variants that exist: a directory under variants/ with a valid name and a
+// canvas.md in it, sorted so every caller lists them in one order.
+function variantNames(projectRoot) {
+  let entries;
+  try {
+    entries = fs.readdirSync(variantsDir(projectRoot), { withFileTypes: true });
+  } catch (err) {
+    if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) return [];
+    throw err;
+  }
+  return entries
+    .filter((e) => e.isDirectory() && isVariantName(e.name) && fs.existsSync(canvasPath(projectRoot, e.name)))
+    .map((e) => e.name)
+    .sort();
 }
 
 // "Absent" and "unreadable" are different answers and only the first one is
@@ -44,4 +84,17 @@ function readIfExists(file) {
   }
 }
 
-module.exports = { CANVAS_FILE, DECISIONS_FILE, projectDir, stateDir, canvasPath, decisionsPath, readIfExists };
+module.exports = {
+  CANVAS_FILE,
+  DECISIONS_FILE,
+  VARIANTS_DIR,
+  projectDir,
+  stateDir,
+  stateDirOf,
+  variantsDir,
+  isVariantName,
+  variantNames,
+  canvasPath,
+  decisionsPath,
+  readIfExists,
+};

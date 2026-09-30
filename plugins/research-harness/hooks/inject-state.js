@@ -38,8 +38,8 @@ function pluginRoot() {
 // Returns { text, maxSeq } or null when there is nothing to inject. Exported
 // so `research-harness status` (Task 8) prints the same summary the session
 // was given; two renderings of the same state would drift.
-function summarize(projectRoot, { seenSeq = 0 } = {}) {
-  const canvasText = project.readIfExists(project.canvasPath(projectRoot));
+function summarize(projectRoot, { seenSeq = 0, variant } = {}) {
+  const canvasText = project.readIfExists(project.canvasPath(projectRoot, variant));
   if (canvasText === null) return null;
   const parsed = canvas.parseCanvas(canvasText);
   if (!parsed.elements.length) return null;
@@ -56,7 +56,7 @@ function summarize(projectRoot, { seenSeq = 0 } = {}) {
     profileNote = `profile ${profileId} (not found; dependencies not checked)`;
   }
 
-  const decisionsText = project.readIfExists(project.decisionsPath(projectRoot)) || '';
+  const decisionsText = project.readIfExists(project.decisionsPath(projectRoot, variant)) || '';
   let key = null;
   try {
     key = seal.readKey(projectRoot);
@@ -91,7 +91,7 @@ function summarize(projectRoot, { seenSeq = 0 } = {}) {
     : 'none';
 
   const text = [
-    `research-harness · paper project "${fm.project || '?'}" · ${profileNote} · mode ${fm.mode || '?'}`,
+    `research-harness · paper project "${fm.project || '?'}"${variant !== undefined ? ` · variant ${variant} (lens: ${fm.lens || '?'})` : ''} · ${profileNote} · mode ${fm.mode || '?'}`,
     `Elements: ${statusLine}`,
     `Empty: ${list(report.empty)} · Open (proposals only): ${list(report.open)}`,
     `Dependency violations: ${violationLine} · Stale acceptances: ${staleLine} · Ledger: ${ledgerSummary(report.ledger)}`,

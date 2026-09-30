@@ -13,6 +13,7 @@ const profileLib = require('../hooks/lib/profile');
 const seal = require('../hooks/lib/seal');
 const stateLib = require('../hooks/lib/state');
 const { acceptStatement } = require('../hooks/lib/accept');
+const { chooseFraming } = require('../hooks/lib/choose');
 const { appendLog } = require('../hooks/lib/log');
 const { mechanicalReview, ledgerReport, coverNote, COVER_STATE } = require('../hooks/lib/review');
 const { summarize } = require('../hooks/inject-state');
@@ -20,10 +21,12 @@ const { summarize } = require('../hooks/inject-state');
 const MODES = ['brainstorming', 'seed', 'import'];
 const USAGE = [
   'research-harness init --project <slug> --mode brainstorming|seed|import [--outlet <name>] [--title <text>] [--profile <id>]',
-  'research-harness status',
-  'research-harness review',
+  'research-harness init --variant <name> --lens <text> [--mode brainstorming|seed|import]',
+  'research-harness status [--variant <name>]',
+  'research-harness review [--variant <name>]',
   'research-harness accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]',
-  'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]',
+  'research-harness choose <name> --why <text> [--rejected <text>]',
+  'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>] [--variant <name>]',
   'research-harness title [<text>]',
   'research-harness serve [--no-open]',
   'research-harness doctor',
@@ -85,7 +88,58 @@ function yamlString(value) {
   return JSON.stringify(String(value));
 }
 
+// The template's own frontmatter documents the template; a canvas gets its
+// own. Everything below the frontmatter is copied unchanged, so the heading
+// grammar the parser depends on has one source.
+function templateBody() {
+  const template = fs.readFileSync(path.join(pluginRoot(), 'references', 'canvas-elements.md'), 'utf8');
+  return template.replace(/^---[\s\S]*?\n---\n/, '');
+}
+
+// A variant is one framing of an existing project, under its own lens: a full
+// state directory under research/variants/<name>/ with its own canvas and its
+// own log. It takes the project slug and profile from the main canvas, so the
+// variants compared side by side answer the same questions. The sealing key is
+// the project's, so a variant gets none of its own.
+function initVariant(flags) {
+  const root = project.projectDir({});
+  const name = flags.variant;
+  if (!project.isVariantName(name)) return fail(`--variant needs a name of lowercase letters, digits and hyphens (at most 40).\n${USAGE}`, 2);
+  const lens = typeof flags.lens === 'string' ? flags.lens.trim() : '';
+  if (!lens || /[\r\n]/.test(lens)) return fail(`--lens <text> is required: one line naming the lens this framing takes.\n${USAGE}`, 2);
+  if (flags.mode !== undefined && !MODES.includes(flags.mode)) return fail(`--mode must be one of ${MODES.join(', ')}.\n${USAGE}`, 2);
+  const mainText = project.readIfExists(project.canvasPath(root));
+  if (mainText === null) {
+    return fail(`This is not a paper project: no ${path.relative(root, project.canvasPath(root))}. A variant is a framing of an existing project; run research-harness init --project <slug> --mode <mode> first.`);
+  }
+  const main = canvasLib.parseCanvas(mainText).frontmatter;
+  const canvasFile = project.canvasPath(root, name);
+  const decisionsFile = project.decisionsPath(root, name);
+  if (fs.existsSync(canvasFile)) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
+  const slug = typeof main.project === 'string' && main.project ? main.project : path.basename(root);
+  const mode = MODES.includes(flags.mode) ? flags.mode : MODES.includes(main.mode) ? main.mode : 'import';
+  const frontmatter = [
+    '---',
+    `project: ${yamlString(slug)}`,
+    `variant: ${name}`,
+    `lens: ${yamlString(lens)}`,
+    `profile: ${main.profile || 'is-qualitative'}`,
+    `created: ${today()}`,
+    `mode: ${mode}`,
+    'canvas-schema: 2',
+    '---',
+    '',
+  ].join('\n');
+  fs.mkdirSync(path.dirname(canvasFile), { recursive: true });
+  fs.writeFileSync(canvasFile, `${frontmatter}${templateBody()}`);
+  if (!fs.existsSync(decisionsFile)) fs.writeFileSync(decisionsFile, decisions.header(`${slug} · variant ${name}`));
+  say(`Created ${path.relative(root, canvasFile)} and ${path.relative(root, decisionsFile)} (variant ${name}, lens: ${lens}, mode ${mode}).`);
+  say('Every element is empty. Only the researcher chooses a framing, with research-harness choose <name>.');
+  return 0;
+}
+
 function init(flags) {
+  if (flags.variant !== undefined) return initVariant(flags);
   const root = project.projectDir({});
   if (!flags.project || typeof flags.project !== 'string') return fail(`--project is required.\n${USAGE}`, 2);
   if (!MODES.includes(flags.mode)) return fail(`--mode must be one of ${MODES.join(', ')}.\n${USAGE}`, 2);
@@ -125,11 +179,7 @@ function init(flags) {
     return 0;
   }
 
-  // The template's own frontmatter documents the template; the project gets
-  // its own. Everything below the frontmatter is copied unchanged, so the
-  // heading grammar the parser depends on has one source.
-  const template = fs.readFileSync(path.join(pluginRoot(), 'references', 'canvas-elements.md'), 'utf8');
-  const body = template.replace(/^---[\s\S]*?\n---\n/, '');
+  const body = templateBody();
   const frontmatterLines = [
     '---',
     `project: ${yamlString(flags.project)}`,
@@ -165,27 +215,42 @@ function keyLine(key) {
 
 // ---------- status / review ----------
 
-function loadState() {
-  return stateLib.loadState(project.projectDir({}), { pluginRoot: pluginRoot() });
+function loadState(variant) {
+  return stateLib.loadState(project.projectDir({}), { pluginRoot: pluginRoot(), variant });
+}
+
+// `--variant <name>` names a variant's state directory; absent, the main one.
+// `{ error }` when the flag is there without a usable name.
+function variantFlag(flags) {
+  if (flags.variant === undefined) return { variant: undefined };
+  if (!project.isVariantName(flags.variant)) return { error: `--variant needs a name of lowercase letters, digits and hyphens.\n${USAGE}` };
+  return { variant: flags.variant };
 }
 
 // The session hook and this command must never render the same state twice:
 // summarize() is the one rendering, and it lives with the hook that injects it.
-function status() {
+function status(flags) {
   const root = project.projectDir({});
-  const summary = summarize(root, { seenSeq: 0 });
-  if (!summary) return fail('This is not a paper project: no research/canvas.md (or the file has no elements). Run research-harness init first.');
+  const { variant, error } = variantFlag(flags);
+  if (error) return fail(error, 2);
+  const summary = summarize(root, { seenSeq: 0, variant });
+  if (!summary) {
+    if (variant !== undefined) return fail(`There is no variant "${variant}" (or its canvas has no elements): no ${path.relative(root, project.canvasPath(root, variant))}.`);
+    return fail('This is not a paper project: no research/canvas.md (or the file has no elements). Run research-harness init first.');
+  }
   say(summary.text);
   return 0;
 }
 
-function review() {
-  const state = loadState();
+function review(flags) {
+  const { variant, error } = variantFlag(flags);
+  if (error) return fail(error, 2);
+  const state = loadState(variant);
   if (state.error) return fail(state.error);
   const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText, key: state.key });
   const list = (arr) => (arr.length ? arr.join(', ') : 'none');
   const stmt = (s) => `${s.question} [${s.marker === null ? 'unmarked' : s.marker}] (line ${s.line}): ${s.text}`;
-  const lines = ['# Mechanical review', ''];
+  const lines = [variant === undefined ? '# Mechanical review' : `# Mechanical review — variant ${variant} (lens: ${state.parsed.frontmatter.lens || '?'})`, ''];
   if (state.profileError) lines.push(`> ${state.profileError}; dependencies not checked.`, '');
   if (state.keyError) lines.push(`> ${state.keyError}; the ledger is judged as if there were none.`, '');
   if (report.problems.length) lines.push('## Parse problems', ...report.problems, '');
@@ -218,6 +283,9 @@ function review() {
 
 // The approval path lives in hooks/lib/accept.js; this maps its result to output.
 function accept(positional, flags) {
+  // A variant is a framing under comparison, not a commitment: acceptance
+  // happens on the main canvas only, after a framing has been chosen.
+  if (flags.variant !== undefined) return fail(`accept works on the main canvas only; choose a framing with research-harness choose <name> first.\n${USAGE}`, 2);
   const questionId = positional[0];
   const result = acceptStatement({
     root: project.projectDir({}),
@@ -238,6 +306,8 @@ function accept(positional, flags) {
 // The append path lives in hooks/lib/log.js; this maps its result to output.
 function log(positional, flags) {
   const [kind, ref] = positional;
+  const { variant, error } = variantFlag(flags);
+  if (error) return fail(error, 2);
   const result = appendLog({
     root: project.projectDir({}),
     kind,
@@ -246,9 +316,29 @@ function log(positional, flags) {
     why: typeof flags.why === 'string' ? flags.why : undefined,
     supersedes: flags.supersedes === undefined ? undefined : Number(flags.supersedes),
     pluginRoot: pluginRoot(),
+    variant,
   });
   if (!result.ok) return refused(result);
-  say(`Logged #${result.seq} ${kind} ${ref.trim()}, sealed ${result.seal}.`);
+  say(`Logged #${result.seq} ${kind} ${ref.trim()}${variant === undefined ? '' : ` in variant ${variant}`}, sealed ${result.seal}.`);
+  return 0;
+}
+
+// ---------- choose ----------
+
+// Choosing a framing lives in hooks/lib/choose.js; this maps its result to
+// output. Like accept, it is the researcher's act, and the guard refuses it
+// to the model.
+function choose(positional, flags) {
+  const result = chooseFraming({
+    root: project.projectDir({}),
+    name: positional[0],
+    why: typeof flags.why === 'string' ? flags.why : undefined,
+    rejected: typeof flags.rejected === 'string' ? flags.rejected : undefined,
+    pluginRoot: pluginRoot(),
+  });
+  if (!result.ok) return refused(result);
+  say(`Chose framing ${result.name}${result.lens ? ` (lens: ${result.lens})` : ''}: ${result.statements} statement${result.statements === 1 ? '' : 's'} copied into ${result.canvas}.`);
+  say(`Logged as #${result.seq} with text ${result.hash}, sealed ${result.seal}.${result.rejected ? ` Rejected: ${result.rejected}` : ''}`);
   return 0;
 }
 
@@ -593,8 +683,9 @@ function main(argv) {
   const command = positional.shift();
   switch (command) {
     case 'init': return init(flags);
-    case 'status': return status();
-    case 'review': return review();
+    case 'status': return status(flags);
+    case 'review': return review(flags);
+    case 'choose': return choose(positional, flags);
     case 'accept': return accept(positional, flags);
     case 'log': return log(positional, flags);
     case 'title': return title(positional);

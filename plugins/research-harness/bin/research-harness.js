@@ -96,15 +96,27 @@ function init(flags) {
     return fail(err.message, 2);
   }
   const canvasFile = project.canvasPath(root);
+  const decisionsFile = project.decisionsPath(root);
   // An existing project may still lack a key on this machine — a co-author's
   // clone, or a project started before the seal existed. init creates the
   // missing key and touches nothing else; with both present it does nothing.
+  // A log already sealed under another machine's key is the exception, below.
   if (fs.existsSync(canvasFile)) {
     // A canvas that exists is never rewritten, so a title given here would be
     // dropped in silence. `title` is the one door for that line: init points at
     // it rather than editing a frontmatter the researcher already has.
     if (typeof flags.title === 'string') {
       say(`--title was not applied: ${path.relative(root, canvasFile)} already exists; run research-harness title "<text>" to set it.`);
+    }
+    // A log that already carries seals was sealed with a key this machine does
+    // not have, and a seal recomputes under that key alone: a fresh key here
+    // would report an intact log as BROKEN (SQ-122). init refuses to make one
+    // and names where the sealing machine's key belongs instead.
+    const keyFile = seal.keyPath(root);
+    const logText = fs.existsSync(decisionsFile) ? fs.readFileSync(decisionsFile, 'utf8') : '';
+    if (!fs.existsSync(keyFile) && decisions.parseDecisions(logText).entries.some((e) => e.seal !== null)) {
+      say(`${path.relative(root, decisionsFile)} is sealed on another machine: it stays unverifiable here until that machine's key is copied to ${keyFile}; nothing was changed.`);
+      return 0;
     }
     const key = seal.createKey(root);
     if (!key.created) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
@@ -137,7 +149,6 @@ function init(flags) {
   const frontmatter = frontmatterLines.join('\n');
   fs.mkdirSync(path.dirname(canvasFile), { recursive: true });
   fs.writeFileSync(canvasFile, `${frontmatter}${body}`);
-  const decisionsFile = project.decisionsPath(root);
   if (!fs.existsSync(decisionsFile)) fs.writeFileSync(decisionsFile, decisions.header(flags.project));
   const key = seal.createKey(root);
   say(`Created ${path.relative(root, canvasFile)} and ${path.relative(root, decisionsFile)} (profile ${profileId}, mode ${flags.mode}).`);

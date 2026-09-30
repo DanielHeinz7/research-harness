@@ -258,6 +258,30 @@ test('init on an existing project only creates the missing key, and never replac
   assert.equal(fs.readFileSync(keyFile, 'utf8'), key);
 });
 
+test('init in a clone whose log is already sealed creates no key, and review then says unverifiable rather than broken', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'decisions.md');
+  // The log as a clone receives it: sealed with the key of the machine the
+  // project started on, which this checkout does not have.
+  const elsewhere = Buffer.from('00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff', 'hex');
+  fs.writeFileSync(file, decisions.header('voice-uptake'));
+  seal.sealedAppend(file, { date: '2026-09-30', kind: 'DISCOVERY', ref: '1 Puzzle', body: 'the gap is uptake, not voice [tentative]' }, elsewhere);
+  const sealedLog = fs.readFileSync(file, 'utf8');
+
+  const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  assert.equal(out.status, 0, out.stdout);
+  assert.match(out.stdout, /sealed on another machine/);
+  assert.match(out.stdout, /unverifiable here/);
+  const keyFile = path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key');
+  assert.equal(fs.existsSync(keyFile), false, 'a fresh key here would make every seal fail to recompute');
+  assert.equal(fs.readFileSync(file, 'utf8'), sealedLog, 'the log is not touched');
+
+  const review = run(root, ['review']);
+  assert.equal(review.status, 0, review.stdout);
+  assert.match(review.stdout, /## Decision log\nunverifiable here: no sealing key on this machine \(expected at [^\n]+seal\.key\)/);
+  assert.doesNotMatch(review.stdout, /BROKEN/);
+});
+
 test('status prints the same summary the session hook injects', () => {
   const root = makeProject();
   const out = run(root, ['status']);

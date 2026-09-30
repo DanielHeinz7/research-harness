@@ -68,10 +68,15 @@ decisions you have not seen yet, and whether the decision log verifies.
 
 The sealing key of the decision log lives outside the repository and is not
 committed, so a fresh clone has none and the log reads as *unverifiable here*.
-Run `research-harness init --project <slug> --mode <mode>` once in the clone. On
-a project that already has a canvas it creates the missing key and changes
-nothing else. Entries sealed elsewhere stay unverifiable on this machine; that
-is the honest answer, and the review says so rather than reporting a problem.
+`research-harness init` leaves such a log alone: while it already carries seals
+init creates no key, prints the path the key belongs at, and changes nothing.
+Entries sealed elsewhere stay unverifiable on this machine; that is the honest
+answer, and the review says so rather than reporting a problem.
+
+To write sealed entries on this clone, copy `seal.key` from the machine the
+project started on to that printed path. Only a log that carries no seal yet —
+empty, or written before the seal existed — gets a key from
+`init --project <slug> --mode <mode>` here.
 
 ## Feedback
 

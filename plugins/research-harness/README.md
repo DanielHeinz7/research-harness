@@ -78,6 +78,34 @@ project started on to that printed path. Only a log that carries no seal yet —
 empty, or written before the seal existed — gets a key from
 `init --project <slug> --mode <mode>` here.
 
+### Verifying a record you received
+
+You do not have to take a record on trust, and you do not need the machine that
+wrote it. The authors send you two things: the sealing key as a file, and the
+anchor they published for the record. Then, in your own checkout:
+
+    node bin/research-harness.js review --key <key file>
+
+`--key` verifies with the key you were given instead of the one this machine
+would read, and `status` takes it the same way. A key file that cannot be read,
+or that does not hold 32 bytes, is refused in one line before anything is
+judged. The file is a secret, so keep it out of the repository as the authors
+keep their `seal.key` out. The report carries the anchor of the record in front
+of you:
+
+    ## Anchor
+    Anchor: last seal 9c53940787bd2e3a, maxSeq 4, decisions.md sha256 a388c0f0…
+
+Compare that line with the one the authors published. The same anchor is the
+same record: every seal recomputes under their key, and not a byte of
+`decisions.md` has moved since they wrote it down.
+
+The limit is worth stating plainly. The authors hold the key, so an anchor
+printed today would match a rewritten log too — what detects a rewrite is an
+anchor published *earlier*: a git tag, the submitted manuscript, a mail. Keep
+that copy, because your comparison is against it. And a seal proves a machine
+that held the key, never which person used it.
+
 ## Feedback
 
 Report problems as GitHub Issues: *friction* when something took longer than it
@@ -96,8 +124,8 @@ The skills above are the normal way in. The CLI underneath them is
 | Command | What it does |
 |---|---|
 | `init --project <slug> --mode brainstorming\|seed\|import [--outlet <name>] [--profile <id>]` | creates the canvas, the log and the sealing key |
-| `status` | the summary the session hook injects |
-| `review` | the mechanical half of `canvas-review` |
+| `status [--key <file>]` | the summary the session hook injects |
+| `review [--key <file>]` | the mechanical half of `canvas-review`, and the anchor of the log |
 | `accept <n.m> [--match <substring>] [--why <text>] [--rejected <text>]` | the researcher's act; the model may not run it |
 | `log DISCOVERY\|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>]` | appends a sealed entry — how the model records a finding |
 | `title [<text>]` | sets the paper's title in the canvas frontmatter, or prints the one it has |

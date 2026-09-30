@@ -199,3 +199,28 @@ test('a verified DECISION with its text hash still round-trips through textHash'
   assert.equal(parsed.entries[0].hash, textHash(statement));
   assert.deepEqual([...seal.verifyChain(fs.readFileSync(file, 'utf8'), KEY).verified], [1]);
 });
+
+test('readKeyFile takes the released key from a path, and refuses anything that is not a 32-byte one', () => {
+  const dir = tempProject();
+  const file = path.join(dir, 'seal.key');
+  fs.writeFileSync(file, `${KEY.toString('hex')}\n`);
+  assert.deepEqual(seal.readKeyFile(file), KEY, 'a trailing newline does not change the key it holds');
+  fs.writeFileSync(file, 'ab'.repeat(16));
+  assert.throws(() => seal.readKeyFile(file), /is not a 32-byte key \(64 hex characters/);
+  fs.writeFileSync(file, 'z'.repeat(64));
+  assert.throws(() => seal.readKeyFile(file), /is not a 32-byte key/);
+  assert.throws(() => seal.readKeyFile(dir), /cannot be read \(EISDIR\)/);
+});
+
+test('logAnchor names the last seal, maxSeq and the whole file hash without a key', () => {
+  const dir = tempProject();
+  const file = path.join(dir, 'decisions.md');
+  fs.writeFileSync(file, decisions.header('p'));
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash('x'), body: 'x [accepted]' }, KEY, { decision: true });
+  const text = fs.readFileSync(file, 'utf8');
+  const lastSeal = decisions.parseDecisions(text).entries[0].seal;
+  const digest = crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+  assert.equal(seal.logAnchor(text), `last seal ${lastSeal}, maxSeq 1, decisions.md sha256 ${digest}`);
+  assert.match(seal.logAnchor(''), /^last seal none, maxSeq 0, decisions\.md sha256 e3b0c442/);
+  assert.notEqual(seal.logAnchor(text), seal.logAnchor(`${text} `), 'a byte anywhere moves the anchor');
+});

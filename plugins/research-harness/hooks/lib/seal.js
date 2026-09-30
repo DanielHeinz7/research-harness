@@ -21,7 +21,9 @@ const { projectStateDir } = require('./ledger');
 
 const KEY_FILE = 'seal.key';
 const KEY_BYTES = 32;
+const KEY_CHARS = KEY_BYTES * 2;
 const SEAL_HEX = 16;
+const HEX_KEY = /^[0-9a-f]+$/i;
 const UNIT = '';
 
 function keyPath(projectRoot) {
@@ -37,6 +39,25 @@ function readKey(projectRoot) {
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;
     throw err;
+  }
+  return Buffer.from(hex, 'hex');
+}
+
+// The key as a released file: `--key <file>` is how a reviewer who never held
+// the key confirms the chain (§4.7). The file is the one createKey writes, 64
+// hex characters; anything else is refused rather than decoded into a short
+// key, which would report a sound log as BROKEN. Both refusals are one line,
+// and neither is a reason to judge a chain.
+function readKeyFile(file) {
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    throw new Error(`the key file ${file} cannot be read (${(err && err.code) || 'unknown error'}); nothing was verified against it.`);
+  }
+  const hex = text.trim();
+  if (hex.length !== KEY_CHARS || !HEX_KEY.test(hex)) {
+    throw new Error(`the key file ${file} is not a ${KEY_BYTES}-byte key (${KEY_CHARS} hex characters, as ${KEY_FILE} holds it); nothing was verified against it.`);
   }
   return Buffer.from(hex, 'hex');
 }
@@ -57,6 +78,22 @@ function createKey(projectRoot) {
 
 function anchorOf(prefix) {
   return crypto.createHash('sha256').update(prefix, 'utf8').digest('hex');
+}
+
+// The head of the record as one line, for the reviewer who compares what they
+// received with what the authors published: the last seal, the highest
+// sequence number, and the SHA-256 of decisions.md as received. It needs no
+// key — it is the fingerprint of the received bytes, and every part of it
+// moves when a byte moves. Its worth lies in having been published *earlier*
+// (a tag, the submission): an anchor printed now matches a rewritten log too,
+// so the copy a third party kept is what catches a rewrite.
+function logAnchor(text) {
+  const source = String(text || '');
+  const { entries, maxSeq } = decisions.parseDecisions(source);
+  const sealed = entries.filter((e) => e.seal !== null);
+  const lastSeal = sealed.length ? sealed[sealed.length - 1].seal : 'none';
+  const digest = crypto.createHash('sha256').update(source, 'utf8').digest('hex');
+  return `last seal ${lastSeal}, maxSeq ${maxSeq}, decisions.md sha256 ${digest}`;
 }
 
 function sealOf(key, previousSeal, entry) {
@@ -143,4 +180,4 @@ function sealedAppend(filePath, fields, key, { decision = false } = {}) {
   return { seq, seal };
 }
 
-module.exports = { KEY_FILE, keyPath, readKey, createKey, anchorOf, sealOf, verifyChain, sealedAppend };
+module.exports = { KEY_FILE, keyPath, readKey, readKeyFile, createKey, anchorOf, logAnchor, sealOf, verifyChain, sealedAppend };

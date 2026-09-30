@@ -38,7 +38,13 @@ function pluginRoot() {
 // Returns { text, maxSeq } or null when there is nothing to inject. Exported
 // so `research-harness status` (Task 8) prints the same summary the session
 // was given; two renderings of the same state would drift.
-function summarize(projectRoot, { seenSeq = 0 } = {}) {
+//
+// `key` is the sealing key this run verifies with, when the caller has one:
+// `status --key <file>` hands the reviewer the authors' released key, so the
+// ledger line is judged with it instead of the key this machine would read
+// (§4.7). Left undefined, the key is read here, as the hook reads it. Nothing
+// below writes, so a released key cannot reach the append path through it.
+function summarize(projectRoot, { seenSeq = 0, key: releaseKey = undefined } = {}) {
   const canvasText = project.readIfExists(project.canvasPath(projectRoot));
   if (canvasText === null) return null;
   const parsed = canvas.parseCanvas(canvasText);
@@ -57,12 +63,15 @@ function summarize(projectRoot, { seenSeq = 0 } = {}) {
   }
 
   const decisionsText = project.readIfExists(project.decisionsPath(projectRoot)) || '';
-  let key = null;
-  try {
-    key = seal.readKey(projectRoot);
-  } catch (_) {
-    // A key this hook cannot read is the same as none: the ledger reads as
-    // unverifiable here, which is the honest word for it.
+  let key = releaseKey;
+  if (key === undefined) {
+    key = null;
+    try {
+      key = seal.readKey(projectRoot);
+    } catch (_) {
+      // A key this hook cannot read is the same as none: the ledger reads as
+      // unverifiable here, which is the honest word for it.
+    }
   }
   const report = mechanicalReview({ parsed, graph, decisionsText, key });
   const log = parseDecisions(decisionsText);

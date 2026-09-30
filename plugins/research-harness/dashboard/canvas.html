@@ -434,6 +434,7 @@
 
   .src-ref { font-size: 0.72em; color: var(--ink-soft); }
   .src-ref a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
+  .entry-note { display: block; margin-top: 3px; font-size: 0.9em; color: var(--ink-soft); }
 
   .field-totalk-full { margin-top: 20px; }
   .totalk-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -778,17 +779,40 @@
     return { label: tag, full: tag };
   }
 
-  // A DISCOVERY body in this exemplar carries a trailing "[marker, src: …]"
-  // annotation in the same free-text convention canvas.md uses for
-  // statements. Strip it from the displayed note and surface only the page
-  // reference, quietly, the same way a statement's source appears.
+  // A log entry body is the entry's text followed by optional labelled lines
+  // that hooks/lib/decisions.js writes as `**Why:** …`, `**Rejected:** …` and
+  // `**Supersedes:** #n`. Split those off first, so the main text ends at its
+  // own trailing "[marker, src: …]" annotation (the same free-text convention
+  // canvas.md uses for statements). That annotation is dropped and only the
+  // page reference is kept, quietly, the way a statement's source appears.
+  // Text on the lines after a labelled line belongs to that label.
+  var ENTRY_LABEL = /^\*\*(Why|Rejected|Supersedes):\*\*\s*(.*)$/;
   function parseFindingBody(raw) {
-    var text = String(raw == null ? '' : raw);
+    var main = [];
+    var notes = [];
+    String(raw == null ? '' : raw).split('\n').forEach(function (line) {
+      var label = ENTRY_LABEL.exec(line.trim());
+      if (label) notes.push({ label: label[1], text: label[2].trim() });
+      else if (notes.length) notes[notes.length - 1].text = (notes[notes.length - 1].text + ' ' + line.trim()).trim();
+      else main.push(line);
+    });
+    var text = main.join('\n').trim();
     var m = /\s*\[([^\]]*)\]\s*$/.exec(text);
-    if (!m) return { text: text, pageRef: null };
-    var stripped = text.slice(0, m.index).trim();
+    if (!m) return { text: text, pageRef: null, notes: notes };
     var pageMatch = /p\.\s*\S.*$/.exec(m[1]);
-    return { text: stripped, pageRef: pageMatch ? pageMatch[0].trim() : null };
+    return { text: text.slice(0, m.index).trim(), pageRef: pageMatch ? pageMatch[0].trim() : null, notes: notes };
+  }
+
+  // One rendering of a log entry body for every reading view: the main text
+  // with its page as a superscript, then each labelled line as a quiet second
+  // line ("Why: …") in the muted colour. No raw markers, no asterisks.
+  function renderEntryBody(raw) {
+    var parsed = parseFindingBody(raw);
+    return esc(parsed.text)
+      + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '')
+      + parsed.notes.map(function (n) {
+        return '<span class="entry-note">' + esc(n.label) + ': ' + esc(n.text) + '</span>';
+      }).join('');
   }
 
   // The open field most others depend on, transitively, per SQ-83's recon:
@@ -1079,8 +1103,7 @@
     var totalkFull = totalkRaw.length
       ? '<div class="field-totalk-full"><h3 class="view-sub" style="color:var(--ink);font-weight:700;">To talk about</h3>'
         + '<ul class="totalk-list">' + totalkRaw.map(function (d) {
-          var parsed = parseFindingBody(d.body);
-          return '<li class="totalk-item">' + esc(parsed.text) + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '') + '</li>';
+          return '<li class="totalk-item">' + renderEntryBody(d.body) + '</li>';
         }).join('') + '</ul></div>'
       : '';
 
@@ -1125,8 +1148,7 @@
         + '<span class="agenda-item-head"><span class="num-badge">' + e.number + '</span>'
         + '<span class="agenda-item-title">' + esc(HUMAN_QUESTIONS[e.number] || e.title) + '</span></span>'
         + '<ul class="agenda-findings">' + findings.map(function (d) {
-            var parsed = parseFindingBody(d.body);
-            return '<li>' + esc(parsed.text) + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '') + '</li>';
+            return '<li>' + renderEntryBody(d.body) + '</li>';
           }).join('') + '</ul>'
         + '</button></li>';
     }).join('');
@@ -1161,9 +1183,8 @@
 
   function renderHistory(s) {
     var rows = s.decisions.map(function (d) {
-      var parsed = parseFindingBody(d.body);
       return '<li class="history-card"><p class="history-meta">' + esc(historyLabel(d.kind)) + ' &middot; ' + esc(d.date) + ' &middot; ' + esc(refToQuestion(d.ref)) + '</p>'
-        + '<p class="history-body">' + esc(parsed.text) + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '') + '</p>'
+        + '<p class="history-body">' + renderEntryBody(d.body) + '</p>'
         + '</li>';
     }).join('');
     return '<section id="log" data-view="log" class="view page-section">'

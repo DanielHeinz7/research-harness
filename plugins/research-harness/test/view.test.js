@@ -38,3 +38,19 @@ test('canvas.html sends the harness token and JSON content type on writes', () =
   assert.match(html, /X-Harness-Token/);
   assert.match(html, /application\/json/);
 });
+
+test('canvas.html opens on the poster: the initial view is "poster" and the poster section is rendered', () => {
+  assert.match(html, /var activeView = 'poster';/);
+  assert.match(html, /<section id="poster" data-view="poster"/);
+  assert.match(html, /tabButton\('poster', 'Poster'\)/);
+});
+
+test('canvas.html gives a poster card a "to talk about" line that opens that field in the To talk about tab', () => {
+  assert.match(html, /data-view-target="agenda" data-scroll-to="agenda-field-/);
+  assert.match(html, /id="agenda-field-'/);
+});
+
+test('canvas.html shows the paper title once: the top bar carries no title', () => {
+  assert.doesNotMatch(html, /project-name|project-tag/);
+  assert.equal((html.match(/esc\(paperTitle\(/g) || []).length, 1);
+});

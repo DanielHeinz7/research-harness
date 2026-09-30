@@ -590,6 +590,20 @@ test('a statement text that reads as a field label stays the entry text and forg
   assert.equal(last.hash, textHash('**Supersedes:** #1'), 'the acceptance binds the text it accepted');
   assert.equal(last.supersedes, null, 'the statement text is not read back as a field');
   assert.equal(last.explained, EXPLAINED, 'the explanation the approval path wrote still parses');
+
+  // A label the approval path never wrote is not forged by the text either:
+  // the parser used to read this text back as `rejected: "nothing [accepted]"`.
+  const other = keyedProject();
+  const otherCanvas = path.join(other, 'research', 'canvas.md');
+  fs.writeFileSync(otherCanvas, fs.readFileSync(otherCanvas, 'utf8').replace(
+    'Speaking frequency is well documented; whether a proposal is taken up is not.',
+    '**Rejected:** nothing',
+  ));
+  const forged = run(other, ['accept', '1.2', '--explained', EXPLAINED, '--match', '**Rejected:**']);
+  assert.equal(forged.status, 0, forged.stdout);
+  const forgedEntry = decisions.parseDecisions(readLog(other)).entries.at(-1);
+  assert.equal(forgedEntry.rejected, null, 'the statement text forges no field the approval path did not write');
+  assert.equal(forgedEntry.explained, EXPLAINED);
 });
 
 test('accept refuses ambiguity, unknown questions, and already-accepted statements', () => {

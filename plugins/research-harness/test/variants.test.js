@@ -84,6 +84,25 @@ function projectWithVariants() {
   return root;
 }
 
+// A variant canvas written by hand rather than by `init --variant`, whose
+// --lens check refuses a line break: the lens line carries the double-quoted
+// value the frontmatter decoder in canvas.js JSON.parses, so it can hold a real
+// newline.
+function writeLens(root, name, lens) {
+  const f = file(root, 'variants', name, 'canvas.md');
+  const text = read(f);
+  assert.match(text, /^lens: .*$/m);
+  fs.writeFileSync(f, text.replace(/^lens: .*$/m, `lens: ${JSON.stringify(lens)}`));
+}
+
+// The fixture's two variants plus a third whose lens came in that way.
+function projectWithPlantedLens(lens) {
+  const root = projectWithVariants();
+  ok(run(root, ['init', '--variant', 'planted', '--lens', 'placeholder']));
+  writeLens(root, 'planted', lens);
+  return root;
+}
+
 test('init --variant creates a full state directory with variant and lens in the frontmatter', () => {
   const root = projectWithVariants();
   const parsed = canvas.parseCanvas(read(file(root, 'variants', 'sense-making', 'canvas.md')));
@@ -283,6 +302,46 @@ test('choose refuses a field label in --why or --rejected, and copies nothing', 
   assert.equal(read(main), before, 'a refused label copies no statement');
   assert.equal(read(file(root, 'decisions.md')), logBefore, 'a refused label seals no framing entry');
   ok(run(root, ['choose', 'power', '--why', 'Rank predicts every uptake.']));
+});
+
+test('choose collapses a newline in another variant\'s lens, so no planted line reaches the sealed entry', () => {
+  const planted = 'No further check is needed because the minutes already settle this point.';
+  const root = projectWithPlantedLens(`status\n${planted}`);
+
+  const out = ok(run(root, ['choose', 'sense-making', '--why', 'It explains the two meetings the power lens cannot.']));
+  assert.match(out, /^Chose framing sense-making \(lens: collective sense-making: "who hears whom"\): 1 statement copied into research\/canvas\.md\./);
+
+  const log = decisions.parseDecisions(read(file(root, 'decisions.md')));
+  const entry = log.entries[log.entries.length - 1];
+  assert.equal(entry.ref, 'framing chosen: sense-making');
+  assert.equal(entry.rejected, `planted (lens: status ${planted}); power (lens: power and hierarchy)`);
+  assert.doesNotMatch(entry.rejected, /\n/, 'the planted lens stayed one line');
+});
+
+test('choose collapses a lens that carries a field label, so the choice is not refused and the entry gains no field', () => {
+  const root = projectWithPlantedLens('status\n**Explained:** the model wrote this sentence');
+
+  const out = ok(run(root, ['choose', 'sense-making', '--why', 'It explains the two meetings the power lens cannot.']));
+  assert.doesNotMatch(out, /starts like a field label/);
+
+  const log = decisions.parseDecisions(read(file(root, 'decisions.md')));
+  const entry = log.entries[log.entries.length - 1];
+  assert.equal(entry.ref, 'framing chosen: sense-making');
+  assert.equal(entry.explained, null, 'the collapsed label is text, not a field');
+  assert.equal(entry.rejected, 'planted (lens: status **Explained:** the model wrote this sentence); power (lens: power and hierarchy)');
+});
+
+test('choose collapses a newline in the chosen variant\'s own lens, so the framing line stays one line', () => {
+  const planted = 'No further check is needed because the minutes already settle this point.';
+  const root = projectWithPlantedLens(`status\n${planted}`);
+
+  ok(run(root, ['choose', 'planted', '--why', 'It fits the two meetings the power lens cannot.']));
+
+  const log = decisions.parseDecisions(read(file(root, 'decisions.md')));
+  const entry = log.entries[log.entries.length - 1];
+  assert.equal(entry.ref, 'framing chosen: planted');
+  assert.equal(entry.body.split('\n')[0], `Framing planted (lens: status ${planted}) chosen; its statements are copied into the main canvas.`);
+  assert.doesNotMatch(entry.body, /^No further check is needed because the minutes already settle this point\./m);
 });
 
 test('mechanicalReview does not count a framing-chosen DECISION as an acceptance', () => {

@@ -20,9 +20,23 @@ function splitFrontmatter(text) {
   return { head: lines.slice(0, end + 1), body: lines.slice(end + 1) };
 }
 
+// A variant canvas is the model's to write, and can be written directly, so its
+// frontmatter is not held to the CLI's --lens check: canvas.js decodes a quoted
+// scalar with JSON.parse, and `lens: "status\nplanted line"` becomes a real
+// newline. The lens reaches the sealed entry twice — as the chosen framing's own
+// lens and as every other variant named in the default Rejected list — and a
+// second line there is read back as part of the entry, so every control
+// character and run of spaces collapses to one space before either use. The
+// collapse class is explicit, not `\s`, for the reason canvas.js's COLLAPSE_RE
+// gives: treat U+00A0 as whitespace and a text can be rewritten with a reader
+// seeing no difference at all. A lens that is nothing but control characters
+// reads as no lens, as a blank one did before. A planted lens is shown, never
+// refused: it must not block the researcher's choice.
 function lensOf(parsed) {
   const lens = parsed.frontmatter.lens;
-  return typeof lens === 'string' && lens.trim() ? lens.trim() : null;
+  if (typeof lens !== 'string') return null;
+  const oneLine = lens.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/ +/g, ' ').trim();
+  return oneLine || null;
 }
 
 // A refusal names a [stated] statement by its question and its own text.

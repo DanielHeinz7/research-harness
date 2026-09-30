@@ -297,6 +297,7 @@ test('the human steps of the walkthrough are denied to the model; the one write 
   for (const s of human) assert.equal(guardVerdict(s.ran), 'deny', `the guard must deny: ${s.command}`);
   assert.equal(guardVerdict('research-harness serve'), 'deny');
   const check = steps.find((s) => s.command.startsWith('research-harness log DISCOVERY "3.1 check"'));
+  assert.ok(check, 'the README shows the log DISCOVERY "3.1 check" command the check skill runs');
   assert.notEqual(guardVerdict(check.ran), 'deny', 'the model records a check question through log DISCOVERY');
 });
 

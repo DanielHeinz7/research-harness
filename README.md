@@ -76,3 +76,22 @@ on them and citing them, and points at a local full-text collection through
 
 The genre profile is not an environment variable — it is named in the canvas
 frontmatter (`profile: is-qualitative`) so it travels with the project.
+
+## Releasing
+
+    node scripts/release.js <version> "<summary>" [--dry-run] [--trailer "<line>"] [--accept-denies]
+
+Run it from a clean `main`. It refuses unless the version is semver and greater
+than the one in both manifests, runs the plugin tests, the perimeter probe and
+the guard's false-positive replay (`verification/probes/probe-benign.js`) over
+the newest harvest in `verification/local/`, and only then sets the version in
+`.claude-plugin/marketplace.json` (twice) and
+`plugins/research-harness/.claude-plugin/plugin.json`, commits
+`Release <version>: <summary>`, pushes `main`, and updates the installed plugin.
+
+The replay's DENY count is compared with the last release's, kept in the
+gitignored `verification/local/release-baseline.json`; more DENYs stop the
+release unless `--accept-denies` is given. Without a harvest the script refuses
+and names the command to make one
+(`node verification/probes/probe-benign.js --harvest`). `--dry-run` runs the
+checks and prints the remaining commands without running them.

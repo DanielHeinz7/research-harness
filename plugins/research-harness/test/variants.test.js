@@ -291,12 +291,13 @@ test('mechanicalReview does not count a framing-chosen DECISION as an acceptance
   const decisionsText = read(file(root, 'decisions.md'));
   const parsed = canvas.parseCanvas(read(file(root, 'canvas.md')));
   // With the key the entry verifies; without it the DECISION is unverifiable
-  // here, and still is not reported as an acceptance lacking cover.
+  // here. It is listed as a DECISION that does not verify (SQ-139), and still is
+  // not reported as an acceptance lacking cover.
   for (const key of [keyOf(root), null]) {
     const report = mechanicalReview({ parsed, graph: null, decisionsText, key });
     assert.equal(report.ledger.status, key ? 'verified' : 'unverifiable');
     assert.deepEqual(report.staleAcceptances, []);
     assert.deepEqual(report.unloggedAcceptances, []);
-    assert.deepEqual(report.unverifiedDecisions, []);
+    assert.deepEqual(report.unverifiedDecisions.map((d) => [d.seq, d.ref, d.state]), key ? [] : [[1, 'framing chosen: power', 'unverifiable']]);
   }
 });

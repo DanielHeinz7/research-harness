@@ -82,6 +82,24 @@ test('tampering with a sealed DECISION withdraws its cover and is reported as a 
   assert.deepEqual(report.unverifiedDecisions.map((d) => [d.seq, d.state]), [[1, 'broken']]);
 });
 
+// SQ-139 (F6 of SQ-132): the list is of every DECISION that does not verify,
+// not of acceptances only. A `framing chosen` entry is the researcher's act too.
+test('a DECISION that does not verify is listed whatever its ref, framing choices included, without becoming an acceptance', () => {
+  const file = tempLog(decisions.header('voice-uptake'));
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: 'framing chosen: power', hash: textHash('power canvas'), body: 'Framing power chosen.', why: 'rank is recorded' }, KEY, { decision: true });
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DISCOVERY', ref: '1 Puzzle', body: 'x [tentative]' }, KEY);
+  const sealedLog = fs.readFileSync(file, 'utf8');
+  const listed = (text, key) => reviewOf(canvasText, text, key).unverifiedDecisions.map((d) => [d.seq, d.ref, d.state]);
+
+  assert.deepEqual(listed(sealedLog, KEY), [], 'an intact framing entry is not listed');
+  assert.deepEqual(listed(sealedLog, null), [[1, 'framing chosen: power', 'unverifiable']]);
+  const forged = sealedLog.replace('rank is recorded', 'the researcher prefers it');
+  const report = reviewOf(canvasText, forged, KEY);
+  assert.deepEqual(listed(forged, KEY), [[1, 'framing chosen: power', 'broken']]);
+  assert.deepEqual(report.staleAcceptances, [], 'a framing entry is not an acceptance');
+  assert.deepEqual(report.unloggedAcceptances.map((s) => [s.question, s.coveredBy]), [['1.1', null]], 'and it gives no cover to one');
+});
+
 test('a verified DECISION whose hash matches no accepted statement is a stale acceptance, and the reworded statement is unlogged', () => {
   const file = tempLog(decisions.header('voice-uptake'));
   seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash('an earlier wording'), body: 'an earlier wording [accepted]' }, KEY, { decision: true });

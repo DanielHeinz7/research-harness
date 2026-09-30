@@ -109,6 +109,19 @@ const dump = (name) => {
 dump('view-state-variants.json');
 
 run(['choose', 'power', '--why', 'Every one of the twelve meetings records rank, so the framing can be tested on the whole corpus.']);
+
+// The same log with the framing entry's Why reworded after it was sealed: the
+// ledger breaks at that entry (#3, the last one), the two check questions before
+// it still verify. What a hand edit, a merge or a raw write to decisions.md
+// leaves behind; the view has to say so (SQ-139).
+const log = path.join(root, 'research', 'decisions.md');
+const sealedLog = fs.readFileSync(log, 'utf8');
+const forged = sealedLog.replace('so the framing can be tested on the whole corpus.', 'so the researcher prefers it.');
+if (forged === sealedLog) throw new Error('the framing entry no longer carries the expected Why');
+fs.writeFileSync(log, forged);
+dump('view-state-broken.json');
+fs.writeFileSync(log, sealedLog);
+
 run([
   'accept', '1.2', '--match', 'Speaking frequency',
   '--why', 'The gap is uptake, not voice.',

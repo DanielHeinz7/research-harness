@@ -836,14 +836,20 @@ shell loads at startup, and a heredoc fed to an interpreter the guard does not
 know (bun, deno, php, lua) all pass. Closing that would mean refusing every
 script run in a research project, and a guard that blocks ordinary work teaches
 the model to route around it — SQ-72 recorded an executor doing exactly that.
-Daniel decided on 2026-09-23 to keep the limit and state it here. What holds
-instead: an `[accepted]` statement changed this way no longer matches the text
-hash of its `DECISION` entry and `canvas-review` reports it as stale; one planted
-this way has no entry that verifies and is reported as unlogged (§4.4); a removed
-statement or a deleted canvas shows in git. A `[stated]`, `[tentative]` or
-`[proposed]` statement changed this way carries no seal and shows only in the
-git diff. The interpreter list in `readsProgramFromStdin` covers the common
-one-step forms and is not meant to be complete; a missing interpreter is not a
+Daniel decided on 2026-09-23 to keep the limit and state it here. A script
+file, an npm script, or `node -e` that builds a library path at run time can
+reach `choose` or `accept` through `hooks/lib`. Either call writes a sealed
+`DECISION` entry that verifies; it is not caught afterwards. The only defence
+against this route is that the model does not take it, and that the skills do
+not pre-approve it (the F5 fix).
+
+What holds instead for a raw canvas edit: an `[accepted]` statement changed
+this way no longer matches the text hash of its `DECISION` entry and
+`canvas-review` reports it as stale; one planted this way has no entry that
+verifies and is reported as unlogged (§4.4); a removed statement or a deleted
+canvas shows in git. A `[stated]`, `[tentative]` or `[proposed]` statement
+changed this way carries no seal and shows only in the git diff. The
+interpreter list in `readsProgramFromStdin` covers the common one-step forms and is not meant to be complete; a missing interpreter is not a
 defect to be filed. GNU sed's `e` command runs shell text, and a sed program's
 fragments are compared literally, so a glob that avoids the state dir's name is
 not seen. It is the same class as indirect execution and only GNU sed has it;

@@ -53,7 +53,7 @@ test('record-review grants no Write, Edit or NotebookEdit and no broad Bash', ()
       const inner = /^Bash\((.*)\)$/.exec(t)[1];
       assert.match(
         inner,
-        /^(git (log|show|diff|blame|status|rev-parse|ls-files|cat-file)|node \*research-harness\.js review):\*$/,
+        /^(git (log|show|diff|blame|status|rev-parse|ls-files|cat-file)|research-harness (review|status)):\*$/,
         `record-review grants a Bash command that is not a read verb or review: ${t}`,
       );
     }
@@ -72,11 +72,11 @@ test('record-review is invoked by the researcher, cites, and says "not in the re
 test('check: its only write instruction is log DISCOVERY "<n.m> check"', () => {
   const { fm, body } = readSkill('check');
   assert.equal(fm['disable-model-invocation'], 'true');
-  const cli = body.match(/research-harness\.js"\s+\w+/g) || [];
-  const verbs = cli.map((c) => c.split(/\s+/)[1]);
+  const cli = body.match(/(?:^|[\s`])research-harness (?=status|log|init|review|accept|choose)\w+/gm) || [];
+  const verbs = cli.map((c) => c.trim().split(/\s+/)[1]);
   assert.ok(verbs.length > 0);
   for (const v of verbs) assert.ok(['status', 'log'].includes(v), `check runs the harness verb ${v}`);
-  const logs = body.match(/research-harness\.js"\s+log[^\n]*/g) || [];
+  const logs = body.match(/research-harness log[^\n]*/g) || [];
   assert.equal(logs.length, 1, 'check must have exactly one log instruction');
   assert.match(logs[0], /log DISCOVERY "<n\.m> check" --body "<question>"$/);
   // no instruction to write the canvas
@@ -106,4 +106,43 @@ test('no model-facing skill runs accept or choose', () => {
     });
   }
   assert.equal(readSkill('accept').fm['disable-model-invocation'], 'true');
+});
+
+function allowedTools(name) {
+  const v = readSkill(name).fm['allowed-tools'];
+  return v ? v.split(/,\s*(?![^()]*\))/).map((x) => x.trim()) : [];
+}
+
+test('no skill pre-approves a node route or a wildcard-led Bash rule (SQ-132 F5)', () => {
+  for (const n of names) {
+    for (const t of allowedTools(n)) {
+      if (!/^Bash/.test(t)) continue;
+      assert.doesNotMatch(t, /^Bash\(node/, `${n} pre-approves node: ${t}`);
+      const inner = /^Bash\((.*)\)$/.exec(t);
+      assert.ok(inner, `${n}: Bash rule has no pattern: ${t}`);
+      assert.doesNotMatch(inner[1], /^\*/, `${n}: leading wildcard in ${t}`);
+      assert.doesNotMatch(inner[1], / \*/, `${n}: wildcard before the subcommand in ${t}`);
+    }
+  }
+});
+
+test('check allows exactly status and log DISCOVERY through the bare command', () => {
+  assert.deepEqual(allowedTools('check'), [
+    'Read', 'Grep', 'Glob',
+    'Bash(research-harness status:*)',
+    'Bash(research-harness log DISCOVERY:*)',
+  ]);
+});
+
+test('record-review allows only review, status and git read verbs', () => {
+  const bash = allowedTools('record-review').filter((t) => /^Bash/.test(t));
+  assert.ok(bash.includes('Bash(research-harness review:*)'));
+  assert.ok(bash.includes('Bash(research-harness status:*)'));
+  for (const t of bash) {
+    assert.match(t, /^Bash\((research-harness (review|status)|git (log|show|diff|blame|status|rev-parse|ls-files|cat-file)):\*\)$/, t);
+  }
+});
+
+test('accept declares no allowed-tools: its ! line runs outside the model', () => {
+  assert.equal(readSkill('accept').fm['allowed-tools'], undefined);
 });

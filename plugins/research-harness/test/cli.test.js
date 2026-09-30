@@ -447,6 +447,14 @@ test('doctor asks for the terminal command when nothing has installed it', () =>
   assert.notEqual(out.status, 0, out.stdout + out.stderr);
   assert.match(out.stdout, /^research-harness doctor: 1 of 3 checks failed$/m);
   assert.match(out.stdout, /^- terminal command: not installed; run research-harness install-cli so serve works in your own terminal$/m);
+
+  // The marker is what counts: another program of that name is not this CLI.
+  const foreignHome = fakeHome();
+  fs.mkdirSync(path.join(foreignHome, '.local', 'bin'), { recursive: true });
+  fs.writeFileSync(path.join(foreignHome, '.local', 'bin', 'research-harness'), '#!/bin/sh\necho some other tool\n');
+  const foreign = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: foreignHome, ...NO_PATH });
+  assert.notEqual(foreign.status, 0, foreign.stdout + foreign.stderr);
+  assert.match(foreign.stdout, /^- terminal command: not installed; run research-harness install-cli so serve works in your own terminal$/m);
 });
 
 test('doctor finds the terminal command on PATH, not only at ~/.local/bin', () => {

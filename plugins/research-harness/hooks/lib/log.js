@@ -68,6 +68,7 @@ function appendLog({ root, kind, ref, body, why, supersedes, pluginRoot, variant
     kind,
     ref: ref.trim(),
     body: text,
+    by: state.by,
     why: reason,
     supersedes,
   }, state.key);

@@ -318,3 +318,13 @@ test('logAnchor names the last seal, maxSeq and the whole file hash without a ke
   assert.match(seal.logAnchor(''), /^last seal none, maxSeq 0, decisions\.md sha256 e3b0c442/);
   assert.notEqual(seal.logAnchor(text), seal.logAnchor(`${text} `), 'a byte anywhere moves the anchor');
 });
+
+test('a seal over an entry with By recomputes, and changing the name breaks it', () => {
+  const key = Buffer.alloc(32, 7);
+  const file = path.join(tempProject(), 'decisions.md');
+  fs.writeFileSync(file, '# Decision log — t\n');
+  seal.sealedAppend(file, { date: '2026-10-08', kind: 'DISCOVERY', ref: '7', body: 'A finding.', by: 'A. Researcher' }, key);
+  const text = fs.readFileSync(file, 'utf8');
+  assert.equal(seal.verifyChain(text, key).status, 'verified');
+  assert.equal(seal.verifyChain(text.replace('A. Researcher', 'B. Supervisor'), key).status, 'broken');
+});

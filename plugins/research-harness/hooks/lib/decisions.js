@@ -39,14 +39,20 @@ function parseDecisions(text) {
 }
 
 // The labelled lines formatEntry writes after the text, in their pinned order.
+// `By` is first because it names the person, not the entry: it is read as the
+// author of what follows, and every entry written here carries it (§3 of the
+// 0.5 spec). `By` is a statement, never proof — the seal covers it like the
+// rest of the body, so it cannot change afterwards, but anyone holding the key
+// can write any name.
 const FIELDS = [
+  ['by', 'By'],
   ['why', 'Why'],
   ['explained', 'Explained'],
   ['rejected', 'Rejected'],
   ['openAtAccept', 'Open at acceptance'],
   ['supersedes', 'Supersedes'],
 ];
-const FIELD_RE = /^\*\*(Why|Explained|Rejected|Open at acceptance|Supersedes):\*\* ?(.*)$/;
+const FIELD_RE = /^\*\*(By|Why|Explained|Rejected|Open at acceptance|Supersedes):\*\* ?(.*)$/;
 
 // The label a value opens a line with, or null. A line that reads as one of the
 // fields is not free text wherever it sits in a body, so every write refuses
@@ -83,6 +89,7 @@ function bodyFields(body) {
   const supersedes = /^#(\d+)$/.exec(value('supersedes') || '');
   const open = value('openAtAccept');
   return {
+    by: value('by'),
     why: value('why'),
     explained: value('explained'),
     rejected: value('rejected'),
@@ -91,10 +98,11 @@ function bodyFields(body) {
   };
 }
 
-function formatEntry({ seq, date, kind, ref, hash, seal, body, why, explained, rejected, openAtAccept, supersedes }) {
+function formatEntry({ seq, date, kind, ref, hash, seal, body, by, why, explained, rejected, openAtAccept, supersedes }) {
   if (!KINDS.includes(kind)) throw new Error(`unknown decision kind: ${kind}`);
   const heading = `## [#${seq}] ${date} · ${kind} · ${ref}${hash ? ` · text ${hash}` : ''}${seal ? ` · seal ${seal}` : ''}`;
   const lines = [heading, String(body).trim()];
+  if (by) lines.push(`**By:** ${by}`);
   if (why) lines.push(`**Why:** ${why}`);
   if (explained) lines.push(`**Explained:** ${explained}`);
   if (rejected) lines.push(`**Rejected:** ${rejected}`);

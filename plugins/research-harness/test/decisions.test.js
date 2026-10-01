@@ -170,3 +170,14 @@ test('appendEntry only ever appends, with exactly one blank line between entries
   assert.equal(decisions.parseDecisions(twice).maxSeq, 2);
   assert.doesNotMatch(twice, /\n\n\n/);
 });
+
+test('By is a field: formatEntry writes it first, parseDecisions reads it back, old entries read null', () => {
+  const text = decisions.formatEntry({ seq: 1, date: '2026-10-08', kind: 'DISCOVERY', ref: '7', body: 'A finding.', by: 'A. Researcher', why: 'Because.' });
+  assert.equal(text, '## [#1] 2026-10-08 · DISCOVERY · 7\nA finding.\n**By:** A. Researcher\n**Why:** Because.\n');
+  const [e] = decisions.parseDecisions(text).entries;
+  assert.equal(e.by, 'A. Researcher');
+  assert.equal(e.why, 'Because.');
+  const [old] = decisions.parseDecisions('## [#1] 2026-10-08 · DISCOVERY · 7\nA finding.\n').entries;
+  assert.equal(old.by, null);
+  assert.equal(decisions.fieldLabelIn('**By:** someone'), 'By');
+});

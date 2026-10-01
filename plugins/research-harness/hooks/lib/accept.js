@@ -101,6 +101,7 @@ function acceptStatement({ root, questionId, match, why, explained, rejected, ex
     ref: `${questionId} accepted`,
     hash,
     body: `${target.text} [accepted${target.tags.length ? `, ${target.tags.join(', ')}` : ''}]`,
+    by: state.by,
     why: reason,
     explained: explanation,
     rejected: rejectedText,

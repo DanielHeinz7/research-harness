@@ -22,6 +22,10 @@ const fixtureDir = path.join(__dirname, 'fixtures', 'voice-uptake', 'research');
 delete process.env.CLAUDE_PROJECT_DIR;
 delete process.env.RESEARCH_HARNESS_DIR;
 process.env.RESEARCH_HARNESS_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+// The name every entry carries as `By` (SQ-177), set here rather than taken
+// from the machine's git config, so the expected bytes below are the same
+// everywhere.
+fs.writeFileSync(path.join(process.env.RESEARCH_HARNESS_STATE_DIR, 'name'), 'A. Researcher\n');
 
 function run(root, args) {
   return childProcess.spawnSync(process.execPath, [cli, ...args], {
@@ -184,8 +188,8 @@ test('with open check questions, the CLI and the library write the same bytes an
   assert.equal(entry.explained, EXPLAINED);
   assert.equal(entry.why, args.why);
   assert.equal(entry.rejected, args.rejected);
-  // The pinned order: text, Why, Explained, Rejected, Open at acceptance.
-  assert.equal(entry.body, `${SPEAKING} [accepted]\n**Why:** ${args.why}\n**Explained:** ${EXPLAINED}\n**Rejected:** ${args.rejected}\n**Open at acceptance:** #4, #5`);
+  // The pinned order: text, By, Why, Explained, Rejected, Open at acceptance.
+  assert.equal(entry.body, `${SPEAKING} [accepted]\n**By:** A. Researcher\n**Why:** ${args.why}\n**Explained:** ${EXPLAINED}\n**Rejected:** ${args.rejected}\n**Open at acceptance:** #4, #5`);
 
   for (const expectedHash of [undefined, textHash(SPEAKING)]) {
     fs.writeFileSync(file(root, 'canvas.md'), before.canvas);

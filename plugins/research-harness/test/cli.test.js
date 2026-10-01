@@ -36,6 +36,13 @@ function stateDirOf(root) {
   return stateDirs.get(root);
 }
 
+// The name every entry carries as `By` (SQ-177). Set in the fixture's state
+// dir, which comes before git config user.name, so the expected bytes are the
+// same on a machine with a git identity and on one without.
+function setName(root, name = 'A. Researcher') {
+  fs.writeFileSync(path.join(stateDirOf(root), 'name'), `${name}\n`);
+}
+
 function run(root, args, env = {}) {
   // Claude Code sets CLAUDE_PROJECT_DIR; an inherited value would point every
   // fixture at the real project, so it is stripped here. RESEARCH_HARNESS_DIR
@@ -58,9 +65,12 @@ function readLog(root) {
 }
 
 // The fixture project as a researcher would have it after upgrading: a legacy
-// log and a key on this machine, created by init on the existing project.
+// log and a key on this machine, created by init on the existing project, and
+// a name of their own (SQ-177), so every entry the CLI writes from here carries
+// the same By whatever git config on the machine running the suite says.
 function keyedProject() {
   const root = makeProject();
+  setName(root);
   const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
   assert.equal(out.status, 0, out.stdout);
   return root;
@@ -486,7 +496,7 @@ test('log appends a sealed DISCOVERY or CONSTRAINT and refuses a DECISION, a mis
   const log = decisions.parseDecisions(readLog(root));
   assert.equal(log.entries[3].kind, 'DISCOVERY');
   assert.match(log.entries[3].seal, /^[0-9a-f]{16}$/);
-  assert.equal(log.entries[3].body, 'Two studies contradict each other on uptake. [tentative, src: ref-11]\n**Supersedes:** #2');
+  assert.equal(log.entries[3].body, 'Two studies contradict each other on uptake. [tentative, src: ref-11]\n**By:** A. Researcher\n**Supersedes:** #2');
   const constraint = run(root, ['log', 'CONSTRAINT', '5 Research Setting', '--body', 'No further fieldwork. [stated]', '--why', 'the committee said so']);
   assert.equal(constraint.status, 0, constraint.stdout);
   assert.equal(decisions.parseDecisions(readLog(root)).maxSeq, 5);
@@ -583,7 +593,7 @@ test('a statement text that reads as a field label stays the entry text and forg
   assert.equal(out.status, 0, out.stdout);
   const last = decisions.parseDecisions(readLog(root)).entries.at(-1);
   assert.equal(last.ref, '1.2 accepted');
-  assert.equal(last.body, `**Supersedes:** #1 [accepted]\n**Explained:** ${EXPLAINED}`, 'body stays the whole text under the heading');
+  assert.equal(last.body, `**Supersedes:** #1 [accepted]\n**By:** A. Researcher\n**Explained:** ${EXPLAINED}`, 'body stays the whole text under the heading');
   assert.equal(last.hash, textHash('**Supersedes:** #1'), 'the acceptance binds the text it accepted');
   assert.equal(last.supersedes, null, 'the statement text is not read back as a field');
   assert.equal(last.explained, EXPLAINED, 'the explanation the approval path wrote still parses');
@@ -698,24 +708,26 @@ const NO_PATH = { PATH: '/usr/bin:/bin' };
 
 test('doctor reports ok when the plugin is enabled and the terminal command is installed', () => {
   const root = makeProject(false);
+  setName(root);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
   const home = fakeHome();
   const dir = path.join(home, '.local', 'bin');
   installShim(dir);
   const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, PATH: `/usr/bin:/bin:${dir}` });
   assert.equal(out.status, 0, out.stdout + out.stderr);
-  assert.match(out.stdout, /^research-harness doctor: ok \(3 checks\)$/m);
+  assert.match(out.stdout, /^research-harness doctor: ok \(4 checks\)$/m);
 });
 
 test('doctor reports a shim in ~/.local/bin that the terminal cannot find, with the PATH line install-cli prints', () => {
   const root = makeProject(false);
+  setName(root);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
   const home = fakeHome();
   const dir = path.join(home, '.local', 'bin');
   const file = installShim(dir);
   const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, ...NO_PATH });
   assert.notEqual(out.status, 0, out.stdout + out.stderr);
-  assert.match(out.stdout, /^research-harness doctor: 1 of 3 checks failed$/m);
+  assert.match(out.stdout, /^research-harness doctor: 1 of 4 checks failed$/m);
   assert.ok(out.stdout.includes(`- terminal command: shim at ${file}, but ${dir} is not on PATH; add this line to ~/.zshrc: export PATH="${dir}:$PATH"`), out.stdout);
 });
 
@@ -738,10 +750,11 @@ test("doctor's guard-denies check passes on its own throwaway project, independe
 
 test('doctor asks for the terminal command when nothing has installed it', () => {
   const root = makeProject(false);
+  setName(root);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
   const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: fakeHome(), ...NO_PATH });
   assert.notEqual(out.status, 0, out.stdout + out.stderr);
-  assert.match(out.stdout, /^research-harness doctor: 1 of 3 checks failed$/m);
+  assert.match(out.stdout, /^research-harness doctor: 1 of 4 checks failed$/m);
   assert.match(out.stdout, /^- terminal command: not installed; run research-harness install-cli so serve works in your own terminal$/m);
 
   // The marker is what counts: another program of that name is not this CLI.
@@ -755,24 +768,26 @@ test('doctor asks for the terminal command when nothing has installed it', () =>
 
 test('doctor does not count a shim the terminal cannot execute', () => {
   const root = makeProject(false);
+  setName(root);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
   const home = fakeHome();
   const file = installShim(path.join(home, '.local', 'bin'));
   fs.chmodSync(file, 0o644);
   const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, ...NO_PATH });
   assert.notEqual(out.status, 0, out.stdout + out.stderr);
-  assert.match(out.stdout, /^research-harness doctor: 1 of 3 checks failed$/m);
+  assert.match(out.stdout, /^research-harness doctor: 1 of 4 checks failed$/m);
   assert.ok(out.stdout.includes(`- terminal command: shim at ${file} is not executable; run research-harness install-cli again`), out.stdout);
 });
 
 test('doctor finds the terminal command on PATH, not only at ~/.local/bin', () => {
   const root = makeProject(false);
+  setName(root);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
   const installed = path.join(fakeHome(), 'bin');
   installShim(installed);
   const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: fakeHome(), PATH: `/usr/bin:/bin:${installed}` });
   assert.equal(out.status, 0, out.stdout + out.stderr);
-  assert.match(out.stdout, /^research-harness doctor: ok \(3 checks\)$/m);
+  assert.match(out.stdout, /^research-harness doctor: ok \(4 checks\)$/m);
 });
 
 test('the README runs the CLI as the installed command, since the reader is in a paper checkout without bin/', () => {
@@ -891,4 +906,26 @@ test('profile refuses an unknown id, the active id, and a missing key, writing n
   assert.notEqual(nokey.status, 0);
   assert.equal(fs.readFileSync(canvasFile, 'utf8'), before);
   assert.equal(readLog(root), logBefore);
+});
+
+test('name sets and prints the name; log writes it as By; no name at all refuses the write', () => {
+  const root = makeProject();
+  assert.equal(run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']).status, 0);
+  const set = run(root, ['name', 'A. Researcher']);
+  assert.equal(set.status, 0, set.stdout);
+  assert.match(run(root, ['name']).stdout, /^A\. Researcher$/m);
+  assert.equal(run(root, ['log', 'DISCOVERY', '7', '--body', 'A finding.']).status, 0);
+  assert.match(readLog(root), /A finding\.\n\*\*By:\*\* A\. Researcher\n/);
+  assert.equal(run(root, ['name', 'bad # name']).status, 2);
+
+  fs.rmSync(path.join(stateDirOf(root), 'name'));
+  const nobody = run(root, ['log', 'DISCOVERY', '7', '--body', 'Another.'], { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' });
+  assert.equal(nobody.status, 1);
+  assert.match(nobody.stdout, /research-harness name "<your name>"/);
+  assert.doesNotMatch(readLog(root), /Another\./);
+
+  // The same missing name is what doctor reports, so the check names the one
+  // command that fixes it.
+  const doctor = run(root, ['doctor'], { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' });
+  assert.match(doctor.stdout, /^- name: no name is set for the decision log on this machine; run research-harness name "<your name>" once$/m);
 });

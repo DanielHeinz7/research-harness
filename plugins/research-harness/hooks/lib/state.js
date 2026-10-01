@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const project = require('./project');
 const canvas = require('./canvas');
+const identity = require('./identity');
 const profileLib = require('./profile');
 const seal = require('./seal');
 const { textHash } = require('./hash');
@@ -54,7 +55,11 @@ function loadState(root, { pluginRoot, variant } = {}) {
   } catch (err) {
     keyError = `the sealing key at ${seal.keyPath(root)} exists but cannot be read (${(err && err.code) || 'unknown error'})`;
   }
-  return { root, variant, paths, canvasText, parsed, decisionsText, graph, checks, profileError, key, keyError };
+  // The name every entry written from this machine carries as `By` (§3). Read
+  // here, once, so the CLI and the view write the same name and neither holds
+  // a second reading of where it comes from.
+  const who = identity.readName(root);
+  return { root, variant, paths, canvasText, parsed, decisionsText, graph, checks, profileError, key, keyError, by: who.name, nameError: who.error || null };
 }
 
 // Why the ledger cannot take a new entry right now, or null. Checked before
@@ -69,6 +74,10 @@ function ledgerRefusal(state) {
   if (chain.status === 'broken') {
     return refuse(`${path.relative(state.root, state.paths.decisions)} is broken at #${chain.broken.seq} (line ${chain.broken.line}); nothing is written. The harness never repairs a ledger — run research-harness review, then decide which version is true.`);
   }
+  // Last, so every message about the key and the chain reads as it did before
+  // a name was required: an entry no one is named in is not an entry this tool
+  // writes, and a name is set once for the machine (spec §3).
+  if (!state.by) return { error: `${state.nameError}; nothing is written.`, code: 'name' };
   return null;
 }
 

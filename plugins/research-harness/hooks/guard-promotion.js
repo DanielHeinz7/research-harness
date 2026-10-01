@@ -1819,18 +1819,18 @@ const UNCOMPUTABLE_PATTERN_WHY = 'it carries a pattern this guard cannot compute
 
 // Acceptance is the researcher's act wherever it is invoked from: running it
 // from the shell would be the model declaring a commitment (§4.3).
-const ACCEPT_DENIAL = 'Accepting a statement is the researcher\'s act, so `research-harness accept` cannot be run from the shell — under any name, quoting, or variable. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m>.';
+const ACCEPT_DENIAL = 'Accepting a statement is the researcher\'s act, so `research-harness accept` cannot be run from the shell — under any name, quoting, or variable. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m> --explained "<your sentence>".';
 // SQ-146. A subcommand the guard cannot read — a word built at run time
 // (`research-harness "$SUB"`) or a program text that only names the CLI — is
 // judged as strictly as `accept` is, because it may be one. The verdict stays
 // the same; the text says what the guard actually knows, rather than naming a
 // subcommand it never read.
-const OPAQUE_SUB_DENIAL = 'This command may run research-harness with a subcommand this guard cannot read (built at run time, or inside program text), so it is denied the way `accept` is. Spell the subcommand out, e.g. `research-harness status`. If the text only mentions the name, pass it as data, e.g. printf it into a file and run the file. Acceptance stays the researcher\'s act via /research-harness:accept <n.m>.';
+const OPAQUE_SUB_DENIAL = 'This command may run research-harness with a subcommand this guard cannot read (built at run time, or inside program text), so it is denied the way `accept` is. Spell the subcommand out, e.g. `research-harness status`. If the text only mentions the name, pass it as data, e.g. printf it into a file and run the file. Acceptance stays the researcher\'s act via /research-harness:accept <n.m> --explained "<your sentence>".';
 // US-3: choosing a framing replaces the main canvas with one variant's and
 // seals a DECISION, so it is the researcher's act exactly as accepting is, and
 // it is found on the same routes and by the same name rule.
-const CHOOSE_DENIAL = 'Choosing a framing is the researcher\'s act, so `research-harness choose` cannot be run from the shell — under any name, quoting, or variable. Compare the variants with `research-harness status --variant <name>` and `review --variant <name>`, and ask the researcher to choose one.';
-const LOG_DECISION_DENIAL = 'A DECISION entry is the researcher\'s act, so `research-harness log DECISION` cannot be run from the shell — nor `log` with a kind the guard cannot read. Record a finding with `research-harness log DISCOVERY|CONSTRAINT <ref> --body "<text>"`, and ask the researcher for /research-harness:accept <n.m>.';
+const CHOOSE_DENIAL = 'Choosing a framing is the researcher\'s act, so `research-harness choose` cannot be run from the shell — under any name, quoting, or variable. Compare the variants with `research-harness status --variant <name>` and `research-harness review --variant <name>`, and ask the researcher to choose one.';
+const LOG_DECISION_DENIAL = 'A DECISION entry is the researcher\'s act, so `research-harness log DECISION` cannot be run from the shell — nor `log` with a kind the guard cannot read. Record a finding with `research-harness log DISCOVERY|CONSTRAINT <ref> --body "<text>"`, and ask the researcher for /research-harness:accept <n.m> --explained "<your sentence>".';
 // The CLI reads its configuration from the session. A command line that hands
 // it another home, state directory or project would make it seal with a key
 // of the model's choosing, and the researcher's ledger would then read as
@@ -2366,7 +2366,7 @@ function unknownToolVerdict(projectRoot, toolName, toolInput) {
 // permitted once, as faithful to "append-only"; SQ-21's D7b and D7c appended a
 // forged acceptance through that door and D8 showed it silenced §4.4's
 // backstop. Every entry now comes through the harness, which seals it.
-const DECISIONS_DENIAL = 'decisions.md is written only by the harness, so that every entry is sealed (§4.7). To record a finding, run `research-harness log DISCOVERY|CONSTRAINT <ref> --body "<text>"`. A DECISION is the researcher\'s act: ask them for /research-harness:accept <n.m>.';
+const DECISIONS_DENIAL = 'decisions.md is written only by the harness, so that every entry is sealed (§4.7). To record a finding, run `research-harness log DISCOVERY|CONSTRAINT <ref> --body "<text>"`. A DECISION is the researcher\'s act: ask them for /research-harness:accept <n.m> --explained "<your sentence>".';
 
 // Any tool whose payload points into the harness's own state directory is
 // refused, reads included: see harnessStateDenial.

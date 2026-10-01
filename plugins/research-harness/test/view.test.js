@@ -160,6 +160,9 @@ async function mount({ state, query = '', mode = 'fixture', routes = {} }) {
   const node = (id) => nodes[id] || (nodes[id] = stubNode());
   const errorBox = { textContent: '' };
   node('dlg').querySelector = (selector) => (selector === '.dlg-error' ? errorBox : null);
+  // The notice bar carries the `hidden` attribute in the markup; showNotice is
+  // what lifts it.
+  node('notice').hidden = true;
   const calls = [];
   const all = { '/fixture.json': state, '/api/state': state, '/api/session': { ok: true, token: 'T' }, ...routes };
   const fetchStub = (url, opts) => {
@@ -180,6 +183,8 @@ async function mount({ state, query = '', mode = 'fixture', routes = {} }) {
     app,
     dlg,
     errorBox,
+    notice: node('notice'),
+    noticeText: node('notice-text'),
     calls,
     writes: () => calls.filter((c) => c.opts && c.opts.method === 'POST' && c.url !== '/api/session'),
     click(attrs) {
@@ -334,6 +339,49 @@ test('Accept dialog: a refusal of the explanation is shown inside the dialog and
   await page.submit({ explained: 'text', why: '' });
   assert.equal(page.dlg.open, false);
   assert.equal(page.calls.filter((c) => c.url === '/api/state').length, 2, 'the stale answer reloads the state');
+});
+
+// SQ-170: the accept is written, the dialog closes, and only the reload of the
+// state fails. The dialog error box is not on screen any more, so the failure
+// has to land in the notice bar or the researcher sees a stale canvas and no
+// reason for it.
+test('Accept dialog: a reload that fails after the write shows the notice bar, not a hidden dialog error', async () => {
+  const tentative = statementIn(variantsState, '1.2', 'tentative');
+  let answered = 0;
+  const page = await mount({
+    state: variantsState,
+    mode: 'live',
+    routes: {
+      '/api/state': () => {
+        answered += 1;
+        return answered === 1 ? { status: 200, body: variantsState } : { status: 500, body: { ok: false, error: 'boom' } };
+      },
+      '/api/accept': () => ({ status: 200, body: { ok: true } }),
+    },
+  });
+  page.click({ 'data-action': 'accept', 'data-question': '1.2', 'data-hash': tentative.hash });
+  await page.submit({ explained: 'The fieldnotes show it.', why: '' });
+
+  assert.deepEqual(page.writes().map((c) => c.url), ['/api/accept'], 'the accept went through');
+  assert.equal(page.dlg.open, false, 'the dialog stayed closed: the accept is recorded');
+  assert.equal(page.calls.filter((c) => c.url === '/api/state').length, 2, 'the second state call is the reload that failed');
+  assert.equal(page.errorBox.textContent, '', 'nothing is written into the closed dialog');
+  assert.equal(page.notice.hidden, false, 'the notice bar is visible');
+  assert.match(page.noticeText.textContent, /failed to load state \(500\)/);
+});
+
+test('Accept dialog: a failure while the dialog is still open stays inside the dialog', async () => {
+  const tentative = statementIn(variantsState, '1.2', 'tentative');
+  const page = await mount({
+    state: variantsState,
+    mode: 'live',
+    routes: { '/api/accept': () => ({ status: 500, body: { ok: false } }) },
+  });
+  page.click({ 'data-action': 'accept', 'data-question': '1.2', 'data-hash': tentative.hash });
+  await page.submit({ explained: 'The fieldnotes show it.', why: '' });
+  assert.equal(page.dlg.open, true, 'the dialog stays open so the typed text survives');
+  assert.equal(page.errorBox.textContent, 'Request failed (500).');
+  assert.equal(page.noticeText.textContent, '', 'the notice bar stays quiet while the dialog can speak');
 });
 
 test('fixture mode opens a view or a dialog from the URL, and its confirm button writes nothing', async () => {

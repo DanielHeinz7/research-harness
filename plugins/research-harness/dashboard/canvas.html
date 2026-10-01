@@ -1631,6 +1631,10 @@
   }
 
   function dialogError(message) {
+    // A failure can arrive after the dialog closed: the write is in, the reload
+    // of the state is not. Inside a closed dialog nothing is visible, so such a
+    // message goes to the notice bar, which outlives the dialog.
+    if (!dlg.open) { showNotice(message); return; }
     var box = dlg.querySelector('.dlg-error');
     if (box) box.textContent = message;
   }

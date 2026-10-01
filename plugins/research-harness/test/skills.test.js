@@ -169,3 +169,11 @@ test('record-review allows only review, status and git read verbs', () => {
 test('accept declares no allowed-tools: its ! line runs outside the model', () => {
   assert.equal(readSkill('accept').fm['allowed-tools'], undefined);
 });
+
+test('the README and the technical appendix describe record-review citing words, not a hash of a current statement', () => {
+  const docs = [path.resolve(__dirname, '..', 'README.md'), path.resolve(__dirname, '..', '..', '..', 'docs', 'technical-appendix.md')];
+  for (const file of docs) {
+    const text = fs.readFileSync(file, 'utf8').replace(/\s+/g, ' ');
+    assert.doesNotMatch(text, /`n\.m` with the text hash|statement number plus hash/, file);
+  }
+});

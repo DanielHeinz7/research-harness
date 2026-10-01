@@ -317,7 +317,8 @@ Open a new Claude Code session in `~/rh-demo` and run the reviewer:
 
 The skill has no Write, no Edit and no command that changes state. It is told to
 answer only from the canvas, the decision log, the mechanical review and git
-read verbs, to cite `#seq` or `n.m` with the text hash, to keep a proposal apart
+read verbs, to cite a log entry by `#seq` (with the text hash it recorded) and a
+statement by `n.m`, its marker and its exact words, to keep a proposal apart
 from an accepted statement, and to say "not in the record" when the record does
 not answer. Ask it two things a reviewer would ask:
 

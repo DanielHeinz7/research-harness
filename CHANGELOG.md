@@ -2,6 +2,23 @@
 
 Release notes for researchers using research-harness in Claude Code.
 
+## 0.4.3 (2026-10-01)
+
+### Fixed
+
+- A sealing key file that is empty or not a valid key is now refused, and nothing is written to the decision log. Before, such a file was used as-is, so entries could be sealed with an empty key that anyone could reproduce. If research-harness now refuses to write because of the key, restore the key file from where you keep its copy.
+- Review no longer counts an accepted statement as logged just because another question holds the same text and has a decision. Each acceptance needs a decision for its own question.
+- A statement inside a code block that is closed by a shorter or different fence (for example three backticks inside a block opened with four) is now reported as hidden, as it renders.
+- Command options that need a value, such as `--match`, `--title`, `--profile` or `--why`, are refused when you give none. Before, the option was dropped silently; a bare `--match` could accept the only candidate without checking it. `log --supersedes` likewise refuses a missing number, zero, or an entry the log does not have.
+- In the session view, if reloading the page fails after you saved something in a dialog, a notice now says so instead of leaving you with an out-of-date view.
+- `research-harness doctor` now notices a terminal command that cannot run: one without execute permission, or one in `~/.local/bin` when that folder is not on your PATH. It tells you the fix, the same line `install-cli` prints.
+
+### Changed
+
+- Every place that tells you how to accept a statement now includes the explanation it requires: the README quick start, the canvas skill, the guard's refusal messages and the summary Claude Code reads at session start. The model is told not to write that sentence for you.
+- The README's instructions for verifying a record you received use the installed `research-harness` command. The record-review skill cites a statement by its number, marker and exact words and no longer asks for a hash that no command prints.
+- Each release now appears on GitHub with these notes.
+
 ## 0.4.2 (2026-10-01)
 
 - When the model's shell command hides which `research-harness` subcommand it would run, the refusal now asks for the subcommand to be spelled out. It no longer incorrectly says the command is trying to accept a statement.

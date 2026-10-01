@@ -1507,6 +1507,217 @@ function logKindOf(invocation) {
   return 'open';
 }
 
+// ---------- sed scripts ----------
+// SQ-145: `sed -n` reads only while the script it runs writes no file and runs
+// no command. `w` and `W` write, the `w` flag of `s` writes, GNU's `e` command
+// and the `e` flag of `s` run one — but the letter on its own says nothing:
+// `sed -n '/Why/,/^$/p' research/canvas.md` and `sed -n 's/w/W/g'` are reads, so
+// the script is parsed rather than searched for `w`. A script the parser cannot
+// follow — an unknown command or flag, a `-f FILE` whose text lives in a file —
+// is not read-only. That verdict is only ever consulted for a command that
+// already names the research state (see the `touches && refusal` gate).
+
+// Commands that take no argument of their own...
+const SED_SIMPLE_COMMANDS = new Set(['p', 'P', 'd', 'D', 'h', 'H', 'g', 'G', 'x', 'n', 'N', 'q', 'Q', '=', 'l', 'z', 'F', '{', '}']);
+// ...the ones whose argument is the rest of their line: the text of `a`/`i`/`c`
+// (GNU continues it over a backslash-newline), the target of `r`/`R`, a label of
+// `b`/`t`/`T`/`:`, and a comment.
+const SED_LINE_COMMANDS = new Set(['a', 'i', 'c', 'r', 'R', 'b', 't', 'T', ':', '#']);
+const SED_SUBSTITUTION_FLAGS = new Set(['g', 'p', 'i', 'I', 'm', 'M']);
+const SED_SHORT_FLAGS = new Set(['n', 'E', 'r', 's', 'u', 'z', 'l', 'a', 'H', 'h', 'V']);
+const SED_LONG_FLAGS = new Set(['--quiet', '--silent', '--posix', '--debug', '--sandbox', '--follow-symlinks', '--binary', '--regexp-extended', '--separate', '--unbuffered', '--zero-terminated', '--null-data', '--line-length', '--in-place', '--help', '--version']);
+const SED_LONG_VALUE_FLAGS = new Set(['--line-length', '--in-place']);
+
+// The index of the delimiter that closes a delimited body — the pattern or
+// replacement of an `s` or `y`, or the regex of an address — with a backslash
+// escaping the next character. `at` is where the body starts, just past its
+// opening delimiter; `delimiter` is that opening delimiter, passed explicitly
+// because the replacement of `s/x/y/` starts on a `y`. A newline inside the
+// body ends the script there rather than the body, which is unreadable.
+function sedDelimitedEnd(script, at, delimiter) {
+  if (!delimiter || delimiter === '\\' || delimiter === '\n') return -1;
+  for (let k = at; k < script.length; k += 1) {
+    const ch = script[k];
+    if (ch === '\\') { k += 1; continue; }
+    if (ch === '\n') return -1;
+    if (ch === delimiter) return k;
+  }
+  return -1;
+}
+
+// The end of the line that holds the rest of a command's argument, counting a
+// backslash at the end of the line as a continuation (GNU sed spells `a text`
+// that way, and POSIX `a\` + newline).
+function sedLineEnd(script, at) {
+  let k = at;
+  for (;;) {
+    const nl = script.indexOf('\n', k);
+    if (nl < 0) return script.length;
+    let escapes = 0;
+    while (nl - 1 - escapes >= 0 && script[nl - 1 - escapes] === '\\') escapes += 1;
+    if (escapes % 2 === 0) return nl;
+    k = nl + 1;
+  }
+}
+
+// One address at `at`, or -1 when no address starts there: a line number (with
+// GNU's `first~step`), `/regex/` or `\cREc` with its `I`/`M` modifiers, `$`.
+function sedAddressEnd(script, at) {
+  const ch = script[at];
+  if (ch === undefined) return -1;
+  if (ch === '$') return at + 1;
+  if (ch === '/' || ch === '\\') {
+    const open = ch === '\\' ? at + 1 : at;
+    const close = sedDelimitedEnd(script, open + 1, script[open]);
+    if (close < 0) return -1;
+    let k = close + 1;
+    while (script[k] === 'I' || script[k] === 'M') k += 1;
+    return k;
+  }
+  if (ch >= '0' && ch <= '9') {
+    let k = at;
+    while (script[k] >= '0' && script[k] <= '9') k += 1;
+    if (script[k] === '~') {
+      k += 1;
+      while (script[k] >= '0' && script[k] <= '9') k += 1;
+    }
+    return k;
+  }
+  return -1;
+}
+
+// True when the script writes a file or runs a command, false when it does
+// neither, null when this parser cannot follow it.
+function sedScriptWrites(script) {
+  const n = script.length;
+  const blank = (ch) => ch === ' ' || ch === '\t' || ch === '\r';
+  let i = 0;
+  const separators = () => {
+    while (i < n && (blank(script[i]) || script[i] === ';' || script[i] === '\n')) i += 1;
+  };
+  const spaces = () => { while (i < n && blank(script[i])) i += 1; };
+  for (separators(); i < n; separators()) {
+    if (script[i] === '#') { i = sedLineEnd(script, i + 1); continue; }
+    if (script[i] === '}' || script[i] === ';') { i += 1; continue; }
+    let far = sedAddressEnd(script, i);
+    if (far >= 0) {
+      i = far;
+      spaces();
+      if (script[i] === ',') {
+        i += 1;
+        spaces();
+        far = script[i] === '+' || script[i] === '~' ? sedAddressEnd(script, i + 1) : sedAddressEnd(script, i);
+        if (far < 0) return null;
+        i = far;
+        spaces();
+      }
+      if (script[i] === '!') { i += 1; spaces(); }
+    } else if (script[i] === '!') {
+      return null;
+    }
+    const letter = script[i];
+    if (letter === undefined) return null;
+    if (letter === 's' || letter === 'y') {
+      const delimiter = script[i + 1];
+      const pattern = sedDelimitedEnd(script, i + 2, delimiter);
+      if (pattern < 0) return null;
+      const replacement = sedDelimitedEnd(script, pattern + 1, delimiter);
+      if (replacement < 0) return null;
+      i = replacement + 1;
+      if (letter === 'y') continue;
+      for (;;) {
+        const flag = script[i];
+        if (flag === undefined || blank(flag) || flag === ';' || flag === '\n') break;
+        if (SED_SUBSTITUTION_FLAGS.has(flag)) { i += 1; continue; }
+        if (flag >= '0' && flag <= '9') { while (script[i] >= '0' && script[i] <= '9') i += 1; continue; }
+        // `s///w FILE` writes that file, GNU's `s///e` runs the result.
+        if (flag === 'w' || flag === 'e') return true;
+        return null;
+      }
+      continue;
+    }
+    if (letter === 'w' || letter === 'W' || letter === 'e') return true;
+    if (SED_SIMPLE_COMMANDS.has(letter)) {
+      i += 1;
+      if (letter === 'q' || letter === 'Q' || letter === 'l') {
+        while (script[i] >= '0' && script[i] <= '9') i += 1;
+      }
+      continue;
+    }
+    if (SED_LINE_COMMANDS.has(letter)) { i = sedLineEnd(script, i + 1); continue; }
+    return null;
+  }
+  return false;
+}
+
+// The script operands sed would run: every `-e`/`--expression` argument, or the
+// first operand when the script is given as one. null when the guard cannot
+// read them — a `-f`/`--file` script is a file, and an unknown flag could be one
+// that takes the next word as its argument.
+function sedScriptOperands(flags) {
+  const scripts = [];
+  let scripted = false;
+  let ended = false;
+  for (let k = 0; k < flags.length; k += 1) {
+    const w = flags[k];
+    if (w.opaque) return null;
+    const text = w.text;
+    if (!ended && text === '--') { ended = true; continue; }
+    if (!ended && text.startsWith('--')) {
+      const eq = text.indexOf('=');
+      const name = eq < 0 ? text : text.slice(0, eq);
+      const value = eq < 0 ? null : text.slice(eq + 1);
+      if (name === '--expression' || name === '--file') {
+        if (name === '--file') return null;
+        const next = value === null ? flags[k + 1] : { text: value, opaque: false };
+        if (!next || next.opaque) return null;
+        scripts.push(next.text);
+        scripted = true;
+        if (value === null) k += 1;
+        continue;
+      }
+      if (!SED_LONG_FLAGS.has(name) || (value !== null && !SED_LONG_VALUE_FLAGS.has(name))) return null;
+      continue;
+    }
+    if (!ended && text.length > 1 && text[0] === '-') {
+      for (let c = 1; c < text.length; c += 1) {
+        const letter = text[c];
+        if (letter === 'e' || letter === 'f') {
+          if (letter === 'f') return null;
+          const rest = text.slice(c + 1);
+          if (rest) scripts.push(rest);
+          else {
+            const next = flags[k + 1];
+            if (!next || next.opaque) return null;
+            scripts.push(next.text);
+            k += 1;
+          }
+          scripted = true;
+          break;
+        }
+        if (!SED_SHORT_FLAGS.has(letter)) return null;
+      }
+      continue;
+    }
+    // An operand. Without a `-e` before it, the first one is the script; the
+    // rest are files it reads.
+    if (!scripted) { scripts.push(text); scripted = true; }
+  }
+  return scripts;
+}
+
+// The reason a `sed -n` that names the state is still not read-only, or null.
+function sedRefusal(flags) {
+  const scripts = sedScriptOperands(flags);
+  if (scripts === null) return '`sed` reads its script from a file or from a flag this guard cannot name';
+  for (const script of scripts) {
+    const writes = sedScriptWrites(script);
+    if (writes === null) return 'this guard cannot read the sed script, so it cannot tell whether it writes';
+    if (writes) return 'the sed script writes a file or runs a command';
+  }
+  return null;
+}
+
 // Returns null when the simple command is a named read-only form, or the
 // reason it is not.
 function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, splitsBlanks, stateRoot) {
@@ -1556,8 +1767,18 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
     const quiet = hasFlag(/^-[A-Za-z]*n/) || flags.some((w) => w.text === '--quiet' || w.text === '--silent');
     if (!quiet) return '`sed` only reads with -n';
     if (hasFlag(/^-[A-Za-z]*i/) || flags.some((w) => w.text === '--in-place')) return '`sed -i` edits in place';
+    const script = sedRefusal(flags);
+    if (script) return script;
   }
   if (verb === 'sort' && hasFlag(/^-o/)) return '`sort -o` writes a file';
+  // SQ-145: probed in a temp dir, `less -o FILE`, `-O FILE` and `--log-file=FILE`
+  // copy the input into FILE as it is viewed. They only do so when the input is
+  // a pipe and the output a terminal — a file operand or a piped stdout writes
+  // nothing today — but which shape the shell will hand `less` is not this
+  // guard's to know, so the flags are refused the way `sort -o` is.
+  if (verb === 'less' && (hasFlag(/^-[A-Za-z]*[oO]/) || flags.some((w) => /^--(?:log-file|LOG-FILE)(?:=|$)/.test(w.text)))) {
+    return '`less -o`, `-O` or `--log-file` writes a file';
+  }
   if (verb === 'uniq' && flags.filter((w) => !w.text.startsWith('-')).length > 1) return '`uniq` with two operands writes the second';
   if (verb === 'find' && hasFlag(/^-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)$/)) return '`find` was given an action that writes or runs a command';
   if (verb === 'git') {

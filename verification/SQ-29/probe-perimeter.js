@@ -231,6 +231,23 @@ function toolRow(id, desc, p, toolName, toolInput) {
     "shopt -s expand_aliases\nalias rc='research-harness choose'\nrc alpha --why x", { expected: 'DENY' });
 }
 
+// ---- SQ-145: a `sed -n` whose script writes is not a read (rows 12, 13, 15, 16) ----
+{
+  const p = project();
+  shellRow('M36', 'SQ-145 row 12: a sed -n script that substitutes and then writes the canvas', p,
+    `sed -n ${q('s/\\[proposed\\]/[accepted]/;w research/canvas.md')} copy.md`, { expected: 'DENY' });
+  shellRow('M37', 'SQ-145 row 13: a sed -n whose script writes the canvas', p,
+    `sed -n ${q('w research/canvas.md')} notes.md`, { expected: 'DENY' });
+  shellRow('M38', 'SQ-145 row 15: a sed -n -e script that writes the decision log', p,
+    `sed -n -e ${q('w research/decisions.md')} notes.md`, { expected: 'DENY' });
+  // Row 16 only reaches the state where the volume folds case: `Research` and
+  // `research` are the same directory there. Elsewhere the row is informational,
+  // which is the same skip SQ-145's guard tests make.
+  const blind = c.fs.existsSync(c.path.join(p.root, 'RESEARCH', 'canvas.md'));
+  shellRow('M39', 'SQ-145 row 16: a sed -n writing the canvas through the state directory spelled in its case', p,
+    `sed -n ${q('w Research/canvas.md')} notes.md`, { expected: blind ? 'DENY' : undefined });
+}
+
 // ---- loops (SQ-106) ----
 // A loop whose body only reads is read-only; one whose body writes is not.
 {

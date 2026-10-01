@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
-// Releases the plugin: checks first, then the version bump, commit, push and
-// plugin update.
+// Releases the plugin: checks first, then the version bump, commit, tag,
+// push, GitHub release and plugin update.
 //
 //   node scripts/release.js <version> "<summary>" [--dry-run] [--trailer "<line>"] [--accept-denies]
 //
@@ -11,6 +11,11 @@
 // verification/local/release-baseline.json (gitignored, like the harvest).
 // The corpus comes from private sessions, so nothing but probe-benign's counts
 // is ever printed from it.
+//
+// The release notes are written by hand before the release: CHANGELOG.md needs
+// a "## <version>" section, and its body becomes the GitHub release. The
+// fragments in .release/unreleased/ move to .release/<version>/ in the
+// release commit, so the next release starts from an empty unreleased/.
 //
 // Exit codes: 0 done, 1 a check or a step failed, 2 refused before any check.
 const fs = require("node:fs");
@@ -25,6 +30,8 @@ const MANIFESTS = [
 ];
 const LOCAL = path.join(REPO, "verification", "local");
 const BASELINE = path.join(LOCAL, "release-baseline.json");
+const CHANGELOG = path.join(REPO, "CHANGELOG.md");
+const UNRELEASED = path.join(REPO, ".release", "unreleased");
 const USAGE = 'usage: node scripts/release.js <version> "<summary>" [--dry-run] [--trailer "<line>"] [--accept-denies]';
 
 function refuse(msg) {
@@ -128,6 +135,25 @@ function step(label, cmd) {
   return r;
 }
 
+// The body of the "## <version>" section, up to the next "## " heading, with
+// blank lines trimmed at both ends; null when the section is missing or empty.
+function changelogSection(version) {
+  let text;
+  try { text = fs.readFileSync(CHANGELOG, "utf8"); } catch (e) { return null; }
+  const lines = text.split("\n");
+  const head = new RegExp("^## " + version.replace(/[.+]/g, "\\$&") + "(\\s|$)");
+  const start = lines.findIndex(function (l) { return head.test(l); });
+  if (start < 0) return null;
+  let end = lines.findIndex(function (l, i) { return i > start && /^## /.test(l); });
+  if (end < 0) end = lines.length;
+  const body = lines.slice(start + 1, end).join("\n").trim();
+  return body ? body + "\n" : null;
+}
+
+function fragments() {
+  try { return fs.readdirSync(UNRELEASED).filter(function (n) { return /\.md$/.test(n); }).sort(); } catch (e) { return []; }
+}
+
 function readVersion(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { refuse("cannot read " + path.relative(REPO, file) + ": " + e.message); }
 }
@@ -158,6 +184,10 @@ function main(argv) {
   const current = parseSemver(seen[0] || "");
   if (!current) refuse("the current version " + seen[0] + " is not semver");
   if (cmpSemver(next, current) <= 0) refuse(opt.version + " is not greater than the current " + seen[0]);
+  const notes = changelogSection(opt.version);
+  if (!notes) refuse("CHANGELOG.md has no section for " + opt.version + "; write the release notes under \"## " + opt.version + "\" first");
+  const tag = "v" + opt.version;
+  if (git(["rev-parse", "-q", "--verify", "refs/tags/" + tag]).status === 0) refuse("tag " + tag + " already exists");
   const corpus = newestHarvest();
   if (!corpus) refuse("no harvested corpus in verification/local/. Make one first: node verification/probes/probe-benign.js --harvest");
 
@@ -207,18 +237,33 @@ function main(argv) {
   // Steps 4 and 5.
   const message = ["Release " + opt.version + ": " + opt.summary].concat(opt.trailer ? [opt.trailer] : []);
   const commit = ["commit"].concat(message.reduce(function (a, m) { return a.concat(["-m", m]); }, []));
+  const moved = fragments();
+  const notesFile = path.join(fs.mkdtempSync(path.join(require("node:os").tmpdir(), "rh-release-notes-")), tag + ".md");
+  fs.writeFileSync(notesFile, notes);
   const tasks = [
     { label: "set version " + opt.version + " in .claude-plugin/marketplace.json (twice) and plugins/research-harness/.claude-plugin/plugin.json", do: function () { setVersions(opt.version); return { status: 0, stdout: "", stderr: "" }; } },
     { label: "git add .claude-plugin/marketplace.json plugins/research-harness/.claude-plugin/plugin.json", do: function () { return git(["add", MANIFESTS[0], MANIFESTS[1]]); } },
+  ].concat(moved.length ? [
+    { label: "git mv .release/unreleased/*.md .release/" + opt.version + "/ (" + moved.length + " fragments)", do: function () {
+      fs.mkdirSync(path.join(REPO, ".release", opt.version), { recursive: true });
+      return git(["mv"].concat(moved.map(function (n) { return path.join(UNRELEASED, n); }), [path.join(REPO, ".release", opt.version) + "/"]));
+    } },
+  ] : []).concat([
     { label: "git commit -m " + JSON.stringify(message[0]) + (opt.trailer ? " -m " + JSON.stringify(opt.trailer) : ""), do: function () { return git(commit); } },
+    { label: "git tag -a " + tag + " -m " + JSON.stringify("Release " + opt.version), do: function () { return git(["tag", "-a", tag, "-m", "Release " + opt.version]); } },
     { label: "git push origin main", do: function () { return git(["push", "origin", "main"]); } },
+    { label: "git push origin " + tag, do: function () { return git(["push", "origin", tag]); } },
+    { label: "gh release create " + tag + " --verify-tag --title " + opt.version + " --notes-file " + notesFile + " --latest", do: function () {
+      return run("gh", ["release", "create", tag, "--verify-tag", "--title", opt.version, "--notes-file", notesFile, "--latest"]);
+    } },
     { label: "claude plugin marketplace update research-harness", do: function () { return run("claude", ["plugin", "marketplace", "update", "research-harness"]); } },
     { label: "claude plugin update research-harness@research-harness", do: function () { return run("claude", ["plugin", "update", "research-harness@research-harness"]); } },
-  ];
+  ]);
   if (opt.dryRun) {
     process.stdout.write("dry run: " + opt.version + " passes every check; nothing was changed. Next would run:\n");
     for (const t of tasks) process.stdout.write("  " + t.label + "\n");
     process.stdout.write("  then record " + denied + " DENYs in " + path.relative(REPO, BASELINE) + "\n");
+    process.stdout.write("release notes for " + tag + ":\n" + notes);
     return 0;
   }
   for (const t of tasks) {

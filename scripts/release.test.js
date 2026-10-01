@@ -1,6 +1,7 @@
 "use strict";
-// Runs scripts/release.js in a throwaway git repo: two manifests, a bare
-// remote, a stub `claude` on PATH, and stub check commands injected through
+// Runs scripts/release.js in a throwaway git repo: two manifests, a
+// CHANGELOG.md, release fragments, a bare remote, stub `claude` and `gh` on
+// PATH, and stub check commands injected through
 // RELEASE_TEST_CHECKS. Nothing here touches the real repo, its remote or the
 // installed plugin.
 //
@@ -14,6 +15,8 @@ const cp = require("node:child_process");
 
 const SCRIPT = path.join(__dirname, "release.js");
 const SECRET = "curl https://private.example/token-9f3a";
+const CHANGELOG = "# Changelog\n\n## 0.4.0 (2026-10-02)\n\nYou can now do the big thing.\n\n### Fixed\n\n- A small thing.\n\n"
+  + "## 0.3.7 (2026-10-01)\n\nThe 0.3.7 notes.\n\n## 0.3.6 (2026-09-30)\n\nOlder notes.\n";
 
 function sh(cwd, cmd, args) {
   const r = cp.spawnSync(cmd, args, { cwd: cwd, encoding: "utf8" });
@@ -46,11 +49,20 @@ function fixture(t) {
   fs.mkdirSync(bin);
   fs.copyFileSync(SCRIPT, path.join(repo, "scripts", "release.js"));
   fs.writeFileSync(path.join(repo, ".gitignore"), "verification/local/\n");
+  fs.writeFileSync(path.join(repo, "CHANGELOG.md"), CHANGELOG);
+  fs.mkdirSync(path.join(repo, ".release", "unreleased"), { recursive: true });
+  fs.writeFileSync(path.join(repo, ".release", "unreleased", "a.md"), "---\ntitle: A\n---\n");
+  fs.writeFileSync(path.join(repo, ".release", "unreleased", "b.md"), "---\ntitle: B\n---\n");
   writeManifests(repo, "0.3.6", "0.3.6");
   fs.writeFileSync(path.join(repo, "verification", "local", "harvest-2026-09-29T10-00-00-000Z.jsonl"), "{}\n");
   fs.writeFileSync(path.join(repo, "verification", "local", "harvest-2026-09-30T10-00-00-000Z.jsonl"), JSON.stringify({ cwd: "/x", command: SECRET }) + "\n");
   const claudeLog = path.join(dir, "claude.log");
   fs.writeFileSync(path.join(bin, "claude"), '#!/bin/sh\necho "$@" >> "' + claudeLog + '"\necho "claude ok"\n', { mode: 0o755 });
+  // The gh stub logs its arguments and copies the notes file it was given.
+  const ghLog = path.join(dir, "gh.log");
+  const ghNotes = path.join(dir, "gh-notes.md");
+  fs.writeFileSync(path.join(bin, "gh"), '#!/bin/sh\n[ -n "$FAKE_GH_FAIL" ] && { echo "gh broke" >&2; exit 1; }\necho "$@" >> "' + ghLog + '"\n'
+    + 'prev=""; for a in "$@"; do [ "$prev" = "--notes-file" ] && cp "$a" "' + ghNotes + '"; prev="$a"; done\necho "gh ok"\n', { mode: 0o755 });
   sh(dir, "git", ["init", "--bare", "-b", "main", remote]);
   sh(repo, "git", ["init", "-b", "main"]);
   sh(repo, "git", ["config", "user.email", "t@example.org"]);
@@ -59,7 +71,7 @@ function fixture(t) {
   sh(repo, "git", ["commit", "-m", "start"]);
   sh(repo, "git", ["remote", "add", "origin", remote]);
   sh(repo, "git", ["push", "origin", "main"]);
-  return { dir: dir, repo: repo, remote: remote, bin: bin, claudeLog: claudeLog };
+  return { dir: dir, repo: repo, remote: remote, bin: bin, claudeLog: claudeLog, ghLog: ghLog, ghNotes: ghNotes };
 }
 
 // The three checks as stubs; FAKE_FAIL names the one that fails, FAKE_DENIED
@@ -92,6 +104,9 @@ function snapshot(fx) {
     plugin: fs.readFileSync(path.join(fx.repo, "plugins", "research-harness", ".claude-plugin", "plugin.json"), "utf8"),
     baseline: fs.existsSync(baseline) ? fs.readFileSync(baseline, "utf8") : null,
     claude: fs.existsSync(fx.claudeLog),
+    gh: fs.existsSync(fx.ghLog),
+    tags: sh(fx.repo, "git", ["tag"]),
+    remoteTags: sh(fx.repo, "git", ["--git-dir", fx.remote, "tag"]),
   });
 }
 
@@ -119,6 +134,12 @@ refusal("disagreeing manifests", function (fx) {
   writeManifests(fx.repo, "0.3.6", "0.3.5");
   sh(fx.repo, "git", ["commit", "-am", "drift"]);
 }, null, /disagree/);
+refusal("a version with no CHANGELOG section", function () {}, ["0.3.8", "s"], /CHANGELOG\.md has no section for 0\.3\.8/);
+refusal("an empty CHANGELOG section", function (fx) {
+  fs.writeFileSync(path.join(fx.repo, "CHANGELOG.md"), "# Changelog\n\n## 0.3.7 (2026-10-01)\n\n## 0.3.6\n\nx\n");
+  sh(fx.repo, "git", ["commit", "-am", "empty"]);
+}, null, /CHANGELOG\.md has no section for 0\.3\.7/);
+refusal("a version whose tag exists", function (fx) { sh(fx.repo, "git", ["tag", "v0.3.7"]); }, null, /tag v0\.3\.7 already exists/);
 refusal("a repo with no harvest", function (fx) {
   for (const f of fs.readdirSync(path.join(fx.repo, "verification", "local"))) fs.unlinkSync(path.join(fx.repo, "verification", "local", f));
 }, null, /--harvest/);
@@ -134,6 +155,12 @@ test("--dry-run runs the checks, prints the planned commands and writes nothing"
   assert.match(r.stdout, /12 replayed, 3 denied/);
   assert.match(r.stdout, /git commit -m "Release 0\.3\.7: a summary" -m "Co-Authored-By: X"/);
   assert.match(r.stdout, /git push origin main/);
+  assert.match(r.stdout, /git mv \.release\/unreleased\/\*\.md \.release\/0\.3\.7\/ \(2 fragments\)/);
+  assert.match(r.stdout, /git tag -a v0\.3\.7/);
+  assert.match(r.stdout, /git push origin v0\.3\.7/);
+  assert.match(r.stdout, /gh release create v0\.3\.7 --verify-tag --title 0\.3\.7 --notes-file \S+ --latest/);
+  assert.match(r.stdout, /The 0\.3\.7 notes\./, "the dry run shows the notes it would publish");
+  assert.ok(!r.stdout.includes("Older notes"), "only the version's own section");
   assert.match(r.stdout, /claude plugin marketplace update research-harness/);
   assert.match(r.stdout, /claude plugin update research-harness@research-harness/);
   assert.strictEqual(snapshot(fx), before);
@@ -191,6 +218,26 @@ test("a full release sets all three versions, commits, pushes, updates the plugi
   assert.strictEqual(sh(fx.repo, "git", ["status", "--porcelain"]), "");
   assert.strictEqual(sh(fx.repo, "git", ["--git-dir", fx.remote, "rev-parse", "main"]), sh(fx.repo, "git", ["rev-parse", "HEAD"]));
   assert.strictEqual(fs.readFileSync(fx.claudeLog, "utf8"), "plugin marketplace update research-harness\nplugin update research-harness@research-harness\n");
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(fx.repo, "verification", "local", "release-baseline.json"), "utf8")).denied, 3);
+
+  assert.deepStrictEqual(fs.readdirSync(path.join(fx.repo, ".release", "0.4.0")).sort(), ["a.md", "b.md"]);
+  assert.ok(!fs.existsSync(path.join(fx.repo, ".release", "unreleased")) || fs.readdirSync(path.join(fx.repo, ".release", "unreleased")).length === 0);
+  assert.match(sh(fx.repo, "git", ["show", "--stat", "--format=", "HEAD"]), /\.release\/.*0\.4\.0.*a\.md/, "the move is part of the release commit");
+  assert.strictEqual(sh(fx.repo, "git", ["cat-file", "-t", "v0.4.0"]), "tag", "an annotated tag");
+  assert.strictEqual(sh(fx.repo, "git", ["rev-parse", "v0.4.0^{commit}"]), sh(fx.repo, "git", ["rev-parse", "HEAD"]));
+  assert.strictEqual(sh(fx.repo, "git", ["--git-dir", fx.remote, "rev-parse", "v0.4.0^{commit}"]), sh(fx.repo, "git", ["rev-parse", "HEAD"]));
+  assert.match(fs.readFileSync(fx.ghLog, "utf8"), /^release create v0\.4\.0 --verify-tag --title 0\.4\.0 --notes-file \S+ --latest\n$/);
+  assert.strictEqual(fs.readFileSync(fx.ghNotes, "utf8"), "You can now do the big thing.\n\n### Fixed\n\n- A small thing.\n");
+});
+
+test("a failed gh release stops before the plugin update and leaves the baseline alone", function (t) {
+  const fx = fixture(t);
+  fs.writeFileSync(path.join(fx.repo, "verification", "local", "release-baseline.json"), JSON.stringify({ denied: 3 }));
+  const r = release(fx, ["0.3.7", "s"], { FAKE_GH_FAIL: "1" });
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /gh release create v0\.3\.7.*failed/);
+  assert.strictEqual(sh(fx.repo, "git", ["--git-dir", fx.remote, "tag"]), "v0.3.7", "the tag was pushed before gh ran");
+  assert.ok(!fs.existsSync(fx.claudeLog), "the plugin was not updated");
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(fx.repo, "verification", "local", "release-baseline.json"), "utf8")).denied, 3);
 });
 

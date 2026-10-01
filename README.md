@@ -65,6 +65,10 @@ explanation despite an open check question, a read-only review of the record, an
 a verification of the log on another machine. A test runs its commands and holds
 them to the output the README shows.
 
+The [technical appendix](docs/technical-appendix.md) describes the state and seal,
+the measured promotion guard, off-machine verification, and their limits at a
+named main revision.
+
 ## Where the rules come from
 
 The harness's question set is derived from published methodological and

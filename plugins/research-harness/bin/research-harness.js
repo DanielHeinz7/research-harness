@@ -28,6 +28,7 @@ const USAGE = [
   'research-harness choose <name> --why <text> [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>] [--variant <name>]',
   'research-harness title [<text>]',
+  'research-harness profile [<id>]',
   'research-harness serve [--no-open]',
   'research-harness doctor',
   'research-harness install-cli [--dir <path>]',
@@ -435,6 +436,51 @@ function title(positional) {
   return 0;
 }
 
+// ---------- profile ----------
+
+// Which genre profile the canvas runs on (§4.5, 0.5 spec §9). Switching
+// changes which dependencies the review reports and which checks run, so it
+// is recorded: a sealed CONSTRAINT entry first, then the one frontmatter line.
+// The log is written first because it is the step that can refuse (no key, a
+// broken ledger); a refused switch leaves both files as they were.
+function profile(positional) {
+  const root = project.projectDir({});
+  const canvasFile = project.canvasPath(root);
+  if (!fs.existsSync(canvasFile)) {
+    return fail(`This is not a paper project: no ${path.relative(root, canvasFile)}. Run research-harness init first.`);
+  }
+  const text = fs.readFileSync(canvasFile, 'utf8');
+  const current = canvasLib.parseCanvas(text).frontmatter.profile || 'is-qualitative';
+  if (!positional.length) {
+    say(current);
+    return 0;
+  }
+  const wanted = positional[0];
+  try {
+    profileLib.loadProfile(wanted, pluginRoot());
+  } catch (err) {
+    return fail(err.message);
+  }
+  if (wanted === current) return fail(`The canvas already uses ${current}; nothing changed.`);
+  const lines = text.split('\n');
+  const end = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
+  if (end < 0) return fail(`${path.relative(root, canvasFile)} has no frontmatter, so there is nowhere to set a profile.`);
+  const at = lines.slice(1, end).findIndex((line) => /^profile:/.test(line));
+  const logged = appendLog({
+    root,
+    kind: 'CONSTRAINT',
+    ref: 'profile',
+    body: `Profile changed from ${current} to ${wanted}.`,
+    pluginRoot: pluginRoot(),
+  });
+  if (!logged.ok) return refused(logged);
+  if (at >= 0) lines[at + 1] = `profile: ${wanted}`;
+  else lines.splice(end, 0, `profile: ${wanted}`);
+  fs.writeFileSync(canvasFile, lines.join('\n'));
+  say(`Profile set: ${wanted} (was ${current}), logged as #${logged.seq}. Run research-harness review to see what the new graph reports.`);
+  return 0;
+}
+
 // ---------- serve ----------
 
 // The session view (US-2). A human runs this in their own terminal; the URL
@@ -749,6 +795,7 @@ function main(argv) {
     case 'accept': return accept(positional, flags);
     case 'log': return log(positional, flags);
     case 'title': return title(positional);
+    case 'profile': return profile(positional);
     case 'serve': return serve(flags);
     case 'doctor': return doctor();
     case 'install-cli': return installCli(flags);

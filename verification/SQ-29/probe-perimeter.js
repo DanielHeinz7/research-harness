@@ -246,6 +246,10 @@ function toolRow(id, desc, p, toolName, toolInput) {
   const blind = c.fs.existsSync(c.path.join(p.root, 'RESEARCH', 'canvas.md'));
   shellRow('M39', 'SQ-145 row 16: a sed -n writing the canvas through the state directory spelled in its case', p,
     `sed -n ${q('w Research/canvas.md')} notes.md`, { expected: blind ? 'DENY' : undefined });
+  // SQ-148: a label ends at `;`, so the write after it is a command. Read as a
+  // label running to the end of the line, this was ALLOW.
+  shellRow('M40', 'SQ-148: a sed -n whose label is ended by a semicolon before the write', p,
+    `sed -n ${q(':a;w research/canvas.md')} copy.md`, { expected: 'DENY' });
 }
 
 // ---- loops (SQ-106) ----

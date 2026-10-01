@@ -2211,6 +2211,12 @@ const SQ145_WRITE_SCRIPTS = [
   "sed -n -e '1,5p' -e 'w research/canvas.md' notes.md",
   "sed -n '{w research/canvas.md}' notes.md",
   "sed -n '1,5p;w research/canvas.md' notes.md",
+  // SQ-148: a `b`/`t`/`T`/`:` label ends at `;`, so the `w` after it is a
+  // command, not part of the label. Before the fix each of these was read as a
+  // label running to the end of the line, and the write was never seen.
+  "sed -n ':a;w research/canvas.md' copy.md",
+  "sed -n '$!ba;w research/canvas.md' copy.md",
+  "sed -n 'tx;w research/decisions.md' copy.md",
 ];
 
 test('SQ-145: a sed script that can write or run is refused however sed is told to run it', () => {
@@ -2228,6 +2234,9 @@ const SQ145_READ_SCRIPTS = [
   "sed -n 'y/w/x/' research/canvas.md",
   "sed -n '/Why/p' research/canvas.md",
   "sed -n 'r research/canvas.md' notes.md",
+  // SQ-148: the common label idiom, whose labels now end at `;` — the rest of
+  // the line is parsed and holds no write.
+  "sed -n ':a;N;$!ba;s/\\n/ /g;p' research/canvas.md",
 ];
 
 test('SQ-145: a sed -n whose script cannot write stays a read', () => {

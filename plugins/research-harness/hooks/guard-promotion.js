@@ -1520,9 +1520,16 @@ function logKindOf(invocation) {
 // Commands that take no argument of their own...
 const SED_SIMPLE_COMMANDS = new Set(['p', 'P', 'd', 'D', 'h', 'H', 'g', 'G', 'x', 'n', 'N', 'q', 'Q', '=', 'l', 'z', 'F', '{', '}']);
 // ...the ones whose argument is the rest of their line: the text of `a`/`i`/`c`
-// (GNU continues it over a backslash-newline), the target of `r`/`R`, a label of
-// `b`/`t`/`T`/`:`, and a comment.
-const SED_LINE_COMMANDS = new Set(['a', 'i', 'c', 'r', 'R', 'b', 't', 'T', ':', '#']);
+// (GNU continues it over a backslash-newline), the target of `r`/`R`, and a
+// comment.
+const SED_LINE_COMMANDS = new Set(['a', 'i', 'c', 'r', 'R', '#']);
+// ...and the ones whose argument is a label. A label ends at `;` or a newline,
+// not at the end of the line: `:a;N;$!ba;s/\n/ /g` is the ordinary spelling. GNU
+// sed ends it at the `;`, and BSD sed reads the `;` into the label only to fail
+// with an undefined label — so ending it here is the stricter reading on both.
+// SQ-148: reading a label to the end of the line swallowed the `w` that follows
+// the `;`, and `sed -n ':a;w research/canvas.md'` came back a read.
+const SED_LABEL_COMMANDS = new Set(['b', 't', 'T', ':']);
 const SED_SUBSTITUTION_FLAGS = new Set(['g', 'p', 'i', 'I', 'm', 'M']);
 const SED_SHORT_FLAGS = new Set(['n', 'E', 'r', 's', 'u', 'z', 'l', 'a', 'H', 'h', 'V']);
 const SED_LONG_FLAGS = new Set(['--quiet', '--silent', '--posix', '--debug', '--sandbox', '--follow-symlinks', '--binary', '--regexp-extended', '--separate', '--unbuffered', '--zero-terminated', '--null-data', '--line-length', '--in-place', '--help', '--version']);
@@ -1558,6 +1565,16 @@ function sedLineEnd(script, at) {
     if (escapes % 2 === 0) return nl;
     k = nl + 1;
   }
+}
+
+// The end of a label argument, at the `;` or newline that terminates it. Unlike
+// `sedLineEnd` this is not a line: the rest of the line after the label is more
+// script, and the `;` that ends the idiom `:a;N;$!ba;s/\n/ /g` is one.
+function sedLabelEnd(script, at) {
+  for (let k = at; k < script.length; k += 1) {
+    if (script[k] === ';' || script[k] === '\n') return k;
+  }
+  return script.length;
 }
 
 // One address at `at`, or -1 when no address starts there: a line number (with
@@ -1644,6 +1661,7 @@ function sedScriptWrites(script) {
       }
       continue;
     }
+    if (SED_LABEL_COMMANDS.has(letter)) { i = sedLabelEnd(script, i + 1); continue; }
     if (SED_LINE_COMMANDS.has(letter)) { i = sedLineEnd(script, i + 1); continue; }
     return null;
   }

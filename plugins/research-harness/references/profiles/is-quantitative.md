@@ -46,10 +46,11 @@ An element may not be `[accepted]` while an element it depends on is not.
 Reported by `canvas-review`, never enforced. Each edge is this profile's
 acceptance-order proposal, not a journal rule or a claim that research is
 strictly linear. The sources support the reasons below but do not prescribe
-these numbered edges. Exploratory work can inform theory; sampling and design
-can require revisiting earlier choices. Element 9 is accepted after the findings,
-but its intended scope should already inform planning (Gregor & Klein 2014,
-§2.1 and §3.4; Mertens & Recker 2020, Table 2).
+these numbered edges. Exploratory work can inform theory (Gregor & Klein 2014,
+§2.1); sampling and design can require revisiting earlier choices. Element 9 is
+accepted after the findings, but planning should identify the population and
+sampling strategy (Gregor & Klein 2014, §3.4; Mertens & Recker 2020, accepted
+manuscript, Table 3, "Explicate sampling strategy").
 
 ```graph
 1 <-
@@ -95,15 +96,4 @@ accepted manuscript. Abstract-only support is marked explicitly.
 | MacKenzie, S. B., Podsakoff, P. M., & Podsakoff, N. P. (2011). *Construct Measurement and Validation Procedures in MIS and Behavioral Research: Integrating New and Existing Techniques*. MIS Quarterly, 35(2), 293–334. [AIS record](https://aisel.aisnet.org/misq/vol35/iss2/5/) | Construct definitions, measurement-model specification and scale validation; conceptualization before measures. | AIS metadata/abstract checked against the [university-hosted journal PDF](https://temme.wiwi.uni-wuppertal.de/fileadmin/_migrated/content_uploads/mackenzie_et_al_2011_kapitel_3_02.pdf), pp. 293–298 and Figure 1. |
 | Lee, A. S., & Baskerville, R. L. (2003). *Generalizing Generalizability in Information Systems Research*. Information Systems Research, 14(3), 221–243. [doi:10.1287/isre.14.3.221.16560](https://doi.org/10.1287/isre.14.3.221.16560) | Generalization is broader than statistical sampling; distinguish empirical and theoretical statements. | [RePEc bibliographic record and abstract](https://ideas.repec.org/a/inm/orisre/v14y2003i3p221-243.html) checked against [Lee's publication list](https://allenslee.com/research/). Abstract only; publisher full text was inaccessible. |
 | Gregor, S., & Klein, G. (2014). *Eight Obstacles to Overcome in the Theory Testing Genre*. Journal of the Association for Information Systems, 15(11), i–xix. [doi:10.17705/1jais.00382](https://doi.org/10.17705/1jais.00382) | Theory-grounded models, construct clarity, causal and common-method concerns, sampling limits and theory refinement. | [AIS metadata](https://aisel.aisnet.org/jais/vol15/iss11/5/) checked against the [journal PDF](https://aisel.aisnet.org/jais/Gregor_and_Klein_2014.pdf), §§2.1–2.3, 3.1, 3.4 and Figure 1. An editorial expressing the authors' views, not official journal policy. |
-| Mertens, W., & Recker, J. (2020). *New Guidelines for Null Hypothesis Significance Testing in Hypothetico-Deductive IS Research*. Journal of the Association for Information Systems, 21(4), 1072–1102. [doi:10.17705/1jais.00629](https://doi.org/10.17705/1jais.00629) | Hypothesis-testing cycle, sampling/power, careful interpretation, HARKing and preregistration before analysis. | [AIS metadata](https://aisel.aisnet.org/jais/vol21/iss4/1/) and [Crossref pagination](https://api.crossref.org/works/10.17705/1jais.00629) checked against the [Cologne accepted manuscript](https://kups.ub.uni-koeln.de/10006/1/ISP-JAIS-accepted.pdf), NHST threats and Table 2. Repository dates the manuscript 2019; journal publication is 2020. |
-
-Candidate sources not used: Straub, Boudreau & Gefen (2004), *Validation
-Guidelines for IS Positivist Research*, was confirmed as **CAIS**, outside the
-requested journal basket. Burton-Jones & Lee (2017), *Thinking About Measures
-and Measurement in Positivist Research: A Proposal for Refocusing on
-Fundamentals*, was confirmed as **ISR**, 28(3), 451–467, through
-[RePEc](https://ideas.repec.org/a/inm/orisre/v28y2017i3p451-467.html) and Lee's
-publication list; its specific construct-to-measure ordering claim remains
-**unverified** here because the full text was not retrieved. No claim from
-that paper is used. The proposed label "Mertens & Recker on preregistration /
-open science" was a topic description, not its verified article title.
+| Mertens, W., & Recker, J. (2020). *New Guidelines for Null Hypothesis Significance Testing in Hypothetico-Deductive IS Research*. Journal of the Association for Information Systems, 21(4), 1072–1102. [doi:10.17705/1jais.00629](https://doi.org/10.17705/1jais.00629) | Hypothesis-testing cycle, sampling/power, careful interpretation, HARKing and graded preregistration guidance. | [AIS metadata](https://aisel.aisnet.org/jais/vol21/iss4/1/) and [Crossref pagination](https://api.crossref.org/works/10.17705/1jais.00629) checked against the [Cologne accepted manuscript](https://kups.ub.uni-koeln.de/10006/1/ISP-JAIS-accepted.pdf), NHST threats and Table 3 (author-facing guidelines). Table numbering refers to the accepted manuscript. Repository dates the manuscript 2019; journal publication is 2020. |

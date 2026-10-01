@@ -69,6 +69,16 @@ test('record-review is invoked by the researcher, cites, and says "not in the re
   assert.match(body, /#<seq>/);
 });
 
+test('record-review cites a statement without a hash the harness never prints', () => {
+  const { body } = readSkill('record-review');
+  assert.match(body, /question id `n\.m`, its marker, and its exact words/);
+  assert.match(body, /recorded hash/, 'the hash the log records must stay citable');
+  assert.match(body, /never compute\s+one, never invent one/);
+  // the old demand for a per-statement hash no allowed tool prints
+  assert.doesNotMatch(body, /text hash the harness/);
+  assert.doesNotMatch(body, /hashes differ and show both/);
+});
+
 test('check: its only write instruction is log DISCOVERY "<n.m> check"', () => {
   const { fm, body } = readSkill('check');
   assert.equal(fm['disable-model-invocation'], 'true');
@@ -106,6 +116,19 @@ test('no model-facing skill runs accept or choose', () => {
     });
   }
   assert.equal(readSkill('accept').fm['disable-model-invocation'], 'true');
+});
+
+test('every /research-harness:accept shown in a skill carries --explained', () => {
+  let seen = 0;
+  for (const n of names) {
+    const { text } = readSkill(n);
+    for (const line of text.split('\n')) {
+      if (!line.includes('/research-harness:accept')) continue;
+      seen += 1;
+      assert.match(line, /--explained/, `${n}: accept without --explained: ${line.trim()}`);
+    }
+  }
+  assert.ok(seen > 0, 'no skill shows the researcher how to accept');
 });
 
 function allowedTools(name) {

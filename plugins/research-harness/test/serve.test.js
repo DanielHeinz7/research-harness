@@ -9,8 +9,9 @@ const os = require('node:os');
 const path = require('node:path');
 
 const seal = require('../hooks/lib/seal');
+const profileLib = require('../hooks/lib/profile');
 const { textHash } = require('../hooks/lib/hash');
-const { start } = require('../bin/canvas-serve');
+const { start, viewState } = require('../bin/canvas-serve');
 
 const pluginRoot = path.resolve(__dirname, '..');
 const cli = path.join(pluginRoot, 'bin', 'research-harness.js');
@@ -331,6 +332,31 @@ test('/api/state lists every variant with its name, lens and state, and none wit
   t.after(() => bare.close());
   const none = await request(bare.port, { urlPath: '/api/state', headers: { Host: `127.0.0.1:${bare.port}` } });
   assert.deepEqual(none.json.variants, []);
+});
+
+test('viewState sends the active profile graph, and null with the error for an unknown profile', () => {
+  const root = copyFixture();
+  const s = viewState(root, pluginRoot).body;
+  assert.deepEqual(s.graph, profileLib.loadProfile('is-qualitative', pluginRoot).graph);
+  const canvasFile = path.join(root, 'research', 'canvas.md');
+  fs.writeFileSync(canvasFile, fs.readFileSync(canvasFile, 'utf8').replace(/^profile: .*$/m, 'profile: is-quantitative'));
+  assert.deepEqual(viewState(root, pluginRoot).body.graph, profileLib.loadProfile('is-quantitative', pluginRoot).graph);
+  fs.writeFileSync(canvasFile, fs.readFileSync(canvasFile, 'utf8').replace(/^profile: .*$/m, 'profile: no-such-profile'));
+  const broken = viewState(root, pluginRoot).body;
+  assert.equal(broken.graph, null);
+  assert.match(broken.profileError, /profile not found/);
+});
+
+test('viewState passes the active profile\'s checks to the review', () => {
+  const root = copyFixture();
+  // `is-qualitative` declares no `checks` block: the review reports nothing.
+  assert.deepEqual(viewState(root, pluginRoot).body.review.findingsBeforeHypotheses, []);
+  const canvasFile = path.join(root, 'research', 'canvas.md');
+  fs.writeFileSync(canvasFile, fs.readFileSync(canvasFile, 'utf8').replace(/^profile: .*$/m, 'profile: is-quantitative'));
+  // A finding (element 7) with no DECISION on 4 or 6 before it: the check the
+  // profile declares reports both.
+  fs.appendFileSync(path.join(root, 'research', 'decisions.md'), '\n## [#4] 2026-09-16 · DISCOVERY · 7 Findings\n\nUptake was recorded weeks after the meeting. [tentative]\n');
+  assert.deepEqual(viewState(root, pluginRoot).body.review.findingsBeforeHypotheses, [{ element: 4, finding: 4 }, { element: 6, finding: 4 }]);
 });
 
 test('the single-use code is traded for the token once, and is no token itself', async (t) => {

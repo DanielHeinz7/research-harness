@@ -60,7 +60,7 @@ function canvasState(state, pluginRoot) {
       openChecks: openChecks(state.decisionsText, q.id).map((c) => ({ seq: c.seq, body: c.body })),
     })),
   }));
-  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText, key: state.key });
+  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, checks: state.checks, decisionsText: state.decisionsText, key: state.key });
   const { ledger } = report;
   // Same order of verdicts as review.js: after the break everything is broken,
   // before the first seal everything is legacy.
@@ -74,6 +74,8 @@ function canvasState(state, pluginRoot) {
     version: pluginVersion(pluginRoot),
     project: state.parsed.frontmatter.project || null,
     frontmatter: state.parsed.frontmatter,
+    // The active profile's graph, so the view never holds a copy of one.
+    graph: state.graph || null,
     elements,
     violations: state.graph ? profileLib.dependencyViolations(state.parsed, state.graph) : [],
     review: { ...report, ledger: { ...ledger, verified: [...ledger.verified] } },

@@ -34,6 +34,12 @@ test('canvas.html supports fixture mode via the fixture query param', () => {
   assert.match(html, /location\.search/);
 });
 
+test('canvas.html takes the dependency graph from the state, not from a copy of a profile', () => {
+  assert.doesNotMatch(html, /PROFILE_GRAPHS/);
+  assert.doesNotMatch(html, /'is-qualitative':\s*\{/);
+  assert.match(html, /s\.graph/);
+});
+
 test('canvas.html sends the harness token and JSON content type on writes', () => {
   assert.match(html, /X-Harness-Token/);
   assert.match(html, /application\/json/);

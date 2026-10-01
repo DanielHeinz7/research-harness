@@ -9,3 +9,5 @@
 {"label":"control: cp into research/canvas.md","command":"cp draft.md research/canvas.md","expect":"DENY"}
 {"label":"control: redirect into research/canvas.md","command":"echo x > research/canvas.md","expect":"DENY"}
 {"label":"SQ-101: python heredoc program is not lexed as bash","command":"python3 - <<'EOF'\nimport os, tempfile\nd = tempfile.mkdtemp()\nos.mkdir(os.path.join(d, \"out\"))\nprint(d)\nEOF","expect":"ALLOW"}
+{"label":"SQ-145 row 1: sed -i whose script text holds a state-name fragment","cwd":"sq-145-no-such-directory","command":"sed -i '' 's/Foo\\./Research/' notes.md","expect":"ALLOW"}
+{"label":"SQ-145 row 2: the same fragment with a word after it","cwd":"sq-145-no-such-directory","command":"sed -i '' 's/Foo\\./Research Plan/' notes.md","expect":"ALLOW"}

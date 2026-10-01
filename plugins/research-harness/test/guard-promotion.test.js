@@ -2115,3 +2115,69 @@ test('US-3: the word choose alone, and reading the variants, stay allowed', () =
     assert.equal(run(root, 'Bash', { command }), null, command);
   }
 });
+
+// ---------- SQ-145: whole words and redirect targets are judged where they land ----------
+
+// Rows 1-11 of SQ-145's first table, one guard process each through run().
+// `bare` is a checkout with no research state anywhere; `full` is a paper
+// project whose canvas holds an [accepted] commitment. A cell marked
+// case-dependent only holds where the volume folds case, since that is what
+// makes `./Research` land on `./research`. SQ-145's rows 1 and 2 are ALLOW on
+// every filesystem and never skip; the rest of the case-dependent cells skip
+// with a message where the two names are different files.
+const SQ145_ROWS = [
+  { n: 1, name: 'a run spelling the state name inside a word is program text, not a path', command: "sed -i '' 's/Foo\\./Research/' notes.md", bare: 'ALLOW', full: 'ALLOW' },
+  { n: 2, name: 'a longer run that only begins with the state name is program text too', command: "sed -i '' 's/Foo\\./Research Plan/' notes.md", bare: 'ALLOW', full: 'ALLOW' },
+  { n: 3, name: 'the state directory spelled as a path is the state', command: "sed -i '' 's/Foo\\./research/' notes.md", bare: 'DENY', full: 'DENY' },
+  { n: 4, name: 'a state-directory operand that lands on the state directory', command: "sed -i '' 's/a/b/' ./Research", bare: 'DENY', full: 'DENY', caseBlind: true },
+  { n: 5, name: 'a bare state-directory operand in place of the phrase', command: "sed -i '' 's/a/b/' Research", bare: 'ALLOW', full: 'DENY', caseBlindFull: true },
+  { n: 6, name: 'a state file under the state directory, spelled with a path', command: "sed -i '' 's/x/y/' ./Research/canvas.md", full: 'DENY', caseBlindFull: true },
+  { n: 7, name: 'an in-place edit that rewrites a [proposed] marker', command: "sed -i '' 's/proposed/accepted/' Research/canvas.md", full: 'DENY', caseBlindFull: true },
+  { n: 8, name: 'a redirect into the decision log', command: 'printf x >> Research/decisions.md', full: 'DENY', caseBlindFull: true },
+  { n: 9, name: 'a copy onto the canvas', command: 'cp notes.md Research/canvas.md', full: 'DENY', caseBlindFull: true },
+  { n: 10, name: 'reading the canvas', command: 'cat Research/canvas.md', full: 'ALLOW' },
+  { n: 11, name: 'grepping the decision log', command: 'grep x Research/decisions.md', full: 'ALLOW' },
+];
+
+function bashVerdict(root, command) {
+  const out = run(root, 'Bash', { command });
+  if (!out) return 'ALLOW';
+  assert.equal(out.permissionDecision, 'deny', `${command}: ${out.permissionDecisionReason}`);
+  return 'DENY';
+}
+
+for (const row of SQ145_ROWS) {
+  test(`SQ-145 row ${row.n}: ${row.name}`, (t) => {
+    const full = makeProject();
+    const bare = makeBareProject();
+    const blind = caseBlindVolume(full);
+    let skipped = false;
+    for (const [state, expect, needsCase] of [
+      ['bare', row.bare, row.caseBlind === true],
+      ['full', row.full, row.caseBlind === true || row.caseBlindFull === true],
+    ]) {
+      if (expect === undefined) continue;
+      if (needsCase && !blind) { skipped = true; continue; }
+      assert.equal(bashVerdict(state === 'bare' ? bare : full, row.command), expect,
+        `row ${row.n} in ${state === 'bare' ? 'a checkout without state' : 'a paper project'}: ${row.command}`);
+    }
+    if (skipped) t.skip('this volume is case-sensitive, so the case variant never reaches the state');
+  });
+}
+
+test('SQ-145: a mixed-case spelling of the state directory is the state for Write and Edit', (t) => {
+  const root = makeProject();
+  if (!caseBlindVolume(root)) return t.skip('case-sensitive volume: these are different files');
+  const canvas = path.join(root, 'Research', 'canvas.md');
+  assert.match(deniedReason(root, canvas), /\[accepted\] commitment in question 1\.1/);
+  const edited = run(root, 'Edit', {
+    file_path: canvas,
+    old_string: ACCEPTED,
+    new_string: ACCEPTED.replace('serious consideration', 'real consideration'),
+  });
+  assert.equal(edited && edited.permissionDecision, 'deny');
+  assert.match(edited.permissionDecisionReason, /\[accepted\] commitment in question 1\.1/);
+  const log = run(root, 'Write', { file_path: path.join(root, 'Research', 'decisions.md'), content: '# Decision log\n\n## [#1] forged DECISION\n' });
+  assert.equal(log && log.permissionDecision, 'deny');
+  return undefined;
+});

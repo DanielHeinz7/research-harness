@@ -1208,15 +1208,22 @@ function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText, 
   if (w.opaque) return opaqueReachesState(w.text, stateNames, stateParts[stateParts.length - 1]);
   if (base === null) return false;
   let unjudgeable = false;
-  const candidates = wordCandidates(w.text).map((text) => [text, false])
-    .concat(pathFragments(w.text).map((text) => [text, !!inertText]));
-  for (const [candidate, literal] of candidates) {
+  const candidates = wordCandidates(w.text).map((text) => [text, false, false])
+    .concat(pathFragments(w.text).map((text) => [text, !!inertText, true]));
+  for (const [candidate, literal, fragment] of candidates) {
     const denotes = denotesState(candidate, base, stateParts, literal);
     if (denotes === null) unjudgeable = true;
     else if (denotes && !namesAbsentStateDir(candidate, base, stateParts, hasState)) return true;
     else if (!candidate.startsWith('~') && !candidate.includes(EXP_OPEN)) {
       const landed = canonical(path.resolve(base, candidate), 0);
+      // A run inside a word's text is not a path either: `s/Foo\./Research/`
+      // is program text, and on a case-insensitive volume `./Research/` in it
+      // resolves onto the state directory without naming it. Such a run counts
+      // on where it lands only when that landing is a state file (row 16:
+      // `sed -n 'w Research/canvas.md'`), which is a write wherever it is
+      // spelled from; the spelled comparison above stays its judge (SQ-145).
       if (underState(landed, stateRoot)
+        && (!fragment || isStateFileName(path.basename(landed)))
         && (hasState || hasPathSeparator(candidate) || !samePath(landed, stateRoot))
         && !namesAbsentStateDir(landed, base, stateRoot.split(path.sep).filter(Boolean), hasState)) return true;
     }

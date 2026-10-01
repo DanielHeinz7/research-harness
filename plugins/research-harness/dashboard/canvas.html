@@ -780,13 +780,6 @@
 (function () {
   'use strict';
 
-  // Static copy of the shipped `is-qualitative` profile's dependency graph
-  // (plugins/research-harness/references/profiles/is-qualitative.md, "##
-  // Dependency graph") — used to find the open field most others depend on.
-  var PROFILE_GRAPHS = {
-    'is-qualitative': { 1: [], 2: [1, 3], 3: [1], 4: [2, 7], 5: [3, 9], 6: [5], 7: [6], 8: [2, 4, 7], 9: [1, 3] }
-  };
-
   // Daniel's 2026-09-30 direction (SQ-110 comment c_mun9rkzh_c1fd1c, point 1):
   // each of the nine fields is headed by a plain human question; the canvas
   // term goes underneath, small. This is the standard nine-element canvas
@@ -1147,7 +1140,7 @@
 
   function renderRail(s) {
     var elements = s.elements;
-    var graph = (s.frontmatter && PROFILE_GRAPHS[s.frontmatter.profile]) || null;
+    var graph = s.graph || null;
     var accent = s.profileError ? null : computeAccent(elements, graph);
     var cards = elements.map(function (e) {
       var totalk = findingsFor(s.decisions, e.number).length;
@@ -1202,7 +1195,7 @@
   // footer, no side rail (both hidden by CSS while this view is active).
   function renderPoster(s) {
     var elements = s.elements;
-    var graph = (s.frontmatter && PROFILE_GRAPHS[s.frontmatter.profile]) || null;
+    var graph = s.graph || null;
     var accent = s.profileError ? null : computeAccent(elements, graph);
     var outlet = s.frontmatter && s.frontmatter.outlet;
 

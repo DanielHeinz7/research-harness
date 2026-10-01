@@ -1820,6 +1820,12 @@ const UNCOMPUTABLE_PATTERN_WHY = 'it carries a pattern this guard cannot compute
 // Acceptance is the researcher's act wherever it is invoked from: running it
 // from the shell would be the model declaring a commitment (§4.3).
 const ACCEPT_DENIAL = 'Accepting a statement is the researcher\'s act, so `research-harness accept` cannot be run from the shell — under any name, quoting, or variable. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m>.';
+// SQ-146. A subcommand the guard cannot read — a word built at run time
+// (`research-harness "$SUB"`) or a program text that only names the CLI — is
+// judged as strictly as `accept` is, because it may be one. The verdict stays
+// the same; the text says what the guard actually knows, rather than naming a
+// subcommand it never read.
+const OPAQUE_SUB_DENIAL = 'This command may run research-harness with a subcommand this guard cannot read (built at run time, or inside program text), so it is denied the way `accept` is. Spell the subcommand out, e.g. `research-harness status`. If the text only mentions the name, pass it as data, e.g. printf it into a file and run the file. Acceptance stays the researcher\'s act via /research-harness:accept <n.m>.';
 // US-3: choosing a framing replaces the main canvas with one variant's and
 // seals a DECISION, so it is the researcher's act exactly as accepting is, and
 // it is found on the same routes and by the same name rule.
@@ -1944,6 +1950,7 @@ function bashVerdict(command, projectRoot) {
   let touches = false;
   let uncomputable = false;
   let acceptAttempt = false;
+  let opaqueSubAttempt = false;
   let chooseAttempt = false;
   let serveAttempt = false;
   let decisionAttempt = false;
@@ -2077,7 +2084,7 @@ function bashVerdict(command, projectRoot) {
       if (invocation.harness && verbAt > 0) envAttempt = true;
       if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'accept') acceptAttempt = true;
       else if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'choose') chooseAttempt = true;
-      else if (invocation.harness && invocation.sub && invocation.sub.opaque) acceptAttempt = true;
+      else if (invocation.harness && invocation.sub && invocation.sub.opaque) opaqueSubAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
     }
     // SQ-105: an interpreter's own program text — an inline program or a heredoc
@@ -2115,6 +2122,7 @@ function bashVerdict(command, projectRoot) {
   }
 
   if (acceptAttempt) return ACCEPT_DENIAL;
+  if (opaqueSubAttempt) return OPAQUE_SUB_DENIAL;
   if (chooseAttempt) return CHOOSE_DENIAL;
   if (serveAttempt) return bashDenial(NAMED_SERVER_WHY);
   if (decisionAttempt) return LOG_DECISION_DENIAL;

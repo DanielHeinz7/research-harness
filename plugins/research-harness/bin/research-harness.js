@@ -592,6 +592,8 @@ function shimDirs() {
 }
 
 function checkTerminalCommand() {
+  const onPath = new Set((process.env.PATH || '').split(path.delimiter).filter(Boolean));
+  let offPath = null;
   for (const dir of shimDirs()) {
     const file = path.join(dir, SHIM_NAME);
     let raw = null;
@@ -607,8 +609,13 @@ function checkTerminalCommand() {
       } catch (_) {
         return { ok: false, name: 'terminal command', detail: `shim at ${file} is not executable; run research-harness install-cli again` };
       }
-      return { ok: true, name: 'terminal command', detail: `shim at ${file}` };
+      if (onPath.has(dir)) return { ok: true, name: 'terminal command', detail: `shim at ${file}` };
+      // The default directory need not be on PATH, and a terminal does not look there.
+      offPath = offPath || { file, dir };
     }
+  }
+  if (offPath) {
+    return { ok: false, name: 'terminal command', detail: `shim at ${offPath.file}, but ${offPath.dir} is not on PATH; add this line to ~/.zshrc: export PATH="${offPath.dir}:$PATH"` };
   }
   return { ok: false, name: 'terminal command', detail: 'not installed; run research-harness install-cli so serve works in your own terminal' };
 }

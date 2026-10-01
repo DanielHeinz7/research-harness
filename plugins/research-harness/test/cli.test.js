@@ -702,10 +702,23 @@ test('doctor reports ok when the plugin is enabled and the terminal command is i
   const root = makeProject(false);
   const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
   const home = fakeHome();
-  installShim(path.join(home, '.local', 'bin'));
-  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, ...NO_PATH });
+  const dir = path.join(home, '.local', 'bin');
+  installShim(dir);
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, PATH: `/usr/bin:/bin:${dir}` });
   assert.equal(out.status, 0, out.stdout + out.stderr);
   assert.match(out.stdout, /^research-harness doctor: ok \(3 checks\)$/m);
+});
+
+test('doctor reports a shim in ~/.local/bin that the terminal cannot find, with the PATH line install-cli prints', () => {
+  const root = makeProject(false);
+  const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
+  const home = fakeHome();
+  const dir = path.join(home, '.local', 'bin');
+  const file = installShim(dir);
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, ...NO_PATH });
+  assert.notEqual(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /^research-harness doctor: 1 of 3 checks failed$/m);
+  assert.ok(out.stdout.includes(`- terminal command: shim at ${file}, but ${dir} is not on PATH; add this line to ~/.zshrc: export PATH="${dir}:$PATH"`), out.stdout);
 });
 
 test('doctor reports the plugin as not enabled when no settings file names it', () => {

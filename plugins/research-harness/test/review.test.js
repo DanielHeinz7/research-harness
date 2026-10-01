@@ -8,6 +8,7 @@ const path = require('node:path');
 
 const canvas = require('../hooks/lib/canvas');
 const decisions = require('../hooks/lib/decisions');
+const { formatEntry } = require('../hooks/lib/decisions');
 const seal = require('../hooks/lib/seal');
 const review = require('../hooks/lib/review');
 const { textHash } = require('../hooks/lib/hash');
@@ -166,4 +167,38 @@ test('committed statements that would not render are reported, proposals are not
   );
   // The commitment itself is untouched: this is a visibility finding, not a loss.
   assert.equal(report.unloggedAcceptances.length, reviewOf(canvasText, legacyLog, KEY).unloggedAcceptances.length);
+});
+
+function logOf(entries) {
+  return entries.map((e, i) => formatEntry({ seq: i + 1, date: '2026-10-01', body: 'x', ...e })).join('\n');
+}
+
+test('findingsBeforeHypotheses is silent without an entry on element 7', () => {
+  const text = logOf([{ kind: 'DISCOVERY', ref: '2.1 check' }]);
+  assert.deepEqual(review.findingsBeforeHypotheses(text), []);
+});
+
+test('findingsBeforeHypotheses reports elements 4 and 6 not accepted before the first finding', () => {
+  const text = logOf([
+    { kind: 'DECISION', ref: '4.1 accepted' },
+    { kind: 'DISCOVERY', ref: '7.1 check' },
+    { kind: 'DECISION', ref: '6.1 accepted' },
+  ]);
+  assert.deepEqual(review.findingsBeforeHypotheses(text), [{ element: 6, finding: 2 }]);
+});
+
+test('findingsBeforeHypotheses is silent when 4 and 6 were accepted first', () => {
+  const text = logOf([
+    { kind: 'DECISION', ref: '4.1 accepted' },
+    { kind: 'DECISION', ref: '6.2 accepted' },
+    { kind: 'CONSTRAINT', ref: '7' },
+  ]);
+  assert.deepEqual(review.findingsBeforeHypotheses(text), []);
+});
+
+test('mechanicalReview runs the check only when the profile names it', () => {
+  const parsed = canvas.parseCanvas(canvasText);
+  const text = logOf([{ kind: 'DISCOVERY', ref: '7.1 check' }]);
+  assert.deepEqual(review.mechanicalReview({ parsed, graph: null, decisionsText: text }).findingsBeforeHypotheses, []);
+  assert.equal(review.mechanicalReview({ parsed, graph: null, checks: ['hypotheses-before-data'], decisionsText: text }).findingsBeforeHypotheses.length, 2);
 });

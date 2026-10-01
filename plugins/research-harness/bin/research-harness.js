@@ -280,7 +280,7 @@ function review(flags) {
   // With `--key`, the key this machine happens to hold is not what this run
   // judges with, so a complaint about reading that one is not its business.
   const key = given.key === undefined ? state.key : given.key;
-  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, decisionsText: state.decisionsText, key });
+  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, checks: state.checks, decisionsText: state.decisionsText, key });
   const list = (arr) => (arr.length ? arr.join(', ') : 'none');
   const stmt = (s) => `${s.question} [${s.marker === null ? 'unmarked' : s.marker}] (line ${s.line}): ${s.text}`;
   const lines = [variant === undefined ? '# Mechanical review' : `# Mechanical review — variant ${variant} (lens: ${state.parsed.frontmatter.lens || '?'})`, ''];
@@ -299,6 +299,9 @@ function review(flags) {
   lines.push('## Empty elements', list(report.empty), '');
   lines.push('## Open elements (proposals only)', list(report.open), '');
   lines.push('## Dependency violations', ...(report.violations.length ? report.violations.map((v) => `element ${v.element} is accepted but ${v.missing.map((m) => `element ${m.element} is ${m.status}`).join(', ')}`) : ['none']), '');
+  if (state.checks.includes('hypotheses-before-data')) {
+    lines.push('## Findings before hypotheses', '(reported, never enforced; see references/preregistration.md)', ...(report.findingsBeforeHypotheses.length ? report.findingsBeforeHypotheses.map((f) => `#${f.finding} on element 7 comes before any acceptance on element ${f.element}`) : ['none']), '');
+  }
   lines.push('## Unmarked statements', ...(report.unmarked.length ? report.unmarked.map(stmt) : ['none']), '');
   lines.push('## Untagged statements', '(no `src:` or `unverified` — decide whether each is a factual claim)', ...(report.untagged.length ? report.untagged.map(stmt) : ['none']), '');
   lines.push('## Conversational [stated] statements (review periodically)', ...(report.conversationalStated.length ? report.conversationalStated.map(stmt) : ['none']), '');

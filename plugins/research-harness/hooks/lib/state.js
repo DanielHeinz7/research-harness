@@ -36,9 +36,12 @@ function loadState(root, { pluginRoot, variant } = {}) {
   const parsed = canvas.parseCanvas(canvasText);
   const decisionsText = project.readIfExists(paths.decisions) || '';
   let graph = null;
+  let checks = [];
   let profileError = null;
   try {
-    graph = profileLib.loadProfile(parsed.frontmatter.profile || 'is-qualitative', pluginRoot || defaultPluginRoot()).graph;
+    const loaded = profileLib.loadProfile(parsed.frontmatter.profile || 'is-qualitative', pluginRoot || defaultPluginRoot());
+    graph = loaded.graph;
+    checks = loaded.checks;
   } catch (err) {
     profileError = err.message;
   }
@@ -51,7 +54,7 @@ function loadState(root, { pluginRoot, variant } = {}) {
   } catch (err) {
     keyError = `the sealing key at ${seal.keyPath(root)} exists but cannot be read (${(err && err.code) || 'unknown error'})`;
   }
-  return { root, variant, paths, canvasText, parsed, decisionsText, graph, profileError, key, keyError };
+  return { root, variant, paths, canvasText, parsed, decisionsText, graph, checks, profileError, key, keyError };
 }
 
 // Why the ledger cannot take a new entry right now, or null. Checked before

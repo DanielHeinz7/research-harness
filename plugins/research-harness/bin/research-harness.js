@@ -9,6 +9,7 @@ const childProcess = require('node:child_process');
 const project = require('../hooks/lib/project');
 const canvasLib = require('../hooks/lib/canvas');
 const decisions = require('../hooks/lib/decisions');
+const identity = require('../hooks/lib/identity');
 const profileLib = require('../hooks/lib/profile');
 const seal = require('../hooks/lib/seal');
 const stateLib = require('../hooks/lib/state');
@@ -29,6 +30,7 @@ const USAGE = [
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>] [--variant <name>]',
   'research-harness title [<text>]',
   'research-harness profile [<id>]',
+  'research-harness name [<name>]',
   'research-harness serve [--no-open]',
   'research-harness doctor',
   'research-harness install-cli [--dir <path>]',
@@ -481,6 +483,28 @@ function profile(positional) {
   return 0;
 }
 
+// ---------- name ----------
+
+// The name every entry written from this machine carries as `By` (spec §3).
+// User-wide, not per project: it belongs to the person, not the clone, so two
+// clones of one project write the same name and a second clone needs no
+// setting up. A statement, not proof: the seal keeps the name from changing
+// after the entry is written, and says nothing about who held the key.
+function name(positional) {
+  if (!positional.length) {
+    const who = identity.readName(project.projectDir({}));
+    if (!who.name) return fail(who.error);
+    say(who.source === 'git' ? `${who.name} (from git config user.name)` : who.name);
+    return 0;
+  }
+  if (positional.length > 1) return fail(`name takes one argument; quote a name with spaces.\n${USAGE}`, 2);
+  const bad = identity.nameRefusal(positional[0]);
+  if (bad) return fail(bad, 2);
+  identity.writeName(positional[0]);
+  say(`Name set: ${positional[0].trim()}. Every entry you write from now on carries it as By — a statement, not a proof of who wrote it.`);
+  return 0;
+}
+
 // ---------- serve ----------
 
 // The session view (US-2). A human runs this in their own terminal; the URL
@@ -679,9 +703,19 @@ function checkTerminalCommand() {
   return { ok: false, name: 'terminal command', detail: 'not installed; run research-harness install-cli so serve works in your own terminal' };
 }
 
+// Every entry written here carries a name as `By`; without one the write
+// refuses, so doctor reports it before the researcher meets the refusal
+// mid-write (spec §3).
+function checkName() {
+  const who = identity.readName(project.projectDir({}));
+  return who.name
+    ? { ok: true, name: 'name', detail: `entries are written as ${who.name}` }
+    : { ok: false, name: 'name', detail: who.error };
+}
+
 function doctor() {
   const root = project.projectDir({});
-  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState(), checkTerminalCommand()].filter(Boolean);
+  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState(), checkName(), checkTerminalCommand()].filter(Boolean);
   const failed = checks.filter((c) => !c.ok);
   say(`research-harness doctor: ${failed.length === 0 ? `ok (${checks.length} checks)` : `${failed.length} of ${checks.length} checks failed`}`);
   for (const c of failed) say(`- ${c.name}: ${c.detail}`);
@@ -796,6 +830,7 @@ function main(argv) {
     case 'log': return log(positional, flags);
     case 'title': return title(positional);
     case 'profile': return profile(positional);
+    case 'name': return name(positional);
     case 'serve': return serve(flags);
     case 'doctor': return doctor();
     case 'install-cli': return installCli(flags);

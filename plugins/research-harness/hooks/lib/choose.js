@@ -126,6 +126,7 @@ function chooseFraming({ root, name, why, rejected, pluginRoot } = {}) {
     ref: `framing chosen: ${name}`,
     hash,
     body,
+    by: main.by,
     why: reason,
     rejected: rejectedText,
   }, main.key, { decision: true });

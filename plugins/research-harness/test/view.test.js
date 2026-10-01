@@ -472,3 +472,7 @@ test('statement text is never editable in the view, and a state without variants
   assert.doesNotMatch(plain.app.innerHTML, /data-view-target="compare"|id="compare"/, 'an older or variant-free state has no comparison');
   assert.match(plain.app.innerHTML, /id="poster"/);
 });
+
+test('canvas.html reads By as an entry field, so it is never shown as raw body text', () => {
+  assert.match(html, /ENTRY_LABEL = \/\^\\\*\\\*\(By\|Why\|/);
+});

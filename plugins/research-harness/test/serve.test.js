@@ -21,6 +21,12 @@ delete process.env.CLAUDE_PROJECT_DIR;
 delete process.env.RESEARCH_HARNESS_DIR;
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
 process.env.RESEARCH_HARNESS_STATE_DIR = stateDir;
+// The name every entry carries as `By` (SQ-177), set here rather than taken
+// from the machine's git config, so the expected bytes below are the same
+// everywhere. The view reads the same file the CLI does.
+const NAME = 'A. Researcher';
+const nameFile = path.join(stateDir, 'name');
+fs.writeFileSync(nameFile, `${NAME}\n`);
 
 const SPEAKING = 'Speaking frequency is well documented; whether a proposal is taken up is not.';
 const WHY = 'the gap is uptake, not voice';
@@ -202,7 +208,7 @@ test('the session server serves state, refuses what fails a check, and writes wh
   for (const question of CHECKS) {
     const logged = await post(srv, '/api/comment', { ref: '1.2 check', body: question });
     assert.equal(logged.status, 200, logged.text);
-    checks.push({ seq: logged.json.seq, body: question });
+    checks.push({ seq: logged.json.seq, body: `${question}\n**By:** ${NAME}` });
     const cli = run(second, ['log', 'DISCOVERY', '1.2 check', '--body', question]);
     assert.equal(cli.status, 0, cli.stdout + cli.stderr);
   }
@@ -449,6 +455,23 @@ test('research-harness serve --no-open prints the code URL, never the token, and
   assert.equal(stdout.split('\n').filter(Boolean).length, 2);
   assert.ok(!/[0-9a-f]{64}/.test(stdout), 'stdout holds no 64-hex token');
   assert.ok(!stdout.includes(res.json.token));
+});
+
+test('a write from the view carries the name of the person who started the server', async (t) => {
+  // The name belongs to the person, not to the clone: serve reads the same
+  // user-wide file the CLI reads, so a comment from the view lands with a By
+  // field like every other entry — under the name set here, not the one the
+  // other tests in this file use.
+  fs.writeFileSync(nameFile, 'B. Supervisor\n');
+  t.after(() => fs.writeFileSync(nameFile, `${NAME}\n`));
+
+  const root = keyedProject();
+  const srv = await start({ root, pluginRoot });
+  t.after(() => srv.close());
+
+  const comment = await post(srv, '/api/comment', { ref: '1.2', body: 'Ask the supervisor about chairing.' });
+  assert.equal(comment.status, 200, comment.text);
+  assert.match(read(root, 'decisions.md'), new RegExp(`## \\[#${comment.json.seq}\\] \\d{4}-\\d{2}-\\d{2} · DISCOVERY · 1\\.2 · seal ${comment.json.seal}\\nAsk the supervisor about chairing\\.\\n\\*\\*By:\\*\\* B\\. Supervisor\\n`));
 });
 
 test.after(() => {

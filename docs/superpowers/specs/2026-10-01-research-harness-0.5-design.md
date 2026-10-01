@@ -358,7 +358,7 @@ in the right order.
    `merge-log --skip-decision #n` merges while leaving that one DECISION out of
    the moved entries (it stays in git history on the abandoned commit, and the
    MERGE entry records "#n dropped, to be accepted again"). Approved by Daniel
-   yes before the plan builds on it.
+   (2026-10-01); the merge plan builds on it.
 2. **Order of work.** §3 (`By`) and the new kinds of §4 come first, since §2,
    §5 and §8 read them. §2 is the riskiest and gets its own review ticket.
 3. **`is-quantitative` (§9) is independent** of §2–§8 and can run in its own

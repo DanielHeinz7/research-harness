@@ -601,6 +601,12 @@ function checkTerminalCommand() {
       continue; // unreadable is not installed; doctor says so in one line
     }
     if (raw !== null && raw.includes(SHIM_MARKER)) {
+      // install-cli rewrites its own shim with mode 0755, so it is the repair.
+      try {
+        fs.accessSync(file, fs.constants.X_OK);
+      } catch (_) {
+        return { ok: false, name: 'terminal command', detail: `shim at ${file} is not executable; run research-harness install-cli again` };
+      }
       return { ok: true, name: 'terminal command', detail: `shim at ${file}` };
     }
   }

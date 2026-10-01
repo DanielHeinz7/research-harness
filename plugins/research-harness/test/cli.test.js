@@ -692,7 +692,7 @@ function fakeHome() {
 function installShim(dir) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'research-harness');
-  fs.writeFileSync(file, '#!/bin/sh\n# research-harness install-cli shim; a test fixture\n');
+  fs.writeFileSync(file, '#!/bin/sh\n# research-harness install-cli shim; a test fixture\n', { mode: 0o755 });
   return file;
 }
 
@@ -740,6 +740,18 @@ test('doctor asks for the terminal command when nothing has installed it', () =>
   const foreign = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: foreignHome, ...NO_PATH });
   assert.notEqual(foreign.status, 0, foreign.stdout + foreign.stderr);
   assert.match(foreign.stdout, /^- terminal command: not installed; run research-harness install-cli so serve works in your own terminal$/m);
+});
+
+test('doctor does not count a shim the terminal cannot execute', () => {
+  const root = makeProject(false);
+  const configDir = fakeConfigDir({ 'research-harness@research-harness': true });
+  const home = fakeHome();
+  const file = installShim(path.join(home, '.local', 'bin'));
+  fs.chmodSync(file, 0o644);
+  const out = run(root, ['doctor'], { CLAUDE_CONFIG_DIR: configDir, HOME: home, ...NO_PATH });
+  assert.notEqual(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /^research-harness doctor: 1 of 3 checks failed$/m);
+  assert.ok(out.stdout.includes(`- terminal command: shim at ${file} is not executable; run research-harness install-cli again`), out.stdout);
 });
 
 test('doctor finds the terminal command on PATH, not only at ~/.local/bin', () => {

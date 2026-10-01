@@ -289,3 +289,30 @@ test('a committed statement is marked as hidden when it would not render', () =>
   const fenced = canvas.parseCanvas(base.replace(accepted, '```\n\n' + accepted + '\n\n```'));
   assert.equal(canvas.allStatements(fenced).find((s) => s.marker === 'accepted').hidden, 'code');
 });
+
+// SQ-169: a fence is not closed by "any three backticks or tildes". The opener
+// fixes a character and a length, and CommonMark closes the block only on a run
+// of that same character, at least as long, with nothing but whitespace after
+// it. Every other fence-shaped line is content of the block, so a statement
+// under one renders as code and the review must report it as hidden.
+test('a fence closes only on a same-character run at least as long as its opener', () => {
+  const base = fs.readFileSync(path.join(__dirname, 'fixtures', 'voice-uptake', 'research', 'canvas.md'), 'utf8');
+  const accepted = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement? [accepted]";
+  const hiddenOf = (source) => canvas.allStatements(canvas.parseCanvas(source)).find((s) => s.marker === 'accepted').hidden;
+
+  assert.ok(base.includes(accepted));
+  assert.equal(hiddenOf(base), null, 'the untouched fixture renders');
+
+  // The triple-fence case the existing report rests on stays what it was.
+  assert.equal(hiddenOf(base.replace(accepted, '```\n\n' + accepted + '\n\n```')), 'code');
+
+  // A shorter run inside a longer fence does not close it.
+  assert.equal(hiddenOf(base.replace(accepted, '````\n\n```\n\n' + accepted + '\n\n````')), 'code');
+
+  // Neither does the other fence character, in either direction.
+  assert.equal(hiddenOf(base.replace(accepted, '```\n\n~~~\n\n' + accepted + '\n\n```')), 'code');
+  assert.equal(hiddenOf(base.replace(accepted, '~~~\n\n```\n\n' + accepted + '\n\n~~~')), 'code');
+
+  // An info string belongs to an opener; ```js inside the block stays inside.
+  assert.equal(hiddenOf(base.replace(accepted, '```\n\n```js\n\n' + accepted + '\n\n```')), 'code');
+});

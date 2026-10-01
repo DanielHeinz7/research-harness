@@ -85,11 +85,13 @@ const STUBS = JSON.stringify({
     + "console.log('');console.log('verdict\\tcwd\\tcommand\\treason');console.log('DENY\\t/x\\t" + SECRET + "\\tr');"],
 });
 
+// TMPDIR points into the fixture, so a test can see what the script left there.
 function release(fx, args, env) {
+  fs.mkdirSync(path.join(fx.dir, "tmp"), { recursive: true });
   return cp.spawnSync(process.execPath, [path.join(fx.repo, "scripts", "release.js")].concat(args), {
     cwd: fx.repo,
     encoding: "utf8",
-    env: Object.assign({}, process.env, { PATH: fx.bin + path.delimiter + process.env.PATH, RELEASE_TEST_CHECKS: STUBS, FAKE_DENIED: "3" }, env),
+    env: Object.assign({}, process.env, { PATH: fx.bin + path.delimiter + process.env.PATH, RELEASE_TEST_CHECKS: STUBS, FAKE_DENIED: "3", TMPDIR: path.join(fx.dir, "tmp") }, env),
   });
 }
 
@@ -158,9 +160,10 @@ test("--dry-run runs the checks, prints the planned commands and writes nothing"
   assert.match(r.stdout, /git mv \.release\/unreleased\/\*\.md \.release\/0\.3\.7\/ \(2 fragments\)/);
   assert.match(r.stdout, /git tag -a v0\.3\.7/);
   assert.match(r.stdout, /git push origin v0\.3\.7/);
-  assert.match(r.stdout, /gh release create v0\.3\.7 --verify-tag --title 0\.3\.7 --notes-file \S+ --latest/);
+  assert.match(r.stdout, /gh release create v0\.3\.7 --verify-tag --title 0\.3\.7 --notes-file <CHANGELOG\.md section 0\.3\.7> --latest/);
   assert.match(r.stdout, /The 0\.3\.7 notes\./, "the dry run shows the notes it would publish");
   assert.ok(!r.stdout.includes("Older notes"), "only the version's own section");
+  assert.deepStrictEqual(fs.readdirSync(path.join(fx.dir, "tmp")), [], "a dry run writes no notes file");
   assert.match(r.stdout, /claude plugin marketplace update research-harness/);
   assert.match(r.stdout, /claude plugin update research-harness@research-harness/);
   assert.strictEqual(snapshot(fx), before);
@@ -227,6 +230,7 @@ test("a full release sets all three versions, commits, pushes, updates the plugi
   assert.strictEqual(sh(fx.repo, "git", ["rev-parse", "v0.4.0^{commit}"]), sh(fx.repo, "git", ["rev-parse", "HEAD"]));
   assert.strictEqual(sh(fx.repo, "git", ["--git-dir", fx.remote, "rev-parse", "v0.4.0^{commit}"]), sh(fx.repo, "git", ["rev-parse", "HEAD"]));
   assert.match(fs.readFileSync(fx.ghLog, "utf8"), /^release create v0\.4\.0 --verify-tag --title 0\.4\.0 --notes-file \S+ --latest\n$/);
+  assert.deepStrictEqual(fs.readdirSync(path.join(fx.dir, "tmp")), [], "the notes file is gone after gh");
   assert.strictEqual(fs.readFileSync(fx.ghNotes, "utf8"), "You can now do the big thing.\n\n### Fixed\n\n- A small thing.\n");
 });
 

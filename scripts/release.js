@@ -19,6 +19,7 @@
 //
 // Exit codes: 0 done, 1 a check or a step failed, 2 refused before any check.
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const cp = require("node:child_process");
 
@@ -238,8 +239,6 @@ function main(argv) {
   const message = ["Release " + opt.version + ": " + opt.summary].concat(opt.trailer ? [opt.trailer] : []);
   const commit = ["commit"].concat(message.reduce(function (a, m) { return a.concat(["-m", m]); }, []));
   const moved = fragments();
-  const notesFile = path.join(fs.mkdtempSync(path.join(require("node:os").tmpdir(), "rh-release-notes-")), tag + ".md");
-  fs.writeFileSync(notesFile, notes);
   const tasks = [
     { label: "set version " + opt.version + " in .claude-plugin/marketplace.json (twice) and plugins/research-harness/.claude-plugin/plugin.json", do: function () { setVersions(opt.version); return { status: 0, stdout: "", stderr: "" }; } },
     { label: "git add .claude-plugin/marketplace.json plugins/research-harness/.claude-plugin/plugin.json", do: function () { return git(["add", MANIFESTS[0], MANIFESTS[1]]); } },
@@ -253,8 +252,16 @@ function main(argv) {
     { label: "git tag -a " + tag + " -m " + JSON.stringify("Release " + opt.version), do: function () { return git(["tag", "-a", tag, "-m", "Release " + opt.version]); } },
     { label: "git push origin main", do: function () { return git(["push", "origin", "main"]); } },
     { label: "git push origin " + tag, do: function () { return git(["push", "origin", tag]); } },
-    { label: "gh release create " + tag + " --verify-tag --title " + opt.version + " --notes-file " + notesFile + " --latest", do: function () {
-      return run("gh", ["release", "create", tag, "--verify-tag", "--title", opt.version, "--notes-file", notesFile, "--latest"]);
+    { label: "gh release create " + tag + " --verify-tag --title " + opt.version + " --notes-file <CHANGELOG.md section " + opt.version + "> --latest", do: function () {
+      // gh reads the notes from a file; it lives only as long as this call.
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-release-notes-"));
+      const notesFile = path.join(dir, tag + ".md");
+      try {
+        fs.writeFileSync(notesFile, notes);
+        return run("gh", ["release", "create", tag, "--verify-tag", "--title", opt.version, "--notes-file", notesFile, "--latest"]);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     } },
     { label: "claude plugin marketplace update research-harness", do: function () { return run("claude", ["plugin", "marketplace", "update", "research-harness"]); } },
     { label: "claude plugin update research-harness@research-harness", do: function () { return run("claude", ["plugin", "update", "research-harness@research-harness"]); } },

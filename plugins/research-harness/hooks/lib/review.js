@@ -49,10 +49,11 @@ function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
     if (ledger.legacy.includes(e.seq)) return 'legacy';
     return 'unverifiable';
   };
-  // An acceptance is logged only by an entry that verifies (§4.4). An entry
-  // that does not still binds a hash — stale is stale whoever wrote it — but
-  // it gives no cover: SQ-21's D7b/D7c/D8 forged exactly such an entry.
-  const coverByHash = new Map();
+  // An acceptance is logged only by an entry naming its question and hash
+  // that verifies (§4.4). An entry that does not still binds a hash — stale is
+  // stale whoever wrote it — but it gives no cover: SQ-21's D7b/D7c/D8 forged
+  // exactly such an entry.
+  const coverByAcceptance = new Map();
   const staleAcceptances = [];
   const unverifiedDecisions = [];
   for (const e of log.entries) {
@@ -65,8 +66,9 @@ function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
     const m = e.hash ? ACCEPT_REF_RE.exec(e.ref) : null;
     if (!m) continue;
     const cover = { seq: e.seq, state };
-    const covered = coverByHash.get(e.hash);
-    if (!covered || (state === 'verified' && covered.state !== 'verified')) coverByHash.set(e.hash, cover);
+    const acceptance = `${m[1]}:${e.hash}`;
+    const covered = coverByAcceptance.get(acceptance);
+    if (!covered || (state === 'verified' && covered.state !== 'verified')) coverByAcceptance.set(acceptance, cover);
     const live = (acceptedByQuestion.get(m[1]) || []).some((s) => s.hash === e.hash);
     if (!live) staleAcceptances.push({ seq: e.seq, ref: e.ref, hash: e.hash });
   }
@@ -76,7 +78,7 @@ function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
   const unloggedAcceptances = [];
   for (const list of acceptedByQuestion.values()) {
     for (const s of list) {
-      const cover = coverByHash.get(s.hash) || null;
+      const cover = coverByAcceptance.get(`${s.question}:${s.hash}`) || null;
       if (cover && cover.state === 'verified') continue;
       unloggedAcceptances.push({ question: s.question, line: s.line, hash: s.hash, text: s.text, coveredBy: cover });
     }

@@ -70,6 +70,30 @@ test('only a DECISION whose seal verifies logs an acceptance; without the key it
   assert.deepEqual(noKey.unverifiedDecisions.map((d) => [d.seq, d.state]), [[1, 'unverifiable']]);
 });
 
+test('a verified DECISION covers only its question when two questions accept identical text', () => {
+  const file = tempLog(decisions.header('voice-uptake'));
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash(ACCEPTED_11), body: `${ACCEPTED_11} [accepted]` }, KEY, { decision: true });
+  const duplicated = canvasText.replace(STATED, `${STATED}\n${ACCEPTED_11} [accepted]`);
+  const report = reviewOf(duplicated, fs.readFileSync(file, 'utf8'), KEY);
+
+  assert.equal(report.ledger.status, 'verified');
+  assert.deepEqual(report.staleAcceptances, [], 'the acceptance in 1.1 still matches its DECISION');
+  assert.deepEqual(report.unloggedAcceptances.map((s) => [s.question, s.text, s.coveredBy]), [['1.2', ACCEPTED_11, null]], 'the DECISION for 1.1 must not cover identical text in 1.2');
+});
+
+test('moving an acceptance to another question leaves its DECISION stale and its new location unlogged', () => {
+  const file = tempLog(decisions.header('voice-uptake'));
+  seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash(ACCEPTED_11), body: `${ACCEPTED_11} [accepted]` }, KEY, { decision: true });
+  const moved = canvasText
+    .replace(`${ACCEPTED_11} [accepted]`, `${ACCEPTED_11} [proposed]`)
+    .replace(STATED, `${STATED}\n${ACCEPTED_11} [accepted]`);
+  const report = reviewOf(moved, fs.readFileSync(file, 'utf8'), KEY);
+
+  assert.equal(report.ledger.status, 'verified');
+  assert.deepEqual(report.staleAcceptances.map((s) => [s.seq, s.ref]), [[1, '1.1 accepted']]);
+  assert.deepEqual(report.unloggedAcceptances.map((s) => [s.question, s.text, s.coveredBy]), [['1.2', ACCEPTED_11, null]], 'moving the text must not transfer the DECISION to 1.2');
+});
+
 test('tampering with a sealed DECISION withdraws its cover and is reported as a broken ledger', () => {
   const file = tempLog(decisions.header('voice-uptake'));
   seal.sealedAppend(file, { date: '2026-09-18', kind: 'DECISION', ref: '1.1 accepted', hash: textHash(ACCEPTED_11), body: `${ACCEPTED_11} [accepted]`, why: 'the phenomenon drives the study' }, KEY, { decision: true });

@@ -1532,10 +1532,39 @@ test('Bash: a program text that names the CLI or accept is a harness invocation'
     assert.match(out.permissionDecisionReason, /researcher's act/, form);
   }
   // The read-only form is no different: inside a program text the guard cannot
-  // see which subcommand runs, and an unreadable subcommand is judged as an
-  // acceptance, the same way `research-harness "$SUB"` is.
+  // see which subcommand runs, and an unreadable subcommand is denied the way
+  // an acceptance is, the same way `research-harness "$SUB"` is.
   const out = run(root, 'Bash', { command: 'sh -c \'research-harness status\'' });
   assert.equal(out && out.permissionDecision, 'deny');
+});
+
+// SQ-146. An unreadable subcommand is denied as strictly as `accept` is, since
+// it may be one — but the guard never read `accept` in the line, so the text
+// must not say that is what runs. It says what it knows: the subcommand is
+// unreadable, and the denial is the strict one.
+test('SQ-146: an unreadable subcommand is denied with its own text, not the accept text', () => {
+  for (const root of [makeBareProject(), makeProject()]) {
+    for (const command of [
+      `node -p 'Buffer.from("x research-harness y").toString("base64")'`,
+      'research-harness "$SUB"',
+      'research-harness "$(cat x)"',
+    ]) {
+      const out = run(root, 'Bash', { command });
+      assert.equal(out && out.permissionDecision, 'deny', command);
+      assert.match(out.permissionDecisionReason, /a subcommand this guard cannot read/, command);
+      assert.match(out.permissionDecisionReason, /denied the way `accept` is/, command);
+      assert.doesNotMatch(out.permissionDecisionReason, /Accepting a statement is the researcher's act/, command);
+      assert.doesNotMatch(out.permissionDecisionReason, /`research-harness accept` cannot be run from the shell/, command);
+    }
+  }
+});
+
+test('SQ-146: a literal accept subcommand still gets the accept text', () => {
+  const root = makeProject();
+  const out = run(root, 'Bash', { command: 'research-harness accept 1.1 --why x' });
+  assert.equal(out && out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /Accepting a statement is the researcher's act/);
+  assert.doesNotMatch(out.permissionDecisionReason, /subcommand this guard cannot read/);
 });
 
 test('Bash: neither route denies ordinary work', () => {

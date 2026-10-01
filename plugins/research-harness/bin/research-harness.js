@@ -55,6 +55,17 @@ function parseArgs(argv) {
   return { positional, flags };
 }
 
+// The value flags SQ-167 names. parseArgs cannot tell one given without a value
+// from a switch: both arrive as `true`, and a command that then reads the value
+// with `typeof flags.x === 'string'` sees "not given". That is how a bare
+// --match accepted a question's single candidate without checking it, a bare
+// --profile became the default profile, and a bare --title, --outlet, --why or
+// --rejected vanished without a word. main refuses a bare flag of this set
+// before the command runs, so no state is read or written on the way to the
+// refusal; --project, --mode, --dir and --supersedes keep the bare-flag refusal
+// their own command already has.
+const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'variant', 'lens']);
+
 // Every message goes to stdout: the skills embed this command through a `!`
 // line, and that line carries stdout only (§5.4). A refusal the researcher
 // cannot read is the same as no refusal.
@@ -235,7 +246,6 @@ function variantFlag(flags) {
 // null.
 function keyOverride(flags) {
   if (flags.key === undefined) return {};
-  if (typeof flags.key !== 'string') return { error: `--key takes the file the sealing key was released as.\n${USAGE}`, code: 2 };
   try {
     return { key: seal.readKeyFile(flags.key) };
   } catch (err) {
@@ -317,10 +327,10 @@ function accept(positional, flags) {
   const result = acceptStatement({
     root: project.projectDir({}),
     questionId,
-    match: typeof flags.match === 'string' ? flags.match : undefined,
-    why: typeof flags.why === 'string' ? flags.why : undefined,
-    explained: typeof flags.explained === 'string' ? flags.explained : undefined,
-    rejected: typeof flags.rejected === 'string' ? flags.rejected : undefined,
+    match: flags.match,
+    why: flags.why,
+    explained: flags.explained,
+    rejected: flags.rejected,
     pluginRoot: pluginRoot(),
   });
   if (!result.ok) return refused(result);
@@ -342,7 +352,7 @@ function log(positional, flags) {
     kind,
     ref,
     body: flags.body,
-    why: typeof flags.why === 'string' ? flags.why : undefined,
+    why: flags.why,
     // A bare --supersedes parses as true, and Number(true) would be entry 1.
     supersedes: flags.supersedes === undefined ? undefined : flags.supersedes === true ? NaN : Number(flags.supersedes),
     pluginRoot: pluginRoot(),
@@ -362,8 +372,8 @@ function choose(positional, flags) {
   const result = chooseFraming({
     root: project.projectDir({}),
     name: positional[0],
-    why: typeof flags.why === 'string' ? flags.why : undefined,
-    rejected: typeof flags.rejected === 'string' ? flags.rejected : undefined,
+    why: flags.why,
+    rejected: flags.rejected,
     pluginRoot: pluginRoot(),
   });
   if (!result.ok) return refused(result);
@@ -723,6 +733,10 @@ function main(argv) {
     return 0;
   }
   const { positional, flags } = parseArgs(argv);
+  // `--match --why x` gives match the same `true` as a `--match` at the end of
+  // the line, so both are refused the same way.
+  const bare = Object.keys(flags).find((name) => VALUE_FLAGS.has(name) && flags[name] === true);
+  if (bare) return fail(`--${bare} needs a value.\n${USAGE}`, 2);
   const command = positional.shift();
   switch (command) {
     case 'init': return init(flags);

@@ -412,9 +412,6 @@ test('--key refuses a file it cannot read, one that is not 32 bytes, and a missi
   assert.equal(garbled.status, 1);
   assert.match(garbled.stdout, /is not a 32-byte key/);
 
-  const noPath = run(root, ['status', '--key']);
-  assert.equal(noPath.status, 2);
-  assert.match(noPath.stdout, /--key takes the file the sealing key was released as\./);
 });
 
 test('the anchor line is stable for an unchanged record and moves when a byte moves', () => {
@@ -623,7 +620,8 @@ test('accept without an explanation is refused and writes nothing; with one, the
   const root = keyedProject();
   const canvasBefore = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
   const logBefore = readLog(root);
-  for (const extra of [[], ['--explained'], ['--explained', '   '], ['--explained', '']]) {
+  // A bare --explained is the malformed call below, not a missing explanation.
+  for (const extra of [[], ['--explained', '   '], ['--explained', '']]) {
     const out = run(root, ['accept', '1.2', '--match', 'Speaking frequency', ...extra]);
     assert.equal(out.status, 1, `${extra.join(' ')} was not refused: ${out.stdout}`);
     assert.match(out.stdout, /needs your explanation/);
@@ -781,6 +779,55 @@ test('the README runs the CLI as the installed command, since the reader is in a
   const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
   assert.doesNotMatch(readme, /node bin\/research-harness\.js/);
   assert.match(readme, /^ {4}research-harness review --key <key file>$/m);
+});
+
+// SQ-167: `--flag` with no value parsed as `true`, and the command read that as
+// "not given" — accepting a question's single candidate without the filter,
+// taking the default profile, dropping a title. It is now a malformed call.
+test('a flag that takes a value is refused when it is given none, and nothing is touched', () => {
+  const root = keyedProject();
+  const canvasFile = path.join(root, 'research', 'canvas.md');
+  const canvasBefore = fs.readFileSync(canvasFile, 'utf8');
+  const logBefore = readLog(root);
+  const bare = [
+    ['accept', '1.2', '--explained', EXPLAINED, '--match'],
+    ['accept', '1.2', '--match', 'Speaking frequency', '--explained'],
+    ['accept', '1.2', '--match', 'Speaking frequency', '--explained', EXPLAINED, '--why'],
+    ['accept', '1.2', '--match', 'Speaking frequency', '--explained', EXPLAINED, '--rejected'],
+    ['log', 'DISCOVERY', '2 Audience and Prior Research', '--body', 'x [tentative]', '--why'],
+    ['log', 'DISCOVERY', '2 Audience and Prior Research', '--body'],
+    ['status', '--variant'],
+    ['status', '--key'],
+    ['init', '--project', 'voice-uptake', '--mode', 'seed', '--profile'],
+    ['init', '--project', 'voice-uptake', '--mode', 'seed', '--title'],
+    ['init', '--project', 'voice-uptake', '--mode', 'seed', '--outlet'],
+    ['init', '--variant', 'v', '--lens'],
+  ];
+  for (const args of bare) {
+    const flag = args.at(-1);
+    const out = run(root, args);
+    assert.equal(out.status, 2, `${args.join(' ')}: ${out.stdout}`);
+    assert.match(out.stdout, new RegExp(`${flag} needs a value`), args.join(' '));
+    assert.equal(out.stderr, '', args.join(' '));
+  }
+  assert.equal(fs.readFileSync(canvasFile, 'utf8'), canvasBefore, 'the canvas is byte-identical');
+  assert.equal(readLog(root), logBefore, 'the log is byte-identical');
+});
+
+test('init refuses a bare value flag before it writes the canvas, the log or a key', () => {
+  const root = makeProject(false);
+  for (const flag of ['--profile', '--title', '--outlet']) {
+    const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed', flag]);
+    assert.equal(out.status, 2, `${flag}: ${out.stdout}`);
+    assert.match(out.stdout, /needs a value/);
+  }
+  assert.equal(fs.existsSync(path.join(root, 'research')), false, 'no canvas and no log are written');
+  assert.deepEqual(fs.readdirSync(stateDirOf(root)), [], 'no sealing key is written');
+  // The same call with a value does write both, so the two checks above are not vacuous.
+  const ok = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed', '--title', 'Voice uptake']);
+  assert.equal(ok.status, 0, ok.stdout);
+  assert.ok(fs.existsSync(path.join(root, 'research', 'canvas.md')));
+  assert.notDeepEqual(fs.readdirSync(stateDirOf(root)), []);
 });
 
 test('log --supersedes refuses a bare flag, zero, a negative and an entry the log does not have, and writes nothing', () => {

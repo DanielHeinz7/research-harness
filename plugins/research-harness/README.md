@@ -52,9 +52,12 @@ In a paper project's repository:
    `research/decisions.md` if they do not exist, then works through the
    elements with you. Everything it writes is `[proposed]`, `[tentative]`, or
    a `[stated]` transcription of your words.
-2. `/research-harness:accept 3.1` — you accept a statement. The CLI promotes
-   it to `[accepted]`, appends a sealed decision-log entry carrying a hash of
-   the text, and refuses if an element it depends on is not accepted yet.
+2. `/research-harness:accept 3.1 --explained "<your sentence>"` — you accept a
+   statement and say in one sentence of your own what you accept and why it
+   holds; without that sentence nothing is accepted. The CLI promotes it to
+   `[accepted]`, appends a sealed decision-log entry carrying a hash of the
+   text and your sentence, and refuses if an element it depends on is not
+   accepted yet.
 3. `/research-harness:canvas-review` — argues against the canvas: gaps,
    contradictions between elements, unmet dependencies, claims without a
    source, acceptances whose text has since changed, and the state of the

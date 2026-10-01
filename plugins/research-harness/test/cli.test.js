@@ -772,3 +772,10 @@ test('log --supersedes refuses a bare flag, zero, a negative and an entry the lo
   assert.equal(ok.status, 0, ok.stdout + ok.stderr);
   assert.match(readLog(root), new RegExp(`\\*\\*Supersedes:\\*\\* #${maxSeq}`));
 });
+
+test('every accept the README shows carries --explained, which accept requires', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+  const accepts = readme.match(/\/research-harness:accept \d+\.\d+[^`\n]*/g) || [];
+  assert.ok(accepts.length > 0, 'the README shows an accept');
+  for (const a of accepts) assert.match(a, /--explained "/, a);
+});

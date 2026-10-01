@@ -1479,6 +1479,9 @@ test('Bash: accept is the researcher\'s act however it is spelled', () => {
     assert.equal(out && out.permissionDecision, 'deny', cmd);
     assert.match(out.permissionDecisionReason, /researcher's act/, cmd);
     assert.match(out.permissionDecisionReason, /research-harness:accept/, cmd);
+    // The recovery names what the accept needs: since 0.4.0 it is refused
+    // without the researcher's explanation, so the example carries the flag.
+    assert.match(out.permissionDecisionReason, /research-harness:accept <n\.m> --explained/, cmd);
   }
 });
 
@@ -2117,6 +2120,9 @@ test('US-3: research-harness choose is denied to the model, directly, behind a w
   }
   const direct = run(root, 'Bash', { command: 'research-harness choose x --why fits' });
   assert.match(direct.permissionDecisionReason, /^Choosing a framing is the researcher's act/);
+  // Both comparison commands are spelled as commands, so the prefix the CLI
+  // actually takes is named in the text the researcher reads.
+  assert.match(direct.permissionDecisionReason, /`research-harness review --variant <name>`/);
   // An inline program is held to the name rule without state too (SQ-105).
   const bare = makeBareProject();
   for (const command of [

@@ -108,3 +108,10 @@ test('over-budget text is truncated with a watermark', () => {
   assert.ok(Buffer.byteLength(projected, 'utf8') <= 4096);
   assert.match(projected, /\[research-harness: truncated to 4096 bytes; run `research-harness status` for the full summary\]$/);
 });
+
+test('the session-start rules name accept with the --explained sentence it requires', () => {
+  const root = makeProject();
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+  const text = JSON.parse(run(root, stateDir).stdout).hookSpecificOutput.additionalContext;
+  assert.match(text, /\/research-harness:accept <n\.m> --explained "<their sentence>"/);
+});

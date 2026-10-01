@@ -19,7 +19,7 @@ const RULES = [
   'Rules for research/canvas.md: write only [proposed], [tentative], or [stated] as a transcription of what the researcher said.',
   'Never write [accepted]. Never alter or remove a [stated] or [accepted] statement — propose alongside as [proposed].',
   'Factual claims carry `src: <id>` or `unverified`, never nothing. An empty element is fine; plausible filler is not.',
-  'Only the researcher accepts, via /research-harness:accept <n.m>. Skills: /research-harness:canvas, /research-harness:canvas-review.',
+  'Only the researcher accepts, via /research-harness:accept <n.m> --explained "<their sentence>"; never draft that sentence for them. Skills: /research-harness:canvas, /research-harness:canvas-review.',
 ].join(' ');
 
 function readStdin() {

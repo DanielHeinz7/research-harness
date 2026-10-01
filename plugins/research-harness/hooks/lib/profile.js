@@ -32,6 +32,22 @@ function parseGraph(markdown) {
   return graph;
 }
 
+const CHECKS_RE = /```checks\n([\s\S]*?)```/;
+const KNOWN_CHECKS = ['hypotheses-before-data'];
+
+// The second machine-readable part of a profile, and an optional one: the
+// mechanical checks its modules add to the review. A name the review does not
+// know is an error on load, not a check that silently never runs.
+function parseChecks(markdown) {
+  const block = CHECKS_RE.exec(String(markdown));
+  if (!block) return [];
+  const names = block[1].split('\n').map((s) => s.trim()).filter(Boolean);
+  for (const name of names) {
+    if (!KNOWN_CHECKS.includes(name)) throw new Error(`unknown check: ${name}`);
+  }
+  return names;
+}
+
 function loadProfile(id, pluginRoot) {
   if (!ID_RE.test(String(id))) throw new Error(`invalid profile id: ${id}`);
   const file = path.join(pluginRoot, 'references', 'profiles', `${id}.md`);
@@ -41,7 +57,7 @@ function loadProfile(id, pluginRoot) {
   } catch (_) {
     throw new Error(`profile not found: ${id}`);
   }
-  return { id, graph: parseGraph(text), text };
+  return { id, graph: parseGraph(text), checks: parseChecks(text), text };
 }
 
 // An element that appears twice has *no* status — not the status of whichever
@@ -78,4 +94,4 @@ function dependencyViolations(parsed, graph) {
   return out;
 }
 
-module.exports = { parseGraph, loadProfile, dependencyViolations, statusByNumber };
+module.exports = { parseGraph, parseChecks, KNOWN_CHECKS, loadProfile, dependencyViolations, statusByNumber };

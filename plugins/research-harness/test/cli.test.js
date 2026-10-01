@@ -851,3 +851,13 @@ test('every accept the README shows carries --explained, which accept requires',
   assert.ok(accepts.length > 0, 'the README shows an accept');
   for (const a of accepts) assert.match(a, /--explained "/, a);
 });
+
+test('review prints "Findings before hypotheses" only under a profile with that check', () => {
+  const root = keyedProject();
+  const canvasFile = path.join(root, 'research', 'canvas.md');
+  assert.doesNotMatch(run(root, ['review']).stdout, /Findings before hypotheses/);
+  fs.writeFileSync(canvasFile, fs.readFileSync(canvasFile, 'utf8').replace(/^profile: .*$/m, 'profile: is-quantitative'));
+  const out = run(root, ['review']);
+  assert.equal(out.status, 0, out.stderr);
+  assert.match(out.stdout, /## Findings before hypotheses\n\(reported, never enforced/);
+});

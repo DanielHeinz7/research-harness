@@ -9,13 +9,33 @@ const { dependencyViolations, statusByNumber } = require('./profile');
 const ACCEPT_REF_RE = /^([1-9]\.\d+) accepted$/;
 const COMMITTED_MARKERS = COMMITTED;
 
+// The element a log entry is about: `4.1 accepted`, `7.2 check`, a bare `7`.
+const ELEMENT_REF_RE = /^([1-9])(?:\.\d+)?(?:\s|$)/;
+function elementOfRef(ref) {
+  const m = ELEMENT_REF_RE.exec(String(ref || '').trim());
+  return m ? Number(m[1]) : null;
+}
+
+// The `hypotheses-before-data` check (references/preregistration.md): the
+// sealed log orders events, so it can show whether the hypotheses (4) and the
+// design (6) were accepted before the first finding (7) was recorded. It
+// reports; it never blocks.
+function findingsBeforeHypotheses(decisionsText) {
+  const { entries } = parseDecisions(decisionsText || '');
+  const first = entries.find((e) => elementOfRef(e.ref) === 7);
+  if (!first) return [];
+  return [4, 6]
+    .filter((n) => !entries.some((e) => e.kind === 'DECISION' && elementOfRef(e.ref) === n && e.seq < first.seq))
+    .map((n) => ({ element: n, finding: first.seq }));
+}
+
 // The mechanical half of canvas-review (§5.4, items 1, 2, 5, 6, 7). The
 // judgment half — fit, refutation, manuscript support — stays in the skill.
 // Nothing here decides whether two elements contradict each other; it only
 // computes what needs no judgment at all.
 // `key` is the sealing key of this machine, or null on a checkout that has
 // none; the ledger verdict and every acceptance's cover depend on it (§4.7).
-function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
+function mechanicalReview({ parsed, graph, checks = [], decisionsText, key = null }) {
   const statuses = statusByNumber(parsed);
   const numbers = parsed.elements.map((e) => e.number);
   const statements = allStatements(parsed);
@@ -98,6 +118,7 @@ function mechanicalReview({ parsed, graph, decisionsText, key = null }) {
     unverifiedDecisions,
     ledger,
     problems: parsed.problems,
+    findingsBeforeHypotheses: checks.includes('hypotheses-before-data') ? findingsBeforeHypotheses(decisionsText) : [],
   };
 }
 
@@ -149,4 +170,4 @@ function coverNote(coveredBy) {
   return coveredBy ? ` — covered only by #${coveredBy.seq}, ${COVER_STATE[coveredBy.state]}` : '';
 }
 
-module.exports = { mechanicalReview, ledgerSummary, ledgerReport, coverNote, COVER_STATE };
+module.exports = { mechanicalReview, findingsBeforeHypotheses, elementOfRef, ledgerSummary, ledgerReport, coverNote, COVER_STATE };

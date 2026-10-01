@@ -66,6 +66,67 @@ test('readKey is null when no key exists for the project on this machine', () =>
   });
 });
 
+for (const [name, content] of [
+  ['empty', ''],
+  ['short', 'ab'.repeat(31)],
+  ['odd-length', 'a'.repeat(63)],
+  ['non-hex', 'g'.repeat(64)],
+]) {
+  test(`readKey rejects the ${name} local key without replacing it`, () => {
+    withState(() => {
+      const root = tempProject();
+      const { path: file } = seal.createKey(root);
+      fs.writeFileSync(file, content);
+      assert.throws(() => seal.readKey(root), /is not a 32-byte key/);
+      assert.equal(seal.createKey(root).created, false, 'init does not replace a damaged key');
+      assert.equal(fs.readFileSync(file, 'utf8'), content, 'the damaged key is unchanged');
+    });
+  });
+
+  for (const [logName, logText] of [['fresh', decisions.header('p')], ['legacy', legacyLog]]) {
+    test(`the ${name} local key refuses a write to a ${logName} log without changing project files`, () => {
+      withState(() => {
+        const root = tempProject();
+        const research = path.join(root, 'research');
+        fs.mkdirSync(research);
+        const canvasFile = path.join(research, 'canvas.md');
+        const canvasText = fs.readFileSync(path.join(__dirname, 'fixtures', 'voice-uptake', 'research', 'canvas.md'), 'utf8');
+        fs.writeFileSync(canvasFile, canvasText);
+        const logFile = path.join(research, 'decisions.md');
+        fs.writeFileSync(logFile, logText);
+        const { path: file } = seal.createKey(root);
+        fs.writeFileSync(file, content);
+
+        const state = require('../hooks/lib/state').loadState(root);
+        const result = require('../hooks/lib/log').appendLog({
+          root, kind: 'DISCOVERY', ref: '1 Puzzle', body: 'A new finding [tentative]',
+        });
+        assert.equal(result.ok, false, 'the write is refused');
+        assert.equal(state.key, null, 'an invalid key never reaches sealing');
+        assert.ok(state.keyError, 'loadState reports the invalid local key');
+        assert.equal(result.code, 'ledger');
+        assert.match(result.error, /nothing is written/);
+        assert.equal(fs.readFileSync(logFile, 'utf8'), logText, 'no entry is appended');
+        assert.equal(fs.readFileSync(canvasFile, 'utf8'), canvasText, 'the canvas is unchanged');
+        assert.equal(fs.readFileSync(file, 'utf8'), content, 'the key is unchanged');
+      });
+    });
+  }
+}
+
+for (const suffix of ['', '\n']) {
+  test(`readKey decodes a valid local key${suffix ? ' with a trailing newline' : ''} without changing it`, () => {
+    withState(() => {
+      const root = tempProject();
+      const { path: file } = seal.createKey(root);
+      const content = KEY.toString('hex').toUpperCase() + suffix;
+      fs.writeFileSync(file, content);
+      assert.deepEqual(seal.readKey(root), KEY);
+      assert.equal(fs.readFileSync(file, 'utf8'), content);
+    });
+  });
+}
+
 test('sealOf is 16 hex of an HMAC over the previous seal and the canonical entry, reflow-insensitive in the body', () => {
   const entry = { seq: 4, date: '2026-09-18', kind: 'DISCOVERY', ref: '2 Prior Research', hash: null, body: 'Two studies\ncontradict each other. [tentative, src: ref-11]' };
   const s = seal.sealOf(KEY, 'abc', entry);

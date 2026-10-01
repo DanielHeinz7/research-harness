@@ -40,6 +40,9 @@ function readKey(projectRoot) {
     if (err && err.code === 'ENOENT') return null;
     throw err;
   }
+  if (hex.length !== KEY_CHARS || !HEX_KEY.test(hex)) {
+    throw new Error(`the key file ${keyPath(projectRoot)} is not a ${KEY_BYTES}-byte key (${KEY_CHARS} hex characters, as ${KEY_FILE} holds it); nothing was verified against it.`);
+  }
   return Buffer.from(hex, 'hex');
 }
 

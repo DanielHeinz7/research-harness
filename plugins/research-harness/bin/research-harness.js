@@ -16,6 +16,7 @@ const stateLib = require('../hooks/lib/state');
 const { acceptStatement } = require('../hooks/lib/accept');
 const { chooseFraming } = require('../hooks/lib/choose');
 const { appendLog } = require('../hooks/lib/log');
+const { startSession } = require('../hooks/lib/session');
 const { mechanicalReview, ledgerReport, coverNote, COVER_STATE } = require('../hooks/lib/review');
 const { summarize } = require('../hooks/inject-state');
 
@@ -31,6 +32,7 @@ const USAGE = [
   'research-harness title [<text>]',
   'research-harness profile [<id>]',
   'research-harness name [<name>]',
+  'research-harness session start "<occasion>"',
   'research-harness serve [--no-open]',
   'research-harness doctor',
   'research-harness install-cli [--dir <path>]',
@@ -505,6 +507,23 @@ function name(positional) {
   return 0;
 }
 
+// ---------- session ----------
+
+// The session marker (§4). A session runs from its SESSION entry to the next
+// one or the end of the log; a person starts it, and the sealed entry names
+// them by `By`. `log` cannot write the kind, so the two commands stay apart.
+function session(positional, flags) {
+  const [action, ...rest] = positional;
+  if (action === 'start') {
+    if (rest.length !== 1) return fail(`session start takes one quoted occasion.\n${USAGE}`, 2);
+    const result = startSession({ root: project.projectDir({}), occasion: rest[0], pluginRoot: pluginRoot() });
+    if (!result.ok) return refused(result);
+    say(`Session #${result.seq} started, sealed ${result.seal}. It runs until the next session start.`);
+    return 0;
+  }
+  return fail(`session takes start or protocol.\n${USAGE}`, 2);
+}
+
 // ---------- serve ----------
 
 // The session view (US-2). A human runs this in their own terminal; the URL
@@ -713,12 +732,25 @@ function checkName() {
     : { ok: false, name: 'name', detail: who.error };
 }
 
+// Two session markers in a row are allowed (§4) — the first session is then
+// empty — but they are usually a second `session start` typed while one was
+// running. doctor notes them; it never fails on them.
+function checkSessionMarkers() {
+  const state = loadState();
+  if (state.error) return null;
+  const entries = decisions.parseDecisions(state.decisionsText).entries;
+  const at = entries.findIndex((e, i) => i > 0 && e.kind === 'SESSION' && entries[i - 1].kind === 'SESSION');
+  if (at < 0) return null;
+  return { ok: true, note: true, name: 'note', detail: `#${entries[at - 1].seq} and #${entries[at].seq} are two session markers in a row; the first session is empty` };
+}
+
 function doctor() {
   const root = project.projectDir({});
-  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState(), checkName(), checkTerminalCommand()].filter(Boolean);
+  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState(), checkName(), checkSessionMarkers(), checkTerminalCommand()].filter(Boolean);
   const failed = checks.filter((c) => !c.ok);
   say(`research-harness doctor: ${failed.length === 0 ? `ok (${checks.length} checks)` : `${failed.length} of ${checks.length} checks failed`}`);
   for (const c of failed) say(`- ${c.name}: ${c.detail}`);
+  for (const c of checks.filter((c) => c.note)) say(`- note: ${c.detail}`);
   return failed.length === 0 ? 0 : 1;
 }
 
@@ -831,6 +863,7 @@ function main(argv) {
     case 'title': return title(positional);
     case 'profile': return profile(positional);
     case 'name': return name(positional);
+    case 'session': return session(positional, flags);
     case 'serve': return serve(flags);
     case 'doctor': return doctor();
     case 'install-cli': return installCli(flags);

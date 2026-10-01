@@ -8,6 +8,7 @@ const path = require('node:path');
 
 const { textHash } = require('../hooks/lib/hash');
 const decisions = require('../hooks/lib/decisions');
+const seal = require('../hooks/lib/seal');
 
 const fixture = fs.readFileSync(
   path.join(__dirname, 'fixtures', 'voice-uptake', 'research', 'decisions.md'),
@@ -180,4 +181,17 @@ test('By is a field: formatEntry writes it first, parseDecisions reads it back, 
   const [old] = decisions.parseDecisions('## [#1] 2026-10-08 · DISCOVERY · 7\nA finding.\n').entries;
   assert.equal(old.by, null);
   assert.equal(decisions.fieldLabelIn('**By:** someone'), 'By');
+});
+
+test('SESSION and MERGE parse, format and verify in one chain', () => {
+  const key = Buffer.alloc(32, 3);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-')), 'decisions.md');
+  fs.writeFileSync(file, '# Decision log — t\n');
+  seal.sealedAppend(file, { date: '2026-10-08', kind: 'SESSION', ref: 'Supervision with B. Supervisor', body: 'Session started.', by: 'A. Researcher' }, key);
+  seal.sealedAppend(file, { date: '2026-10-08', kind: 'MERGE', ref: 'from abc1234', body: 'Taken up to #1.', by: 'A. Researcher' }, key);
+  const text = fs.readFileSync(file, 'utf8');
+  assert.deepEqual(decisions.parseDecisions(text).entries.map((e) => [e.seq, e.kind, e.ref]), [[1, 'SESSION', 'Supervision with B. Supervisor'], [2, 'MERGE', 'from abc1234']]);
+  assert.equal(seal.verifyChain(text, key).status, 'verified');
+  assert.deepEqual([...decisions.MARKER_KINDS], ['SESSION', 'MERGE']);
+  assert.equal(decisions.parseDecisions(text).entries[0].by, 'A. Researcher');
 });

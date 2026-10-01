@@ -2,11 +2,14 @@
 
 const fs = require('node:fs');
 
-const KINDS = ['DECISION', 'CONSTRAINT', 'DISCOVERY'];
+const KINDS = ['DECISION', 'CONSTRAINT', 'DISCOVERY', 'SESSION', 'MERGE'];
+// Written only by their own commands (session start, merge-log); never a
+// finding, a cover or an open check (§4).
+const MARKER_KINDS = new Set(['SESSION', 'MERGE']);
 // The heading grammar of §4.7: seq, date, kind, ref, then an optional `text`
 // hash (the §4.4 binding of an acceptance) and an optional `seal` (the §4.7
 // chain). The two hashes have two jobs and are never folded into one.
-const ENTRY_RE = /^## \[#(\d+)\] (\d{4}-\d{2}-\d{2}) · (DECISION|CONSTRAINT|DISCOVERY) · (.+?)(?: · text ([0-9a-f]{8}))?(?: · seal ([0-9a-f]{16}))?$/;
+const ENTRY_RE = new RegExp(`^## \\[#(\\d+)\\] (\\d{4}-\\d{2}-\\d{2}) · (${KINDS.join('|')}) · (.+?)(?: · text ([0-9a-f]{8}))?(?: · seal ([0-9a-f]{16}))?$`);
 
 function header(project) {
   return `# Decision log — ${project}\n`;
@@ -129,4 +132,4 @@ function appendEntry(filePath, entryText) {
   fs.appendFileSync(filePath, `${separatorAfter(current)}${entryText}`);
 }
 
-module.exports = { KINDS, header, parseDecisions, formatEntry, separatorAfter, appendEntry, fieldLabelIn };
+module.exports = { KINDS, MARKER_KINDS, header, parseDecisions, formatEntry, separatorAfter, appendEntry, fieldLabelIn };

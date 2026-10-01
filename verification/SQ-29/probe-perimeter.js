@@ -8,6 +8,12 @@
 // throwaway directory for the whole run, hook and child alike, so nothing here
 // reads or writes the real ~/.claude/research-harness.
 
+// Every row builds its own temp project. A project root inherited from the
+// caller (a Claude Code session, a board verifier) would point the CLI at it
+// instead, so it is dropped here, as in demo.test.js (SQ-144).
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.RESEARCH_HARNESS_DIR;
+
 const c = require('../probes/common');
 const os = require('node:os');
 const seal = require(c.path.join(c.PLUGIN, 'hooks', 'lib', 'seal.js'));

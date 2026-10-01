@@ -49,15 +49,18 @@ the manuscript checked against the canvas, that is `canvas-review`, not this.
 
 Every claim you make carries its citation:
 
-- from the log: `#<seq>` and the entry's kind and ref
-- from the canvas: the statement number `n.m` and the text hash the harness
-  shows for it, or the hash recorded in the accepting entry
+- from the log: `#<seq>` and the entry's kind and ref, and the `text <hash>`
+  an entry records for the statement it accepted, where the log has one
+- from the canvas: the question id `n.m`, its marker, and its exact words.
+  Nothing the harness prints is a hash of a current statement: never compute
+  one, never invent one, and cite what the review prints.
 
 Quote the words; do not paraphrase a commitment. Keep an accepted statement
 apart from a proposed one every time: say which marker it carries and, if it
 is accepted, which entry accepted it, with its Explained line and any Open at
-acceptance questions. When a statement changed after acceptance, say that the
-hashes differ and show both.
+acceptance questions. When a statement changed after acceptance, report it the
+way the review does — the recorded hash of entry `#<seq>` no longer matches
+any accepted statement — and never a hash you worked out yourself.
 
 If the record does not answer the question, say "not in the record" and stop.
 Do not infer, fill a gap with what is usual for such studies, or say what the

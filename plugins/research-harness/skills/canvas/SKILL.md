@@ -35,7 +35,10 @@ Every statement is one paragraph ending in a marker group.
   conversation. Write it in their words. Never mark your own reading of a
   document as `[stated]`.
 - `[accepted]` — **never.** The guard will deny it. Acceptance is the
-  researcher's act: tell them to run `/research-harness:accept <n.m>`.
+  researcher's act: tell them to run
+  `/research-harness:accept <n.m> --explained "<your sentence>"`. Without that
+  sentence the command refuses, and the sentence is the researcher's own: do
+  not draft it or suggest wording to copy.
 
 Never alter or delete a `[stated]` or `[accepted]` statement. If you think one
 is wrong, write a `[proposed]` paragraph next to it that says why.

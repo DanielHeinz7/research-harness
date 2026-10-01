@@ -751,3 +751,9 @@ test('doctor finds the terminal command on PATH, not only at ~/.local/bin', () =
   assert.equal(out.status, 0, out.stdout + out.stderr);
   assert.match(out.stdout, /^research-harness doctor: ok \(3 checks\)$/m);
 });
+
+test('the README runs the CLI as the installed command, since the reader is in a paper checkout without bin/', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+  assert.doesNotMatch(readme, /node bin\/research-harness\.js/);
+  assert.match(readme, /^ {4}research-harness review --key <key file>$/m);
+});

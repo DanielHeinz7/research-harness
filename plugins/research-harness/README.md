@@ -84,7 +84,7 @@ You do not have to take a record on trust, and you do not need the machine that
 wrote it. The authors send you two things: the sealing key as a file, and the
 anchor they published for the record. Then, in your own checkout:
 
-    node bin/research-harness.js review --key <key file>
+    research-harness review --key <key file>
 
 `--key` verifies with the key you were given instead of the one this machine
 would read, and `status` takes it the same way. A key file that cannot be read,

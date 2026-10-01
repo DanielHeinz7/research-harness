@@ -861,3 +861,34 @@ test('review prints "Findings before hypotheses" only under a profile with that 
   assert.equal(out.status, 0, out.stderr);
   assert.match(out.stdout, /## Findings before hypotheses\n\(reported, never enforced/);
 });
+
+// SQ-175: switching a profile is a write to the researcher's canvas, so the
+// log entry comes first and a refusal leaves both files as they were. Refusals
+// go to stdout (see `say`), so the refusal tests read both streams.
+test('profile prints the active profile and switches to another, with a sealed log entry', () => {
+  const root = keyedProject();
+  assert.equal(run(root, ['profile']).stdout.trim(), 'is-qualitative');
+  const out = run(root, ['profile', 'is-quantitative']);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /Profile set: is-quantitative \(was is-qualitative\), logged as #\d+/);
+  assert.match(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'), /^profile: is-quantitative$/m);
+  assert.match(readLog(root), /· CONSTRAINT · profile · seal [0-9a-f]{16}\nProfile changed from is-qualitative to is-quantitative\./);
+  assert.match(run(root, ['review']).stdout, /## Decision log\n.*verified/);
+});
+
+test('profile refuses an unknown id, the active id, and a missing key, writing nothing', () => {
+  const root = keyedProject();
+  const canvasFile = path.join(root, 'research', 'canvas.md');
+  const before = fs.readFileSync(canvasFile, 'utf8');
+  const logBefore = readLog(root);
+  const unknown = run(root, ['profile', 'no-such-profile']);
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stdout + unknown.stderr, /profile not found: no-such-profile/);
+  const same = run(root, ['profile', 'is-qualitative']);
+  assert.notEqual(same.status, 0);
+  assert.match(same.stdout + same.stderr, /already uses is-qualitative/);
+  const nokey = run(root, ['profile', 'is-quantitative'], { RESEARCH_HARNESS_STATE_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')) });
+  assert.notEqual(nokey.status, 0);
+  assert.equal(fs.readFileSync(canvasFile, 'utf8'), before);
+  assert.equal(readLog(root), logBefore);
+});

@@ -516,8 +516,13 @@ not written inside the repository.
 | `RESEARCH_HARNESS_STATE_DIR` | session ledger and sealing key, outside the paper | `~/.claude/research-harness` |
 
 The genre profile is named in the canvas frontmatter (`profile: is-qualitative`).
-One profile ships. Others are a Markdown file each under
-`references/profiles/` — contributions welcome.
+Two profiles ship: `is-qualitative` (the default) and `is-quantitative` for
+hypothesis-testing experiments and surveys. `research-harness profile` prints
+the active one; `research-harness profile <id>` switches an existing canvas and
+records the switch in the decision log. Under `is-quantitative`, the review
+also reports findings logged before the hypotheses and the design were
+accepted (`references/preregistration.md`). Others are a Markdown file each
+under `references/profiles/` — contributions welcome.
 
 ## Where the questions come from
 

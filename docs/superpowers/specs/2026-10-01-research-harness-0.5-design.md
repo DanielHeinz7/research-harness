@@ -1,6 +1,6 @@
 # research-harness 0.5: two people, one canvas
 
-**Status:** 2026-10-01 · design approved section by section in brainstorming · spec awaiting review
+**Status:** 2026-10-01 · design approved section by section · spec approved by Daniel (2026-10-01), including §10 open point 1
 
 ## 1 · Purpose
 
@@ -357,7 +357,7 @@ in the right order.
    for the plan: the refusal tells the user to `git merge --abort`, and
    `merge-log --skip-decision #n` merges while leaving that one DECISION out of
    the moved entries (it stays in git history on the abandoned commit, and the
-   MERGE entry records "#n dropped, to be accepted again"). This needs Daniel's
+   MERGE entry records "#n dropped, to be accepted again"). Approved by Daniel
    yes before the plan builds on it.
 2. **Order of work.** §3 (`By`) and the new kinds of §4 come first, since §2,
    §5 and §8 read them. §2 is the riskiest and gets its own review ticket.

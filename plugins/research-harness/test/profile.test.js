@@ -55,6 +55,22 @@ test('mechanicalReview assembles statuses, empties, open elements and untagged s
   assert.deepEqual(report.conversationalStated.map((s) => s.question), ['1.2', '5.1']);
 });
 
+test('parseChecks reads an optional fenced checks block and refuses unknown names', () => {
+  assert.deepEqual(profile.parseChecks('no block'), []);
+  assert.deepEqual(profile.parseChecks('x\n```checks\nhypotheses-before-data\n```\n'), ['hypotheses-before-data']);
+  assert.throws(() => profile.parseChecks('```checks\nsomething-else\n```'), /unknown check: something-else/);
+});
+
+test('loadProfile loads is-quantitative with the hypothetico-deductive graph and its check', () => {
+  const p = profile.loadProfile('is-quantitative', pluginRoot);
+  assert.deepEqual(p.graph, { 1: [], 2: [1], 3: [1, 2], 4: [2, 3], 5: [3, 4], 6: [4, 5], 7: [6], 8: [2, 4, 7], 9: [5, 7] });
+  assert.deepEqual(p.checks, ['hypotheses-before-data']);
+});
+
+test('is-qualitative carries no checks, so its review is unchanged', () => {
+  assert.deepEqual(profile.loadProfile('is-qualitative', pluginRoot).checks, []);
+});
+
 test('mechanicalReview cross-checks acceptances against the decision log', () => {
   const graph = profile.loadProfile('is-qualitative', pluginRoot).graph;
   const acceptedText = "When do members' suggestions in organizational meetings receive serious consideration rather than polite acknowledgement?";

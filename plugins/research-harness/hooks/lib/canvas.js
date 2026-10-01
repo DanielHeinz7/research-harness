@@ -36,19 +36,35 @@ function normalizeText(text) {
 // committed statements that sit on one. Indentation (S8) and a fence hide a
 // statement exactly as a comment (S10) does, which is why this is one question
 // and not two.
+// A fence is not closed by "any three backticks or tildes" (SQ-169). Its opener
+// fixes a character and a length, and CommonMark closes the block only on a run
+// of that same character, at least as long, with nothing but whitespace after
+// it. A shorter run, the other character or a line carrying an info string is
+// content of the block, so a statement under one renders as code and is as
+// hidden as one under the opener.
+const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})(.*)$/;
+
 function hiddenLines(lines) {
   const reasons = new Array(lines.length).fill(null);
   let inComment = false;
-  let inFence = false;
+  let fenceChar = null;
+  let fenceLength = 0;
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const fence = /^\s{0,3}(```|~~~)/.test(line);
+    const fence = FENCE_RE.exec(line);
     if (fence && !inComment) {
       reasons[i] = 'code';
-      inFence = !inFence;
+      const run = fence[1];
+      if (fenceChar === null) {
+        fenceChar = run[0];
+        fenceLength = run.length;
+      } else if (run[0] === fenceChar && run.length >= fenceLength && fence[2].trim() === '') {
+        fenceChar = null;
+        fenceLength = 0;
+      }
       continue;
     }
-    if (inFence) {
+    if (fenceChar !== null) {
       reasons[i] = 'code';
       continue;
     }

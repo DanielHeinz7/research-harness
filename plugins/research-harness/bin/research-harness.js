@@ -343,7 +343,8 @@ function log(positional, flags) {
     ref,
     body: flags.body,
     why: typeof flags.why === 'string' ? flags.why : undefined,
-    supersedes: flags.supersedes === undefined ? undefined : Number(flags.supersedes),
+    // A bare --supersedes parses as true, and Number(true) would be entry 1.
+    supersedes: flags.supersedes === undefined ? undefined : flags.supersedes === true ? NaN : Number(flags.supersedes),
     pluginRoot: pluginRoot(),
     variant,
   });

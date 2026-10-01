@@ -1,7 +1,7 @@
 'use strict';
 
 const seal = require('./seal');
-const { fieldLabelIn } = require('./decisions');
+const { fieldLabelIn, parseDecisions } = require('./decisions');
 const { loadState, ledgerRefusal } = require('./state');
 
 const LOG_KINDS = ['DISCOVERY', 'CONSTRAINT'];
@@ -55,12 +55,14 @@ function appendLog({ root, kind, ref, body, why, supersedes, pluginRoot, variant
   const reason = typeof why === 'string' ? why : undefined;
   const heading = headingRefusal(text, reason) || labelRefusal(text, reason);
   if (heading) return refuse('invalid', heading);
-  if (supersedes !== undefined && !Number.isInteger(supersedes)) return refuse('invalid', '--supersedes takes an entry number.');
+  if (supersedes !== undefined && !(Number.isInteger(supersedes) && supersedes >= 1)) return refuse('invalid', '--supersedes takes an entry number.');
 
   const state = loadState(root, { pluginRoot, variant });
   if (state.error) return refuse(state.code, state.error);
   const refusal = ledgerRefusal(state);
   if (refusal) return refuse(refusal.code, `Cannot log: ${refusal.error}`);
+  const last = parseDecisions(state.decisionsText).maxSeq;
+  if (supersedes > last) return refuse('invalid', `--supersedes #${supersedes}: the log has no such entry (the last is #${last}).`);
   const logged = seal.sealedAppend(state.paths.decisions, {
     date: today(),
     kind,

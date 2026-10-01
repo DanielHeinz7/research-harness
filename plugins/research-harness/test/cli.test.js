@@ -757,3 +757,18 @@ test('the README runs the CLI as the installed command, since the reader is in a
   assert.doesNotMatch(readme, /node bin\/research-harness\.js/);
   assert.match(readme, /^ {4}research-harness review --key <key file>$/m);
 });
+
+test('log --supersedes refuses a bare flag, zero, a negative and an entry the log does not have, and writes nothing', () => {
+  const root = keyedProject();
+  const before = readLog(root);
+  const maxSeq = decisions.parseDecisions(before).maxSeq;
+  for (const value of [[], ['0'], ['-1'], ['1.5'], [String(maxSeq + 1)]]) {
+    const out = run(root, ['log', 'DISCOVERY', '2 Audience and Prior Research', '--body', 'x [tentative]', '--supersedes'].concat(value));
+    assert.notEqual(out.status, 0, `--supersedes ${value.join(' ') || '(bare)'} was accepted: ${out.stdout}`);
+    assert.match(out.stdout + out.stderr, /--supersedes/);
+    assert.equal(readLog(root), before);
+  }
+  const ok = run(root, ['log', 'DISCOVERY', '2 Audience and Prior Research', '--body', 'x [tentative]', '--supersedes', String(maxSeq)]);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.match(readLog(root), new RegExp(`\\*\\*Supersedes:\\*\\* #${maxSeq}`));
+});

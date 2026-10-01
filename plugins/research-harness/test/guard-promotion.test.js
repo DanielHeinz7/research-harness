@@ -557,6 +557,25 @@ test('Bash: a symlinked ancestor of the state root, on disk or made by an earlie
   assert.equal(run(root, 'Bash', { command: 'ln -sfn . h && cat h/research/canvas.md' }, env), null);
 });
 
+test('Bash: earlier-call and pre-existing links to the project cannot hide a canvas or log write', (t) => {
+  const root = makeProject();
+  if (!canSymlink(root)) return t.skip('this platform does not allow symlinks');
+  // This call is allowed and makes the link before the writes are judged.
+  assert.equal(run(root, 'Bash', { command: 'ln -s . h' }), null);
+  fs.symlinkSync('.', path.join(root, 'h'));
+  fs.symlinkSync(path.join(root, 'research'), path.join(root, 'already'));
+  for (const command of [
+    `sed -i '' 's/\\[proposed\\]/[accepted]/' h/research/canvas.md`,
+    'echo tail >> h/research/decisions.md',
+    'echo tail >> already/decisions.md',
+    'echo tail >> h/research/variants/alpha/decisions.md',
+  ]) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  assert.equal(run(root, 'Bash', { command: 'cat h/research/canvas.md' }), null);
+});
+
 test('the default harness state directory under the home directory is protected without any environment set', () => {
   const root = makeProject();
   const { RESEARCH_HARNESS_STATE_DIR: _state, ...rest } = process.env;
@@ -2006,6 +2025,24 @@ test('US-3: a variant decisions.md write is denied, whether it exists or not', (
   }
 });
 
+test('an outward-linked variants directory cannot turn a new state file into an unguarded write', (t) => {
+  const root = makeProject();
+  if (!canSymlink(root)) return t.skip('this platform does not allow symlinks');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-variants-out-'));
+  fs.symlinkSync(outside, path.join(root, 'research', 'variants'));
+  const base = path.join(root, 'research', 'variants', 'new');
+  for (const [name, content] of [
+    ['decisions.md', '# Decision log\n\n## [#1] forged DECISION\n'],
+    ['canvas.md', canvasText],
+  ]) {
+    const out = run(root, 'Write', { file_path: path.join(base, name), content });
+    assert.equal(out && out.permissionDecision, 'deny', name);
+    assert.match(out.permissionDecisionReason, /[Uu]njudgeable|[Cc]annot judge/, name);
+  }
+  const unknown = run(root, 'mcp__filesystem__write_file', { destination: 'research/variants/new/decisions.md', text: 'forged' });
+  assert.equal(unknown && unknown.permissionDecision, 'deny');
+});
+
 test('US-3: [proposed] writes into a variant are allowed, including creating its canvas', () => {
   const root = makeProject();
   const dir = withVariant(root, 'x', canvasText);
@@ -2077,4 +2114,148 @@ test('US-3: the word choose alone, and reading the variants, stay allowed', () =
   ]) {
     assert.equal(run(root, 'Bash', { command }), null, command);
   }
+});
+
+// ---------- SQ-145: whole words and redirect targets are judged where they land ----------
+
+// Rows 1-20 of SQ-145's two tables, one guard process each through run().
+// `bare` is a checkout with no research state anywhere; `full` is a paper
+// project whose canvas holds an [accepted] commitment. A cell marked
+// case-dependent only holds where the volume folds case, since that is what
+// makes `./Research` land on `./research`. SQ-145's rows 1 and 2 are ALLOW on
+// every filesystem and never skip; the rest of the case-dependent cells skip
+// with a message where the two names are different files.
+const SQ145_ROWS = [
+  { n: 1, name: 'a run spelling the state name inside a word is program text, not a path', command: "sed -i '' 's/Foo\\./Research/' notes.md", bare: 'ALLOW', full: 'ALLOW' },
+  { n: 2, name: 'a longer run that only begins with the state name is program text too', command: "sed -i '' 's/Foo\\./Research Plan/' notes.md", bare: 'ALLOW', full: 'ALLOW' },
+  { n: 3, name: 'the state directory spelled as a path is the state', command: "sed -i '' 's/Foo\\./research/' notes.md", bare: 'DENY', full: 'DENY' },
+  { n: 4, name: 'a state-directory operand that lands on the state directory', command: "sed -i '' 's/a/b/' ./Research", bare: 'DENY', full: 'DENY', caseBlind: true },
+  { n: 5, name: 'a bare state-directory operand in place of the phrase', command: "sed -i '' 's/a/b/' Research", bare: 'ALLOW', full: 'DENY', caseBlindFull: true },
+  { n: 6, name: 'a state file under the state directory, spelled with a path', command: "sed -i '' 's/x/y/' ./Research/canvas.md", full: 'DENY', caseBlindFull: true },
+  { n: 7, name: 'an in-place edit that rewrites a [proposed] marker', command: "sed -i '' 's/proposed/accepted/' Research/canvas.md", full: 'DENY', caseBlindFull: true },
+  { n: 8, name: 'a redirect into the decision log', command: 'printf x >> Research/decisions.md', full: 'DENY', caseBlindFull: true },
+  { n: 9, name: 'a copy onto the canvas', command: 'cp notes.md Research/canvas.md', full: 'DENY', caseBlindFull: true },
+  { n: 10, name: 'reading the canvas', command: 'cat Research/canvas.md', full: 'ALLOW' },
+  { n: 11, name: 'grepping the decision log', command: 'grep x Research/decisions.md', full: 'ALLOW' },
+  { n: 12, name: 'a sed -n script that substitutes and then writes the canvas', command: "sed -n 's/\\[proposed\\]/[accepted]/;w research/canvas.md' copy.md", full: 'DENY' },
+  { n: 13, name: 'a sed -n whose script writes the canvas', command: "sed -n 'w research/canvas.md' notes.md", bare: 'DENY', full: 'DENY' },
+  { n: 14, name: 'a sed -n whose s command carries a w flag', command: "sed -n 's/x/y/w research/canvas.md' notes.md", full: 'DENY' },
+  { n: 15, name: 'a sed -n -e script that writes the decision log', command: "sed -n -e 'w research/decisions.md' notes.md", full: 'DENY' },
+  { n: 16, name: 'a sed -n writing the canvas through the state directory spelled in its case', command: "sed -n 'w Research/canvas.md' notes.md", bare: 'DENY', full: 'DENY', caseBlind: true },
+  { n: 17, name: 'a sed -i whose s command carries a w flag into the decision log', command: "sed -i '' 's/a/b/w research/decisions.md' notes.md", full: 'DENY' },
+  { n: 18, name: "the same w flag spelled in the state directory's case", command: "sed -i '' 's/a/b/w Research/decisions.md' notes.md", full: 'DENY', caseBlindFull: true },
+  { n: 19, name: 'an address-range read stays a read', command: "sed -n '1,5p' research/canvas.md", bare: 'ALLOW', full: 'ALLOW' },
+  { n: 20, name: 'a regex-address read stays a read', command: "sed -n '/Why/,/^$/p' research/canvas.md", bare: 'ALLOW', full: 'ALLOW' },
+];
+
+function bashVerdict(root, command) {
+  const out = run(root, 'Bash', { command });
+  if (!out) return 'ALLOW';
+  assert.equal(out.permissionDecision, 'deny', `${command}: ${out.permissionDecisionReason}`);
+  return 'DENY';
+}
+
+for (const row of SQ145_ROWS) {
+  test(`SQ-145 row ${row.n}: ${row.name}`, (t) => {
+    const full = makeProject();
+    const bare = makeBareProject();
+    const blind = caseBlindVolume(full);
+    let skipped = false;
+    for (const [state, expect, needsCase] of [
+      ['bare', row.bare, row.caseBlind === true],
+      ['full', row.full, row.caseBlind === true || row.caseBlindFull === true],
+    ]) {
+      if (expect === undefined) continue;
+      if (needsCase && !blind) { skipped = true; continue; }
+      assert.equal(bashVerdict(state === 'bare' ? bare : full, row.command), expect,
+        `row ${row.n} in ${state === 'bare' ? 'a checkout without state' : 'a paper project'}: ${row.command}`);
+    }
+    if (skipped) t.skip('this volume is case-sensitive, so the case variant never reaches the state');
+  });
+}
+
+test('SQ-145: a mixed-case spelling of the state directory is the state for Write and Edit', (t) => {
+  const root = makeProject();
+  if (!caseBlindVolume(root)) return t.skip('case-sensitive volume: these are different files');
+  const canvas = path.join(root, 'Research', 'canvas.md');
+  assert.match(deniedReason(root, canvas), /\[accepted\] commitment in question 1\.1/);
+  const edited = run(root, 'Edit', {
+    file_path: canvas,
+    old_string: ACCEPTED,
+    new_string: ACCEPTED.replace('serious consideration', 'real consideration'),
+  });
+  assert.equal(edited && edited.permissionDecision, 'deny');
+  assert.match(edited.permissionDecisionReason, /\[accepted\] commitment in question 1\.1/);
+  const log = run(root, 'Write', { file_path: path.join(root, 'Research', 'decisions.md'), content: '# Decision log\n\n## [#1] forged DECISION\n' });
+  assert.equal(log && log.permissionDecision, 'deny');
+  return undefined;
+});
+
+// ---------- SQ-145 part 2: a sed whose script can write or run is not a read ----------
+
+// The shapes the ticket names as never tried: GNU's `W` command and `e` (which
+// runs its argument), the `e` flag of `s`, and a script read from a file with
+// `-f`/`--file`, which the guard cannot read at all. Every command names the
+// state file, since the stricter read-only rule only bites where the command
+// already names state.
+const SQ145_WRITE_SCRIPTS = [
+  "sed -n 'W research/canvas.md' notes.md",
+  "sed -n 'e cp notes.md research/canvas.md' notes.md",
+  "sed -n 's/x/y/e' research/canvas.md",
+  "sed -n -f prog.sed research/canvas.md",
+  "sed -n --file=prog.sed research/canvas.md",
+  "sed -n --file prog.sed research/canvas.md",
+  // The script is the same command wherever sed is told to take it from.
+  "sed -ne 'w research/canvas.md' notes.md",
+  "sed --expression='w research/canvas.md' research/canvas.md",
+  "sed -n -e '1,5p' -e 'w research/canvas.md' notes.md",
+  "sed -n '{w research/canvas.md}' notes.md",
+  "sed -n '1,5p;w research/canvas.md' notes.md",
+  // SQ-148: a `b`/`t`/`T`/`:` label ends at `;`, so the `w` after it is a
+  // command, not part of the label. Before the fix each of these was read as a
+  // label running to the end of the line, and the write was never seen.
+  "sed -n ':a;w research/canvas.md' copy.md",
+  "sed -n '$!ba;w research/canvas.md' copy.md",
+  "sed -n 'tx;w research/decisions.md' copy.md",
+];
+
+test('SQ-145: a sed script that can write or run is refused however sed is told to run it', () => {
+  const root = makeProject();
+  for (const command of SQ145_WRITE_SCRIPTS) assert.equal(bashVerdict(root, command), 'DENY', command);
+});
+
+// The letter `w` is not the command `w`: these scripts hold `w`s in a pattern,
+// a replacement or a `y` list, and `r` queues a file it reads, so they stay
+// reads (SQ-145 rows 19-20). A plain regex for the letter `w` would refuse
+// them.
+const SQ145_READ_SCRIPTS = [
+  "sed -n 's/x/y/g' research/canvas.md",
+  "sed -n 's/w/W/g' research/canvas.md",
+  "sed -n 'y/w/x/' research/canvas.md",
+  "sed -n '/Why/p' research/canvas.md",
+  "sed -n 'r research/canvas.md' notes.md",
+  // SQ-148: the common label idiom, whose labels now end at `;` — the rest of
+  // the line is parsed and holds no write.
+  "sed -n ':a;N;$!ba;s/\\n/ /g;p' research/canvas.md",
+];
+
+test('SQ-145: a sed -n whose script cannot write stays a read', () => {
+  const root = makeProject();
+  for (const command of SQ145_READ_SCRIPTS) assert.equal(bashVerdict(root, command), 'ALLOW', command);
+});
+
+// `less` is a named reader, but `-o FILE`, `-O FILE` and `--log-file=FILE` copy
+// what is viewed into FILE. Probed in a temp dir under a pty: they write when
+// the input is a pipe and stdout a terminal, and write nothing when less gets a
+// file operand or a piped stdout. Which shape the shell hands `less` is not the
+// guard's to know, so the flags are refused the way `sort -o` is — while plain
+// `less` over the canvas stays a read.
+test('SQ-145: the less flags that log to a file are refused, a plain less is not', () => {
+  const root = makeProject();
+  for (const command of [
+    'less -o log.txt research/canvas.md',
+    'less -O log.txt research/canvas.md',
+    'less --log-file=log.txt research/canvas.md',
+  ]) assert.equal(bashVerdict(root, command), 'DENY', command);
+  assert.equal(bashVerdict(root, 'less research/canvas.md'), 'ALLOW');
 });

@@ -1199,7 +1199,7 @@ function opaqueReachesState(text, stateNames, dirName) {
 // (SQ-96: `sed -i '' 's|x|**/_raw/*|' .gitignore` was denied because `**`
 // matched `research`). The word itself and a `k=v` value stay patterns, since
 // the shell does expand those.
-function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText) {
+function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText, stateRoot) {
   // A brace expansion or loop too large to compute (SQ-75) is unknown where
   // state is there to land on; where it is not, it is read on the names it
   // spells, the way an opaque word is.
@@ -1208,12 +1208,25 @@ function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText) 
   if (w.opaque) return opaqueReachesState(w.text, stateNames, stateParts[stateParts.length - 1]);
   if (base === null) return false;
   let unjudgeable = false;
-  const candidates = wordCandidates(w.text).map((text) => [text, false])
-    .concat(pathFragments(w.text).map((text) => [text, !!inertText]));
-  for (const [candidate, literal] of candidates) {
+  const candidates = wordCandidates(w.text).map((text) => [text, false, false])
+    .concat(pathFragments(w.text).map((text) => [text, !!inertText, true]));
+  for (const [candidate, literal, fragment] of candidates) {
     const denotes = denotesState(candidate, base, stateParts, literal);
     if (denotes === null) unjudgeable = true;
     else if (denotes && !namesAbsentStateDir(candidate, base, stateParts, hasState)) return true;
+    else if (!candidate.startsWith('~') && !candidate.includes(EXP_OPEN)) {
+      const landed = canonical(path.resolve(base, candidate), 0);
+      // A run inside a word's text is not a path either: `s/Foo\./Research/`
+      // is program text, and on a case-insensitive volume `./Research/` in it
+      // resolves onto the state directory without naming it. Such a run counts
+      // on where it lands only when that landing is a state file (row 16:
+      // `sed -n 'w Research/canvas.md'`), which is a write wherever it is
+      // spelled from; the spelled comparison above stays its judge (SQ-145).
+      if (underState(landed, stateRoot)
+        && (!fragment || isStateFileName(path.basename(landed)))
+        && (hasState || hasPathSeparator(candidate) || !samePath(landed, stateRoot))
+        && !namesAbsentStateDir(landed, base, stateRoot.split(path.sep).filter(Boolean), hasState)) return true;
+    }
   }
   return unjudgeable ? null : false;
 }
@@ -1494,9 +1507,238 @@ function logKindOf(invocation) {
   return 'open';
 }
 
+// ---------- sed scripts ----------
+// SQ-145: `sed -n` reads only while the script it runs writes no file and runs
+// no command. `w` and `W` write, the `w` flag of `s` writes, GNU's `e` command
+// and the `e` flag of `s` run one — but the letter on its own says nothing:
+// `sed -n '/Why/,/^$/p' research/canvas.md` and `sed -n 's/w/W/g'` are reads, so
+// the script is parsed rather than searched for `w`. A script the parser cannot
+// follow — an unknown command or flag, a `-f FILE` whose text lives in a file —
+// is not read-only. That verdict is only ever consulted for a command that
+// already names the research state (see the `touches && refusal` gate).
+
+// Commands that take no argument of their own...
+const SED_SIMPLE_COMMANDS = new Set(['p', 'P', 'd', 'D', 'h', 'H', 'g', 'G', 'x', 'n', 'N', 'q', 'Q', '=', 'l', 'z', 'F', '{', '}']);
+// ...the ones whose argument is the rest of their line: the text of `a`/`i`/`c`
+// (GNU continues it over a backslash-newline), the target of `r`/`R`, and a
+// comment.
+const SED_LINE_COMMANDS = new Set(['a', 'i', 'c', 'r', 'R', '#']);
+// ...and the ones whose argument is a label. A label ends at `;` or a newline,
+// not at the end of the line: `:a;N;$!ba;s/\n/ /g` is the ordinary spelling. GNU
+// sed ends it at the `;`, and BSD sed reads the `;` into the label only to fail
+// with an undefined label — so ending it here is the stricter reading on both.
+// SQ-148: reading a label to the end of the line swallowed the `w` that follows
+// the `;`, and `sed -n ':a;w research/canvas.md'` came back a read.
+const SED_LABEL_COMMANDS = new Set(['b', 't', 'T', ':']);
+const SED_SUBSTITUTION_FLAGS = new Set(['g', 'p', 'i', 'I', 'm', 'M']);
+const SED_SHORT_FLAGS = new Set(['n', 'E', 'r', 's', 'u', 'z', 'l', 'a', 'H', 'h', 'V']);
+const SED_LONG_FLAGS = new Set(['--quiet', '--silent', '--posix', '--debug', '--sandbox', '--follow-symlinks', '--binary', '--regexp-extended', '--separate', '--unbuffered', '--zero-terminated', '--null-data', '--line-length', '--in-place', '--help', '--version']);
+const SED_LONG_VALUE_FLAGS = new Set(['--line-length', '--in-place']);
+
+// The index of the delimiter that closes a delimited body — the pattern or
+// replacement of an `s` or `y`, or the regex of an address — with a backslash
+// escaping the next character. `at` is where the body starts, just past its
+// opening delimiter; `delimiter` is that opening delimiter, passed explicitly
+// because the replacement of `s/x/y/` starts on a `y`. A newline inside the
+// body ends the script there rather than the body, which is unreadable.
+function sedDelimitedEnd(script, at, delimiter) {
+  if (!delimiter || delimiter === '\\' || delimiter === '\n') return -1;
+  for (let k = at; k < script.length; k += 1) {
+    const ch = script[k];
+    if (ch === '\\') { k += 1; continue; }
+    if (ch === '\n') return -1;
+    if (ch === delimiter) return k;
+  }
+  return -1;
+}
+
+// The end of the line that holds the rest of a command's argument, counting a
+// backslash at the end of the line as a continuation (GNU sed spells `a text`
+// that way, and POSIX `a\` + newline).
+function sedLineEnd(script, at) {
+  let k = at;
+  for (;;) {
+    const nl = script.indexOf('\n', k);
+    if (nl < 0) return script.length;
+    let escapes = 0;
+    while (nl - 1 - escapes >= 0 && script[nl - 1 - escapes] === '\\') escapes += 1;
+    if (escapes % 2 === 0) return nl;
+    k = nl + 1;
+  }
+}
+
+// The end of a label argument, at the `;` or newline that terminates it. Unlike
+// `sedLineEnd` this is not a line: the rest of the line after the label is more
+// script, and the `;` that ends the idiom `:a;N;$!ba;s/\n/ /g` is one.
+function sedLabelEnd(script, at) {
+  for (let k = at; k < script.length; k += 1) {
+    if (script[k] === ';' || script[k] === '\n') return k;
+  }
+  return script.length;
+}
+
+// One address at `at`, or -1 when no address starts there: a line number (with
+// GNU's `first~step`), `/regex/` or `\cREc` with its `I`/`M` modifiers, `$`.
+function sedAddressEnd(script, at) {
+  const ch = script[at];
+  if (ch === undefined) return -1;
+  if (ch === '$') return at + 1;
+  if (ch === '/' || ch === '\\') {
+    const open = ch === '\\' ? at + 1 : at;
+    const close = sedDelimitedEnd(script, open + 1, script[open]);
+    if (close < 0) return -1;
+    let k = close + 1;
+    while (script[k] === 'I' || script[k] === 'M') k += 1;
+    return k;
+  }
+  if (ch >= '0' && ch <= '9') {
+    let k = at;
+    while (script[k] >= '0' && script[k] <= '9') k += 1;
+    if (script[k] === '~') {
+      k += 1;
+      while (script[k] >= '0' && script[k] <= '9') k += 1;
+    }
+    return k;
+  }
+  return -1;
+}
+
+// True when the script writes a file or runs a command, false when it does
+// neither, null when this parser cannot follow it.
+function sedScriptWrites(script) {
+  const n = script.length;
+  const blank = (ch) => ch === ' ' || ch === '\t' || ch === '\r';
+  let i = 0;
+  const separators = () => {
+    while (i < n && (blank(script[i]) || script[i] === ';' || script[i] === '\n')) i += 1;
+  };
+  const spaces = () => { while (i < n && blank(script[i])) i += 1; };
+  for (separators(); i < n; separators()) {
+    if (script[i] === '#') { i = sedLineEnd(script, i + 1); continue; }
+    if (script[i] === '}' || script[i] === ';') { i += 1; continue; }
+    let far = sedAddressEnd(script, i);
+    if (far >= 0) {
+      i = far;
+      spaces();
+      if (script[i] === ',') {
+        i += 1;
+        spaces();
+        far = script[i] === '+' || script[i] === '~' ? sedAddressEnd(script, i + 1) : sedAddressEnd(script, i);
+        if (far < 0) return null;
+        i = far;
+        spaces();
+      }
+      if (script[i] === '!') { i += 1; spaces(); }
+    } else if (script[i] === '!') {
+      return null;
+    }
+    const letter = script[i];
+    if (letter === undefined) return null;
+    if (letter === 's' || letter === 'y') {
+      const delimiter = script[i + 1];
+      const pattern = sedDelimitedEnd(script, i + 2, delimiter);
+      if (pattern < 0) return null;
+      const replacement = sedDelimitedEnd(script, pattern + 1, delimiter);
+      if (replacement < 0) return null;
+      i = replacement + 1;
+      if (letter === 'y') continue;
+      for (;;) {
+        const flag = script[i];
+        if (flag === undefined || blank(flag) || flag === ';' || flag === '\n') break;
+        if (SED_SUBSTITUTION_FLAGS.has(flag)) { i += 1; continue; }
+        if (flag >= '0' && flag <= '9') { while (script[i] >= '0' && script[i] <= '9') i += 1; continue; }
+        // `s///w FILE` writes that file, GNU's `s///e` runs the result.
+        if (flag === 'w' || flag === 'e') return true;
+        return null;
+      }
+      continue;
+    }
+    if (letter === 'w' || letter === 'W' || letter === 'e') return true;
+    if (SED_SIMPLE_COMMANDS.has(letter)) {
+      i += 1;
+      if (letter === 'q' || letter === 'Q' || letter === 'l') {
+        while (script[i] >= '0' && script[i] <= '9') i += 1;
+      }
+      continue;
+    }
+    if (SED_LABEL_COMMANDS.has(letter)) { i = sedLabelEnd(script, i + 1); continue; }
+    if (SED_LINE_COMMANDS.has(letter)) { i = sedLineEnd(script, i + 1); continue; }
+    return null;
+  }
+  return false;
+}
+
+// The script operands sed would run: every `-e`/`--expression` argument, or the
+// first operand when the script is given as one. null when the guard cannot
+// read them — a `-f`/`--file` script is a file, and an unknown flag could be one
+// that takes the next word as its argument.
+function sedScriptOperands(flags) {
+  const scripts = [];
+  let scripted = false;
+  let ended = false;
+  for (let k = 0; k < flags.length; k += 1) {
+    const w = flags[k];
+    if (w.opaque) return null;
+    const text = w.text;
+    if (!ended && text === '--') { ended = true; continue; }
+    if (!ended && text.startsWith('--')) {
+      const eq = text.indexOf('=');
+      const name = eq < 0 ? text : text.slice(0, eq);
+      const value = eq < 0 ? null : text.slice(eq + 1);
+      if (name === '--expression' || name === '--file') {
+        if (name === '--file') return null;
+        const next = value === null ? flags[k + 1] : { text: value, opaque: false };
+        if (!next || next.opaque) return null;
+        scripts.push(next.text);
+        scripted = true;
+        if (value === null) k += 1;
+        continue;
+      }
+      if (!SED_LONG_FLAGS.has(name) || (value !== null && !SED_LONG_VALUE_FLAGS.has(name))) return null;
+      continue;
+    }
+    if (!ended && text.length > 1 && text[0] === '-') {
+      for (let c = 1; c < text.length; c += 1) {
+        const letter = text[c];
+        if (letter === 'e' || letter === 'f') {
+          if (letter === 'f') return null;
+          const rest = text.slice(c + 1);
+          if (rest) scripts.push(rest);
+          else {
+            const next = flags[k + 1];
+            if (!next || next.opaque) return null;
+            scripts.push(next.text);
+            k += 1;
+          }
+          scripted = true;
+          break;
+        }
+        if (!SED_SHORT_FLAGS.has(letter)) return null;
+      }
+      continue;
+    }
+    // An operand. Without a `-e` before it, the first one is the script; the
+    // rest are files it reads.
+    if (!scripted) { scripts.push(text); scripted = true; }
+  }
+  return scripts;
+}
+
+// The reason a `sed -n` that names the state is still not read-only, or null.
+function sedRefusal(flags) {
+  const scripts = sedScriptOperands(flags);
+  if (scripts === null) return '`sed` reads its script from a file or from a flag this guard cannot name';
+  for (const script of scripts) {
+    const writes = sedScriptWrites(script);
+    if (writes === null) return 'this guard cannot read the sed script, so it cannot tell whether it writes';
+    if (writes) return 'the sed script writes a file or runs a command';
+  }
+  return null;
+}
+
 // Returns null when the simple command is a named read-only form, or the
 // reason it is not.
-function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, splitsBlanks) {
+function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, splitsBlanks, stateRoot) {
   for (const redirect of sc.redirects) {
     if (!redirect.write) continue;
     // SQ-106: a loop counts as read-only only when nothing in it writes, so a
@@ -1508,7 +1750,7 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
     for (const target of redirect.targets || [redirect.target]) {
       if (target.opaque) return 'it redirects into a path assembled at runtime';
       if (base === null && !target.text.startsWith('/')) return 'it redirects into a relative path after a `cd` this guard cannot follow';
-      const touches = wordTouchesState(target, base, stateParts, stateNames, hasState);
+      const touches = wordTouchesState(target, base, stateParts, stateNames, hasState, false, stateRoot);
       if (touches === null) return UNCOMPUTABLE_PATTERN_WHY;
       if (touches) return 'it redirects into the research state';
     }
@@ -1543,8 +1785,18 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
     const quiet = hasFlag(/^-[A-Za-z]*n/) || flags.some((w) => w.text === '--quiet' || w.text === '--silent');
     if (!quiet) return '`sed` only reads with -n';
     if (hasFlag(/^-[A-Za-z]*i/) || flags.some((w) => w.text === '--in-place')) return '`sed -i` edits in place';
+    const script = sedRefusal(flags);
+    if (script) return script;
   }
   if (verb === 'sort' && hasFlag(/^-o/)) return '`sort -o` writes a file';
+  // SQ-145: probed in a temp dir, `less -o FILE`, `-O FILE` and `--log-file=FILE`
+  // copy the input into FILE as it is viewed. They only do so when the input is
+  // a pipe and the output a terminal — a file operand or a piped stdout writes
+  // nothing today — but which shape the shell will hand `less` is not this
+  // guard's to know, so the flags are refused the way `sort -o` is.
+  if (verb === 'less' && (hasFlag(/^-[A-Za-z]*[oO]/) || flags.some((w) => /^--(?:log-file|LOG-FILE)(?:=|$)/.test(w.text)))) {
+    return '`less -o`, `-O` or `--log-file` writes a file';
+  }
   if (verb === 'uniq' && flags.filter((w) => !w.text.startsWith('-')).length > 1) return '`uniq` with two operands writes the second';
   if (verb === 'find' && hasFlag(/^-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)$/)) return '`find` was given an action that writes or runs a command';
   if (verb === 'git') {
@@ -1651,6 +1903,7 @@ function bashVerdict(command, projectRoot) {
   if (!cmd.trim()) return null;
   const root = projectRoot || project.projectDir({});
   const stateDir = project.stateDir(root);
+  const stateRoot = canonical(stateDir, 0);
   const stateParts = stateDir.split(path.sep).filter(Boolean);
   const stateNames = new Set([project.CANVAS_FILE, project.DECISIONS_FILE, path.basename(stateDir)]);
   // SQ-71: state that is not there cannot be touched. A word the guard cannot
@@ -1785,17 +2038,17 @@ function bashVerdict(command, projectRoot) {
     if (base === null && hasState) touches = true;
     const inertText = !runsProgramText(sc.words);
     for (const w of sc.words) {
-      const verdict = wordTouchesState(w, base, stateParts, stateNames, hasState, inertText);
+      const verdict = wordTouchesState(w, base, stateParts, stateNames, hasState, inertText, stateRoot);
       if (verdict === null && hasState) uncomputable = true;
       else if (verdict) touches = true;
     }
     for (const redirect of sc.redirects) {
-      if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames, hasState)) touches = true;
+      if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames, hasState, false, stateRoot)) touches = true;
       // A redirect target is a write position, so a pattern there the guard
       // cannot compute counts as touching: `readOnlyRefusal` below supplies the
       // reason.
       for (const target of redirect.targets) {
-        if (touched(wordTouchesState(target, base, stateParts, stateNames, hasState))) touches = true;
+        if (touched(wordTouchesState(target, base, stateParts, stateNames, hasState, false, stateRoot))) touches = true;
         if (hasState && redirect.write && target.opaque && (assembledTarget(target.text) || hasUnknownSubstitution(target.text))) touches = true;
       }
     }
@@ -1843,7 +2096,7 @@ function bashVerdict(command, projectRoot) {
       else if (named === 'serve') serveAttempt = true;
     }
 
-    const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState, splitsBlanks);
+    const scRefusal = readOnlyRefusal(sc, argv, base, stateParts, stateNames, hasState, splitsBlanks, stateRoot);
     if (!refusal) refusal = scRefusal;
     // A launcher reading its program from a heredoc is not a read-only verb here:
     // a body in another language was never lexed into commands of its own.
@@ -1963,7 +2216,7 @@ function identity(file) {
 // answers to: the resolved path, its canonical spelling, and its identity.
 function landingOf(projectRoot, raw) {
   const written = path.resolve(projectRoot, raw);
-  return { canonicalPath: canonical(written, 0), id: identity(written) };
+  return { writtenPath: written, canonicalPath: canonical(written, 0), id: identity(written) };
 }
 
 // US-3: every variant's canvas and log is state too. The ones that exist are
@@ -1993,9 +2246,12 @@ function nestedStateAt(projectRoot, landing) {
   const base = path.basename(landing.canonicalPath);
   const kind = STATE_KIND_BY_NAME.get(base) || STATE_KIND_BY_NAME.get(base.toLowerCase());
   if (!kind) return null;
-  const stateRoot = canonical(project.stateDir(projectRoot), 0);
-  if (!underState(path.dirname(landing.canonicalPath), stateRoot)) return null;
-  return { kind, file: landing.canonicalPath, id: landing.id };
+  const writtenRoot = path.resolve(project.stateDir(projectRoot));
+  const stateRoot = canonical(writtenRoot, 0);
+  const landsInState = underState(path.dirname(landing.canonicalPath), stateRoot);
+  const spelledInState = underState(path.dirname(landing.writtenPath), writtenRoot);
+  if (!landsInState && !spelledInState) return null;
+  return { kind, file: landing.canonicalPath, id: landing.id, unjudgeable: spelledInState && !landsInState };
 }
 
 function stateFileAt(landing, states) {
@@ -2011,7 +2267,7 @@ function targetOf(projectRoot, toolInput) {
   const raw = toolInput.file_path || toolInput.notebook_path || toolInput.path;
   if (typeof raw !== 'string' || !raw) return null;
   const landing = landingOf(projectRoot, raw);
-  return stateFileAt(landing, stateFiles(projectRoot)) || nestedStateAt(projectRoot, landing);
+  return nestedStateAt(projectRoot, landing) || stateFileAt(landing, stateFiles(projectRoot));
 }
 
 // ---------- tool coverage ----------
@@ -2086,7 +2342,9 @@ function unknownToolVerdict(projectRoot, toolName, toolInput) {
   for (const candidate of payloadStrings(toolInput, [], 0)) {
     const landing = landingOf(projectRoot, candidate);
     const hit = stateFileAt(landing, states);
-    if (!hit && !(hasPathSeparator(candidate) && underState(landing.canonicalPath, stateRoot))) continue;
+    if (!hit && !(hasPathSeparator(candidate) && (
+      underState(landing.canonicalPath, stateRoot)
+      || underState(landing.writtenPath, path.resolve(project.stateDir(projectRoot)))))) continue;
     const label = toolName ? `\`${toolName.slice(0, 40)}\`` : 'an unnamed tool';
     const name = shortName(projectRoot, hit ? hit.file : landing.canonicalPath);
     return `research-harness cannot judge what ${label} would do to ${name}, so it is denied: it reads Edit, Write and Bash well enough to tell a proposal from a promotion, and nothing else. Read the file with Read, cat or grep; change it with the Edit or Write tool. ${NEXT_STEP}`;
@@ -2115,6 +2373,7 @@ function harnessStateVerdict(projectRoot, toolName, toolInput) {
 }
 
 function fileVerdict(target, toolName, toolInput) {
+  if (target.unjudgeable) return `Cannot judge this write: ${target.file} is spelled under the research state but lands outside it through a symlink. ${NEXT_STEP}`;
   const name = path.basename(target.file);
   if (target.kind === 'decisions') return DECISIONS_DENIAL;
   if (toolName === 'NotebookEdit') {

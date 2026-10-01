@@ -98,7 +98,7 @@ written. The message names the question and both entries and says to merge
 without that acceptance and accept again afterwards.
 
 How the user merges "without that acceptance" is not settled: the tool never
-deletes a sealed entry. A proposal stands in §9, open point 1.
+deletes a sealed entry. A proposal stands in §10, open point 1.
 
 ### Tests
 
@@ -275,7 +275,82 @@ History and fields, unchanged badges, filter surviving a reload. Then one pass i
 a real browser via `cmux browser` (screenshot, console free of errors) before it
 is shown to Daniel.
 
-## 9 · Open points for the plan
+## 9 · Profile `is-quantitative`
+
+### Why it is in 0.5
+
+The first real session runs on a study that tests hypotheses (an experiment
+with confidence measures), but its canvas runs on `is-qualitative`, the only
+profile shipped. That profile asks for the opposite order: constructs after
+findings (`4 ← 7`), prior research late and as material (`2 ← 3`). The MVP
+design (§4.5) planned for a second profile as a Markdown file; 0.5 ships it.
+
+Scope: hypothetico-deductive IS work, experiments and surveys. Mixed methods is
+a non-goal (the qualitative share of the study is small). A later candidate is
+a profile for computationally intensive theory building (pattern recognition
+over large data, then theory from the patterns); it is not part of 0.5.
+
+### The profile file
+
+`references/profiles/is-quantitative.md`, same structure as `is-qualitative.md`.
+
+**Emphasis.**
+- Element 2 (Prior Research) drives the question: the gap or conflict in prior
+  findings is where the question comes from.
+- Element 4 (Constructs) holds the hypotheses, each with its constructs and the
+  theory behind it, firm before data exist. Read with Sparrowe & Mayer (2011).
+- Element 6 (Design) holds manipulations, measures, the analysis plan and the
+  power argument. Read with Bono & McNamara (2011).
+- Element 5 (Setting) is the population and sample the theory applies to.
+- Element 9 (Boundaries) is the scope of the generalization, judged against the
+  sample and the findings.
+
+**Graph** (the canvas's presentation order, which the `is-qualitative` file
+already names as the hypothetico-deductive one):
+
+```graph
+1 <-
+2 <- 1
+3 <- 1, 2
+4 <- 2, 3
+5 <- 3, 4
+6 <- 4, 5
+7 <- 6
+9 <- 5, 7
+8 <- 2, 4, 7
+```
+
+Each edge is a claim about method and gets one line of reasons in the file, as
+in `is-qualitative.md`. The content is a proposal by Claude; the researcher and
+the supervisor confirm or change it before the session (open point 4).
+
+**Module: hypotheses before data.** `references/preregistration.md`, attached
+to elements 4 and 6. The sealed log already orders events, so the order of
+acceptance is evidence: `canvas-review` reports, without blocking, when an
+entry on element 7 precedes the acceptance of element 4 or 6 in the log. That
+is the one code change the module needs (a check in the review over existing
+`seq` order); it reports, it never gates.
+
+### Code that assumes one profile
+
+- `dashboard/canvas.html` holds a static copy of the `is-qualitative` graph.
+  `serve` sends the active profile's graph with the state, and the view uses
+  it; the static copy goes. A test fails if the view renders a graph that does
+  not come from the profile file.
+- `init --profile <id>` exists. For an existing canvas,
+  `research-harness profile <id>` rewrites the frontmatter line and appends a
+  sealed CONSTRAINT entry "profile changed from X to Y" with `By`. It refuses
+  an unknown id. Accepted elements keep their markers; `canvas-review` then
+  reports any that the new graph makes inconsistent.
+- Defaults to `is-qualitative` elsewhere (`inject-state.js`, `state.js`,
+  `bin/research-harness.js`) stay; they apply only without a frontmatter entry.
+
+**Tests:** the profile loads and its graph parses; the view's graph equals the
+profile's; `profile` switches, logs and refuses an unknown id; the review
+reports a finding logged before the hypotheses were accepted, and stays silent
+in the right order.
+
+## 10 · Open points for the plan
 
 1. **Recovering from the check refusal (§2).** The tool never deletes a sealed
    entry, so a refused merge needs a path that does not require one. Proposal
@@ -286,5 +361,10 @@ is shown to Daniel.
    yes before the plan builds on it.
 2. **Order of work.** §3 (`By`) and the new kinds of §4 come first, since §2,
    §5 and §8 read them. §2 is the riskiest and gets its own review ticket.
-3. **Release.** One release 0.5.0 after all sections, with a CHANGELOG section
+3. **`is-quantitative` (§9) is independent** of §2–§8 and can run in its own
+   wave; its profile text needs the researcher's and supervisor's review.
+4. **The profile's content** (emphasis and edges) is Claude's proposal until
+   Daniel and the supervisor confirm it; switching the study's canvas is their
+   step, not part of the implementation.
+5. **Release.** One release 0.5.0 after all sections, with a CHANGELOG section
    written for users; the README gets a "Two people, one canvas" section.

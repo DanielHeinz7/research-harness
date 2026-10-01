@@ -17,7 +17,8 @@ const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-replacement-'));
 const project = path.join(scratch, 'project');
 fs.mkdirSync(project);
 const state = path.join(scratch, 'private-state');
-const env = { ...process.env, RESEARCH_HARNESS_STATE_DIR: state, CLAUDE_PLUGIN_ROOT: path.join(root, 'plugins', 'research-harness') };
+const { CLAUDE_PROJECT_DIR: _p, RESEARCH_HARNESS_DIR: _d, ...ambient } = process.env;
+const env = { ...ambient, RESEARCH_HARNESS_STATE_DIR: state, CLAUDE_PLUGIN_ROOT: path.join(root, 'plugins', 'research-harness') };
 
 function run(file, args) {
   const out = cp.spawnSync(process.execPath, [file, ...args], { cwd: project, env, encoding: 'utf8' });

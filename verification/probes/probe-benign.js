@@ -11,6 +11,8 @@
 // (an open ticket that explains a wrong verdict) and `label`. A row without an
 // absolute cwd is replayed in a fresh empty directory. With expectations the
 // exit code is 1 when a verdict differs and no `known` ticket accounts for it.
+// A run that replayed nothing at all — an empty corpus, or every row skipped —
+// also exits 1: it verified nothing, so its counts must not read as a pass.
 //
 // --harvest reads Bash tool_use inputs from ~/.claude/projects/*/*.jsonl and
 // ~/.claude/projects/*/*/subagents/*.jsonl and writes the corpus and the
@@ -243,7 +245,11 @@ async function main(argv) {
   } else {
     process.stdout.write(out);
   }
-  return mismatched || hookErr ? 1 : 0;
+  // Nothing replayed is not a pass: the release reads these counts, and an
+  // empty corpus would otherwise look like a clean replay. Counts only here —
+  // the rows carry private commands.
+  if (replayed === 0) process.stderr.write("probe-benign: nothing was replayed\n");
+  return replayed === 0 || mismatched || hookErr ? 1 : 0;
 }
 
 if (require.main === module) main(process.argv.slice(2)).then(function (code) { process.exitCode = code; });

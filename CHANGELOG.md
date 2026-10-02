@@ -2,6 +2,29 @@
 
 Release notes for researchers using research-harness in Claude Code.
 
+## 0.5.0 (2026-10-02)
+
+Two people, one canvas: a researcher and a supervisor can now run a session on the same canvas, from one machine or from two git clones. The README's new section "Two people, one canvas" walks through the setup.
+
+### Added
+
+- Every entry in the decision log names who wrote it, as a `**By:**` line sealed with the rest of the entry. Set your name once with `research-harness name "A. Researcher"`; without it the name comes from `git config user.name`. The name is a statement, not proof: whoever holds the sealing key can write any name, and the seal only keeps it from changing afterwards. Older entries without a name show as "unknown".
+- `research-harness session start "<occasion>"` marks the start of a session in the log. `research-harness session protocol [<n>]` prints what that session accepted and noted and which checks were still open at its end, with the seal status; `--out <file>` writes it to a file.
+- `research-harness agenda [--out <file>]` prints the "To talk about" tab as Markdown before a session: the fields with findings that are not yet accepted, and the questions nobody has answered. The tab in the session view and the command now come from the same code.
+- A second clone joins without a new key. The key holder runs `research-harness key export --out <file>.seal.key` (the key is never printed) and hands the file over in person; the second person runs `research-harness join --key-file <file> --name "<name>"`, which checks the key against the log before copying it. `init` in a clone whose log is already sealed now refuses and points to `join`, so nobody creates a second key by accident.
+- `research-harness merge-log` repairs a `git pull --no-rebase` that conflicted on `research/decisions.md`: it keeps the other clone's log as it is and seals your new entries after it, with a `MERGE` entry that says what moved. It refuses and writes nothing when the other copy does not verify under the project key, and when one of your acceptances would land after a check question the other person opened. In that case `merge-log --skip-decision <n>` merges without that acceptance; set the statement's marker in `research/canvas.md` back by hand and accept it again.
+- The session view shows each entry's author, marks sessions as dividers and merges as quiet lines, and filters History and field findings by name. The filter is kept in the address (`#by=<name>`), never in browser storage.
+- A second canvas profile, `is-quantitative`, for experiments and surveys that test hypotheses: prior research leads to the question, the question to the hypotheses, then sample and design. Start a canvas with `init --profile is-quantitative` or switch an existing one with `research-harness profile is-quantitative`; the switch is logged. Its reasons cite methods articles from MISQ, ISR and JAIS. Under this profile, `review` reports any finding that was logged before the hypotheses and the design were accepted. It reports and never blocks. The session view draws its dependency graph from whichever profile the canvas uses.
+- `research-harness doctor` also checks that a name is set and that the key here verifies the log, and notes a missing git remote, `pull.rebase` set to true, and two session markers in a row.
+
+### Changed
+
+- The model may now run `research-harness agenda` and `research-harness session protocol`, which only print, but not with `--out` or any other flag. `name`, `session start`, `merge-log`, `key export` and `join` stay your steps. No tool may read, copy or write a file ending in `.seal.key`.
+
+### Fixed
+
+- Three ways for the model to run a refused subcommand such as `accept` through the guard are closed: a flag placed before the subcommand, words added by `xargs`, and `$'…'` quoting.
+
 ## 0.4.3 (2026-10-01)
 
 ### Fixed

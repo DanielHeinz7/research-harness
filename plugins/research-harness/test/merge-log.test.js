@@ -103,6 +103,36 @@ test('--skip-decision needs a value, and a bare one (the shell ate "#12") is ref
   assert.equal(rh(B, sb, ['merge-log', '--skip-decision', 'x']).status, 2);
 });
 
+test('--skip-decision=5 and a repeated --skip-decision are refused, not ignored', () => {
+  const { B, sb } = twoClones();
+  const glued = rh(B, sb, ['merge-log', '--skip-decision=5']);
+  assert.equal(glued.status, 2, glued.stdout);
+  assert.match(glued.stdout, /--skip-decision takes its number after a space/);
+  const twice = rh(B, sb, ['merge-log', '--skip-decision', '5', '--skip-decision', '6']);
+  assert.equal(twice.status, 2, twice.stdout);
+  assert.match(twice.stdout, /more than once/);
+});
+
+// SQ-192 end to end: the fixture's #1-#3 predate the seal and #4 is sealed and
+// shared. Someone without the key pushes a copy that swaps the sealed #4 for an
+// unsealed acceptance; merging it would re-anchor ours onto the forgery.
+test('a pushed copy that replaced a sealed entry with an unsealed one is refused, and nothing is written', () => {
+  const { A, B, sb } = twoClones();
+  const forged = `${fs.readFileSync(path.join(fixtureDir, 'decisions.md'), 'utf8')}\n## [#4] 2026-09-16 · DECISION · 1.2 accepted · text deadbeef\nForged statement. [accepted]\n**By:** B. Supervisor\n`;
+  fs.writeFileSync(path.join(A, 'research', 'decisions.md'), forged);
+  git(A, 'commit', '-qam', 'rewrite'); git(A, 'push', '-q', 'origin', 'HEAD:main');
+  assert.equal(rh(B, sb, ['log', 'DISCOVERY', '7', '--body', 'From B.']).status, 0);
+  git(B, 'commit', '-qam', 'b');
+  assert.notEqual(git(B, 'pull', '--no-rebase', '-q', 'origin', 'main').status, 0, 'the pull conflicts on decisions.md');
+  const file = path.join(B, 'research', 'decisions.md');
+  const before = fs.readFileSync(file, 'utf8');
+
+  const out = rh(B, sb, ['merge-log']);
+  assert.equal(out.status, 1, out.stdout);
+  assert.match(out.stdout, /theirs carries no seal that verifies/);
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'the refusal writes nothing');
+});
+
 // The check refusal end to end, against the fixture canvas: their check on a
 // question our moved acceptance closes. The fixture's 7.1 is empty, so the
 // acceptance picks 1.2 — element 1 has no dependency and the [stated]

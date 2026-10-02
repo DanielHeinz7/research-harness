@@ -111,6 +111,56 @@ test('an Open at acceptance list moves with the entries it names', () => {
   assert.deepEqual(decisions.parseDecisions(r.text).entries[4].openAtAccept, [4]);
 });
 
+test('a reference on a continuation line of its field moves too', () => {
+  const o = append(base, [d('3'), d('4'), { ...d('5'), body: 'finding 5\n**Open at acceptance:** #3,\n#4\n**Supersedes:**\n#3' }]);
+  const r = mergeLogs(o, theirs, KEY, { by: 'A', theirsCommit: 'abc1234' });
+  assert.equal(r.ok, true, r.error);
+  const moved = decisions.parseDecisions(r.text).entries[5];
+  assert.deepEqual(moved.openAtAccept, [4, 5]);
+  assert.equal(moved.supersedes, 4);
+  assert.equal(seal.verifyChain(r.text, KEY).status, 'verified');
+});
+
+// SQ-192: a log whose first entries predate the seal. Theirs without a seal
+// reads as unverifiable, not broken, and must not be re-anchored under ours.
+const LEGACY = `${HEADER}\n## [#1] 2026-09-10 · DISCOVERY · 1\nfinding 1\n**By:** A. Researcher\n\n## [#2] 2026-09-12 · DECISION · 1.1 accepted · text 3b7a1c9e\nOld statement [accepted]\n**By:** A. Researcher\n`;
+const lbase = append(LEGACY, [d('3')]);
+const lours = append(lbase, [d('4')]);
+const FORGED = '## [#3] 2026-09-16 · DECISION · 1.2 accepted · text deadbeef\nForged statement [accepted]\n**By:** Nobody Sealed This\n';
+
+test('legacy theirs that dropped a seal ours has: refused', () => {
+  const dropped = lbase.replace(/ · seal [0-9a-f]{16}$/m, '');
+  assert.equal(seal.verifyChain(dropped, KEY).status, 'unverifiable');
+  const r = mergeLogs(lours, dropped, KEY, { by: 'A', theirsCommit: 'abc1234' });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'unverifiable');
+  assert.equal(r.text, undefined);
+});
+
+test('legacy theirs with a forged unsealed entry in place of a sealed one: refused', () => {
+  const forged = `${LEGACY}\n${FORGED}`;
+  const r = mergeLogs(lours, forged, KEY, { by: 'A', theirsCommit: 'abc1234' });
+  assert.equal(r.code, 'unverifiable');
+});
+
+test('legacy theirs with a rewritten header or text hash: refused, with or without an entry of its own', () => {
+  const rewritten = LEGACY.replace('— t', '— renamed').replace('text 3b7a1c9e', 'text 0badf00d');
+  assert.equal(mergeLogs(lours, rewritten, KEY, { by: 'A', theirsCommit: 'x' }).code, 'unverifiable');
+  assert.equal(mergeLogs(lours, `${rewritten}\n${FORGED}`, KEY, { by: 'A', theirsCommit: 'x' }).code, 'unverifiable');
+});
+
+test('legacy bytes before the first seal compare exactly, even when theirs verifies', () => {
+  // Theirs sealed by someone holding the key, on a legacy block that differs
+  // from ours only in a text hash or in the header.
+  const hash = append(LEGACY.replace('text 3b7a1c9e', 'text 0badf00d'), [d('9')]);
+  const r = mergeLogs(lours, hash, KEY, { by: 'A', theirsCommit: 'x' });
+  assert.equal(r.ok, false, 'the legacy #2 differs, so it is not shared and ours cannot move it');
+  const header = append(LEGACY.replace('— t', '— renamed'), [d('9')]);
+  const h = mergeLogs(lours, header, KEY, { by: 'A', theirsCommit: 'x' });
+  assert.equal(h.code, 'no-prefix');
+  assert.match(h.error, /above #1/);
+});
+
 test('SESSION entries move like any other entry', () => {
   const o = append(base, [{ kind: 'SESSION', ref: 'Supervision', body: 'Session started.', by: 'A' }]);
   const r = mergeLogs(o, theirs, KEY, { by: 'A', theirsCommit: 'x' });

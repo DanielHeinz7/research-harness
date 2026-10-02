@@ -13,6 +13,7 @@ const seal = require('../hooks/lib/seal');
 const { textHash } = require('../hooks/lib/hash');
 const { agendaOf, agendaMarkdown } = require('../hooks/lib/agenda');
 const { ledgerSummary } = require('../hooks/lib/review');
+const { protocolOf } = require('../hooks/lib/protocol');
 
 const pluginRoot = path.resolve(__dirname, '..');
 const cli = path.join(pluginRoot, 'bin', 'research-harness.js');
@@ -981,4 +982,55 @@ test('agenda prints the To talk about tab as Markdown, and --out writes exactly 
   const bare = run(root, ['agenda', '--out']);
   assert.equal(bare.status, 2, bare.stdout);
   assert.match(bare.stdout, /--out needs a value/);
+});
+
+test('session protocol prints the latest session, takes 12 and #12, and --out writes exactly that file', () => {
+  const root = keyedProject();
+  // No marker yet: the command refuses and points at session start.
+  const none = run(root, ['session', 'protocol']);
+  assert.equal(none.status, 1, none.stdout + none.stderr);
+  assert.match(none.stdout, /session start/);
+
+  assert.equal(run(root, ['session', 'start', 'First supervision']).status, 0);
+  assert.equal(run(root, ['log', 'DISCOVERY', '5', '--body', 'First finding.']).status, 0);
+  assert.equal(run(root, ['session', 'start', 'Second supervision']).status, 0);
+  assert.equal(run(root, ['log', 'DISCOVERY', '7.1 check', '--body', 'Is the sample large enough?', '--why', 'Power.']).status, 0);
+
+  const decisionsText = readLog(root);
+  const canvasText = fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8');
+  // The key the spawned CLI reads, from the state dir `run` hands it.
+  const keyFile = path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key');
+  const key = seal.readKeyFile(keyFile);
+  // The same inputs the command builds, so the bytes are compared, not a shape.
+  const expected = protocolOf({ decisionsText, canvasText, key }).markdown;
+  assert.match(expected, /^# Session protocol — Second supervision$/m);
+  assert.match(expected, /## Open at the end[\s\S]*7\.1 check/);
+
+  const printed = run(root, ['session', 'protocol']);
+  assert.equal(printed.status, 0, printed.stdout + printed.stderr);
+  assert.equal(printed.stderr, '');
+  assert.equal(printed.stdout, expected);
+
+  const firstSeq = decisions.parseDecisions(decisionsText).entries.filter((e) => e.kind === 'SESSION')[0].seq;
+  const first = protocolOf({ decisionsText, canvasText, key, seq: firstSeq }).markdown;
+  for (const arg of [String(firstSeq), `#${firstSeq}`]) {
+    const picked = run(root, ['session', 'protocol', arg]);
+    assert.equal(picked.status, 0, `${arg}: ${picked.stdout}${picked.stderr}`);
+    assert.equal(picked.stdout, first);
+  }
+
+  const file = path.join(root, 'protocol.md');
+  const written = run(root, ['session', 'protocol', '--out', file]);
+  assert.equal(written.status, 0, written.stdout + written.stderr);
+  assert.equal(written.stdout, `Written to ${file}.\n`);
+  assert.equal(fs.readFileSync(file, 'utf8'), expected);
+
+  const notAMarker = run(root, ['session', 'protocol', 99]);
+  assert.equal(notAMarker.status, 1, notAMarker.stdout);
+  assert.match(notAMarker.stdout, /#99 is not a session marker/);
+  const unknown = run(root, ['session', 'protocol', 'x']);
+  assert.equal(unknown.status, 2, unknown.stdout);
+  assert.match(unknown.stdout, /entry number, e\.g\. 12/);
+  const two = run(root, ['session', 'protocol', '1', '2']);
+  assert.equal(two.status, 2, two.stdout);
 });

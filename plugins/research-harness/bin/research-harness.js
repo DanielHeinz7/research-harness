@@ -18,6 +18,7 @@ const { chooseFraming } = require('../hooks/lib/choose');
 const { appendLog } = require('../hooks/lib/log');
 const { mergeLogs } = require('../hooks/lib/merge');
 const { startSession } = require('../hooks/lib/session');
+const { protocolOf } = require('../hooks/lib/protocol');
 const { mechanicalReview, ledgerReport, coverNote, ledgerSummary, COVER_STATE } = require('../hooks/lib/review');
 const { agendaOf, agendaMarkdown } = require('../hooks/lib/agenda');
 const { summarize } = require('../hooks/inject-state');
@@ -39,6 +40,7 @@ const USAGE = [
   'research-harness join --key-file <file> --name "<name>"',
   'research-harness merge-log [--skip-decision <n>]',
   'research-harness session start "<occasion>"',
+  'research-harness session protocol [<n>] [--out <file>]',
   'research-harness serve [--no-open]',
   'research-harness doctor',
   'research-harness install-cli [--dir <path>]',
@@ -657,6 +659,19 @@ function session(positional, flags) {
     if (!result.ok) return refused(result);
     say(`Session #${result.seq} started, sealed ${result.seal}. It runs until the next session start.`);
     return 0;
+  }
+  // The protocol (§5): what the entries between two markers decided, noted and
+  // left open. Read-only, like the agenda: it prints, or writes the one file
+  // the person named.
+  if (action === 'protocol') {
+    if (rest.length > 1) return fail(`session protocol takes at most one entry number.\n${USAGE}`, 2);
+    const seq = rest.length ? entryNumber(rest[0]) : undefined;
+    if (seq === null) return fail(`session protocol takes an entry number, e.g. 12.\n${USAGE}`, 2);
+    const state = loadState();
+    if (state.error) return fail(state.error);
+    const result = protocolOf({ decisionsText: state.decisionsText, canvasText: state.canvasText, key: state.key, seq });
+    if (!result.ok) return fail(result.error);
+    return writeOrSay(result.markdown, flags.out);
   }
   return fail(`session takes start or protocol.\n${USAGE}`, 2);
 }

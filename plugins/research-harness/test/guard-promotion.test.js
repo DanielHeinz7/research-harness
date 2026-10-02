@@ -1590,7 +1590,7 @@ test('Bash: the model may install the terminal command and still cannot start th
   assert.equal(run(root, 'Bash', { command: `research-harness install-cli --dir ${dir}` }), null);
   const serve = run(root, 'Bash', { command: 'research-harness serve' });
   assert.equal(serve && serve.permissionDecision, 'deny');
-  assert.match(serve.permissionDecisionReason, /not status, review, init, install-cli or log/);
+  assert.match(serve.permissionDecisionReason, /not status, review, init, doctor, install-cli, title, agenda, session protocol, or log/);
 });
 
 // SQ-118. `title` writes the paper's own title line in the canvas frontmatter
@@ -1612,6 +1612,145 @@ test('Bash: with title allowed, bare accept and serve stay denied', () => {
   const serve = run(root, 'Bash', { command: 'research-harness serve' });
   assert.equal(serve && serve.permissionDecision, 'deny');
   assert.match(serve.permissionDecisionReason, /read-only shell access/);
+});
+
+// 0.5 (plan Task 8). `agenda` and `session protocol` only print, so the model
+// may run them; with `--out` they write a file, which is a write. The other new
+// subcommands (`name`, `session start`, `merge-log`, `key`, `join`) are the
+// person's and stay denied by the allowlist.
+test('0.5 subcommands: agenda and session protocol read; every writing one is the person\'s', () => {
+  const root = makeProject();
+  const allow = ['research-harness agenda', 'research-harness session protocol', 'research-harness session protocol 12'];
+  const deny = [
+    'research-harness agenda --out notes.md',
+    'research-harness agenda --out research/canvas.md',
+    'research-harness session protocol --out p.md',
+    'research-harness session protocol 12 --out p.md',
+    'research-harness session start "Supervision"',
+    'research-harness session',
+    'research-harness name "A. Researcher"',
+    'research-harness name',
+    'research-harness merge-log',
+    'research-harness merge-log --skip-decision 3',
+    'research-harness key export --out k.seal.key',
+    'research-harness join --key-file k.seal.key --name B',
+  ];
+  for (const command of allow) assert.notEqual((run(root, 'Bash', { command }) || {}).permissionDecision, 'deny', command);
+  for (const command of deny) assert.equal((run(root, 'Bash', { command }) || {}).permissionDecision, 'deny', command);
+  const merge = run(root, 'Bash', { command: 'research-harness merge-log' });
+  assert.match(merge.permissionDecisionReason, /not status, review, init, doctor, install-cli, title, agenda, session protocol, or log/);
+});
+
+test('an exported key file is the key: no tool reads, copies or writes a *.seal.key path', () => {
+  const root = makeProject();
+  const file = path.join(os.tmpdir(), 'x', 'voice.seal.key');
+  for (const [tool, input] of [
+    ['Read', { file_path: file }],
+    ['Write', { file_path: file, content: '00' }],
+    ['Edit', { file_path: file, old_string: 'a', new_string: 'b' }],
+    ['Bash', { command: `cat ${file}` }],
+    ['Bash', { command: 'cat ~/Downloads/voice.seal.key' }],
+    ['Bash', { command: 'cp voice.seal.key /tmp/y' }],
+    ['Bash', { command: 'base64 < voice.seal.key' }],
+  ]) assert.equal((run(root, tool, input) || {}).permissionDecision, 'deny', `${tool} ${JSON.stringify(input)}`);
+  assert.equal(run(root, 'Bash', { command: 'cat notes.md' }), null);
+});
+
+// SQ-185: the spellings that reach a write through the two new allowances.
+// The CLI's parseArgs gives a `--flag` the next word as its value unless that
+// word starts with `--`, so a flag in front of the subcommand moves which word
+// the CLI dispatches on; the guard reads the line the same way.
+test('SQ-185: agenda and session protocol pass only as literal words without flags', () => {
+  const root = makeProject();
+  for (const command of [
+    'research-harness agenda --out=notes.md',
+    'research-harness agenda --out',
+    'research-harness agenda "--out" notes.md',
+    "research-harness agenda --o''ut notes.md",
+    'research-harness agenda --{out,x} notes.md',
+    'research-harness agenda -o notes.md',
+    "research-harness agenda $'--out' research/canvas.md",
+    "research-harness agenda $'--\\x6fut' notes.md",
+    "research-harness agenda $'--\\157ut' notes.md",
+    'research-harness agenda $"--out" notes.md',
+    'research-harness agenda $FLAG notes.md',
+    'research-harness agenda "$(cat flag.txt)" notes.md',
+    'research-harness agenda > research/canvas.md',
+    'research-harness agenda | tee research/canvas.md',
+    'research-harness session protocol $N',
+    'research-harness session protocol 12 13',
+    'research-harness session protocol start "Occasion"',
+    'research-harness session --x start protocol "Occasion"',
+    'research-harness session protocol --x start',
+    'research-harness session "$ACTION"',
+    'echo --out research/canvas.md | xargs research-harness agenda',
+    'echo 3 --out p.md | xargs research-harness session protocol',
+    'echo accept 1.1 --explained y | xargs research-harness',
+    'research-harness --x agenda session start "Occasion"',
+    'research-harness --x status merge-log',
+    'research-harness --x title name "B. Supervisor"',
+    `node ${path.join(pluginRoot, 'bin', 'research-harness.js')} --x agenda join --key-file k --name B`,
+  ]) assert.equal((run(root, 'Bash', { command }) || {}).permissionDecision, 'deny', command);
+  // The flag that swallows `status` hands `accept` the dispatch: the accept
+  // denial, not a read.
+  const accept = run(root, 'Bash', { command: 'research-harness --x status accept 1.1 --explained y' });
+  assert.match(accept.permissionDecisionReason, /Accepting a statement is the researcher's act/);
+  for (const command of [
+    "research-harness session protocol '#12'",
+    'research-harness session protocol 12 # the second one',
+    'research-harness agenda > notes.md',
+    'research-harness agenda | head -20',
+    'research-harness status --variant alpha',
+  ]) assert.equal(run(root, 'Bash', { command }), null, command);
+});
+
+test('SQ-185: a key file is denied under every spelling the guard can read', (t) => {
+  const root = makeProject();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-keys-'));
+  const key = path.join(dir, 'voice.seal.key');
+  fs.writeFileSync(key, '00');
+  fs.writeFileSync(path.join(dir, 'notes.md'), 'x');
+  const deny = [
+    ['Bash', { command: `cat ${dir}/VOICE.SEAL.KEY` }],
+    ['Bash', { command: `cat ${dir}/*.seal.ke?` }],
+    ['Bash', { command: `cat ${dir}/*` }],
+    ['Bash', { command: `cd ${dir} && cat voice.seal.k[e]y` }],
+    ['Bash', { command: `cat "$D/voice.seal.key"` }],
+    ['Bash', { command: 'cat ~/Downloads/voice.seal$E.key' }],
+    ['Bash', { command: 'cat voice.seal.{key,x}' }],
+    ['Bash', { command: "cat $'voice.seal\\x2ekey'" }],
+    ['Bash', { command: 'research-harness agenda > k.seal.key' }],
+    ['Bash', { command: 'research-harness key export --out=k.seal.key' }],
+    ['Bash', { command: `node -e 'console.log(require("fs").readFileSync("voice.seal.key","utf8"))'` }],
+    ['Bash', { command: "python3 <<'EOF'\nprint(open('voice.seal.key').read())\nEOF" }],
+    ['Bash', { command: 'ln -s ~/Downloads/voice.seal.key k.txt && cat k.txt' }],
+    ['Read', { file_path: `${dir}/Voice.Seal.Key` }],
+    ['Grep', { pattern: '.', path: dir, glob: '*.seal.key' }],
+    ['Glob', { pattern: '**/*.seal.key' }],
+    ['NotebookEdit', { notebook_path: key, new_source: 'x' }],
+    ['SomeMcpTool', { destination: key }],
+  ];
+  for (const [tool, input] of deny) {
+    const out = run(root, tool, input);
+    assert.equal(out && out.permissionDecision, 'deny', `${tool} ${JSON.stringify(input)}`);
+    assert.match(out.permissionDecisionReason, /\.seal\.key|harness state directory|read-only shell access/, `${tool} ${JSON.stringify(input)}`);
+  }
+  for (const [tool, input] of [
+    ['Bash', { command: `cat ${dir}/notes.md` }],
+    ['Bash', { command: `cat ${dir}/*.md` }],
+    ['Bash', { command: 'cat seal.key.txt' }],
+    ['Read', { file_path: path.join(dir, 'notes.md') }],
+    ['Grep', { pattern: 'seal.key', path: root }],
+    ['Edit', { file_path: path.join(root, 'README.md'), old_string: 'a', new_string: 'run research-harness key export --out k.seal.key' }],
+  ]) assert.equal(run(root, tool, input), null, `${tool} ${JSON.stringify(input)}`);
+  // A link whose own name says nothing still lands on the key.
+  const link = path.join(dir, 'k.txt');
+  if (!canSymlink(dir)) return t.skip('this filesystem cannot make symlinks');
+  fs.symlinkSync(key, link);
+  for (const [tool, input] of [
+    ['Read', { file_path: link }],
+    ['Bash', { command: `cat ${link}` }],
+  ]) assert.equal((run(root, tool, input) || {}).permissionDecision, 'deny', `${tool} ${JSON.stringify(input)}`);
 });
 
 test('Write: adding a title to the frontmatter stays the researcher\'s', () => {

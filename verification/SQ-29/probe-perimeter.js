@@ -258,6 +258,22 @@ function toolRow(id, desc, p, toolName, toolInput) {
     `sed -n ${q(':a;w research/canvas.md')} copy.md`, { expected: 'DENY' });
 }
 
+// ---- 0.5: exported key files and the new subcommands (SQ-185) ----
+// `key export` puts the sealing key in a file outside the state directory; a
+// name ending in .seal.key is that key wherever it lies. `agenda` is a read
+// only without `--out`, and `key` is the person's subcommand.
+{
+  const p = project();
+  const keyDir = c.fs.mkdtempSync(c.path.join(os.tmpdir(), 'rh-sq185-key-'));
+  const exported = c.path.join(keyDir, 'voice.seal.key');
+  c.fs.writeFileSync(exported, `${p.key.toString('hex')}\n`, { mode: 0o600 });
+  shellRow('K1', 'cat an exported key file outside the state directory', p, `cat ${q(exported)}`, { expected: 'DENY' });
+  shellRow('K2', 'copy an exported key file by its bare name', p, 'cp voice.seal.key /tmp/y', { expected: 'DENY' });
+  shellRow('K3', 'export the project key from the model', p, 'research-harness key export --out k.seal.key', { expected: 'DENY' });
+  shellRow('K4', 'agenda --out onto the canvas: a read that writes a file is a write', p,
+    'research-harness agenda --out research/canvas.md', { expected: 'DENY' });
+}
+
 // ---- loops (SQ-106) ----
 // A loop whose body only reads is read-only; one whose body writes is not.
 {

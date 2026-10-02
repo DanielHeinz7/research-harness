@@ -216,6 +216,11 @@ const EXP_OPEN = '\u0000';
 const EXP_CLOSE = '\u0001';
 const EXP_UNKNOWN = `${EXP_OPEN}${EXP_CLOSE}`;
 const EXP_RE = /\u0000([A-Za-z0-9_]*)\u0001/g;
+// The one-letter escapes of bash's `$'…'` quoting.
+const ANSI_ESCAPES = {
+  a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v',
+  '\\': '\\', "'": "'", '"': '"', '?': '?',
+};
 
 // SQ-75: bash expands `{a,b}` and `{1..3}` before anything else, so
 // `rm -rf {research,tmp}` removes the state directory. Only an unquoted brace
@@ -546,6 +551,35 @@ function lexBash(text, depth) {
     i += 1;
   }
 
+  // The body of `$'…'`, decoded the way bash decodes it: the one-letter
+  // escapes, `\xHH` and `\NNN`. `\c`, `\u`, `\U` and a NUL are not reproduced
+  // here, nor a control character this lexer uses as a mark; the word then
+  // holds an unknown, as a substitution's output does.
+  function readAnsiQuoted(w) {
+    w.quoted = true;
+    while (i < text.length && text[i] !== "'") {
+      if (text[i] !== '\\') { w.text += text[i]; i += 1; continue; }
+      const esc = text[i + 1];
+      const hex = /^x([0-9A-Fa-f]{1,2})/.exec(text.slice(i + 1, i + 4));
+      const octal = /^[0-7]{1,3}/.exec(text.slice(i + 1, i + 4));
+      const code = hex ? parseInt(hex[1], 16) : octal ? parseInt(octal[0], 8) & 0xff : null;
+      if (code !== null) {
+        w.text += code > 4 ? String.fromCharCode(code) : EXP_UNKNOWN;
+        i += 1 + (hex || octal)[0].length;
+      } else if (esc !== undefined && Object.prototype.hasOwnProperty.call(ANSI_ESCAPES, esc)) {
+        w.text += ANSI_ESCAPES[esc];
+        i += 2;
+      } else if (esc === 'c' || esc === 'u' || esc === 'U') {
+        w.text += EXP_UNKNOWN;
+        i += 2;
+      } else {
+        w.text += '\\';
+        i += 1;
+      }
+    }
+    i += 1;
+  }
+
   function readDoubleQuoted(w) {
     while (i < text.length) {
       const ch = text[i];
@@ -704,6 +738,11 @@ function lexBash(text, depth) {
       continue;
     }
     if (ch === '`') { i += 1; readBackquote(startWord()); continue; }
+    // `$'…'` is ANSI-C quoting and `$"…"` a translated string. Read as a `$`
+    // character followed by a quote, `$'--out'` was a word that does not start
+    // with `-`, where bash makes `--out` of it (SQ-185).
+    if (ch === '$' && text[i + 1] === "'") { i += 2; readAnsiQuoted(startWord()); continue; }
+    if (ch === '$' && text[i + 1] === '"') { i += 1; startWord(); continue; }
     if (ch === '$') { readDollar(startWord()); continue; }
     if (ch === '#' && !word) {
       const nl = text.indexOf('\n', i);
@@ -1094,6 +1133,83 @@ function opaqueNamesState(text, stateNames) {
   return false;
 }
 
+// 0.5: `research-harness key export --out <file>.seal.key` puts the sealing key
+// in a file of the person's choosing, outside the state directory, for them to
+// carry to a second clone. A file whose name ends in .seal.key is that key
+// wherever it lies, so no tool reads, copies or writes one (spec §7). Compared
+// without case: a case-blind volume opens VOICE.SEAL.KEY as voice.seal.key.
+const KEY_FILE_SUFFIX = '.seal.key';
+
+function isKeyFileName(name) {
+  return name.toLowerCase().endsWith(KEY_FILE_SUFFIX);
+}
+
+// The name a text spells at its end. A part the guard cannot expand counts as
+// empty, so `voice.seal$E.key` is the key when $E is.
+function spellsKeyFile(text) {
+  return isKeyFileName(text.replace(EXP_RE, '').split(/[\\/]/).pop());
+}
+
+// A pattern expands onto the files that are there (SQ-76), so it is judged by
+// what it would expand onto now: `cat ~/Downloads/*` reads a key lying there.
+// One that fans out past MAX_GLOB_MATCHES paths counts as reaching a key. One
+// whose class the engine refuses is left to wordTouchesState, which already
+// weighs a pattern it cannot compute by the position it stands in (SQ-54).
+const MAX_GLOB_MATCHES = 4096;
+
+function globLandsOnKeyFile(candidate, base) {
+  const parts = path.resolve(base, candidate).split(path.sep).filter(Boolean);
+  let paths = [path.parse(path.resolve(base)).root];
+  for (const part of parts) {
+    if (!isPattern(part)) {
+      paths = paths.map((at) => path.join(at, part));
+      continue;
+    }
+    let re;
+    try {
+      re = globToRegExp(part);
+    } catch (_) {
+      return false;
+    }
+    const next = [];
+    for (const at of paths) {
+      let entries = [];
+      try {
+        entries = fs.readdirSync(at);
+      } catch (_) {
+        continue;
+      }
+      for (const entry of entries) if (re.test(entry)) next.push(path.join(at, entry));
+      if (next.length > MAX_GLOB_MATCHES) return true;
+    }
+    paths = next;
+  }
+  return paths.some((at) => isKeyFileName(path.basename(at)));
+}
+
+// True when a shell word names an exported key file: by the name it spells, by
+// what its pattern expands onto, or by where it lands through a symlink, one
+// made earlier in this command included. A word that is program text
+// (runsProgramText, a heredoc program) is read on every name in it, the way
+// `node -e '…readFileSync("voice.seal.key")…'` spells one; any other word only
+// on itself and its `k=v` value, so a commit message or a grep pattern that
+// mentions a key file is not one.
+function wordNamesKeyFile(w, base, links, programText) {
+  const candidates = wordCandidates(w.text);
+  if (programText) candidates.push(...w.text.replace(EXP_RE, '').split(FRAGMENT_SPLIT).filter(Boolean));
+  if (candidates.some(spellsKeyFile)) return true;
+  if (w.opaque) return false;
+  return candidates.some((candidate) => {
+    const expanded = expandTilde(candidate);
+    if (expanded.startsWith('~') || expanded.includes(EXP_OPEN)) return false;
+    if (base === null && !path.isAbsolute(expanded)) return false;
+    const at = base || os.homedir();
+    if (isPattern(expanded)) return globLandsOnKeyFile(expanded, at);
+    const landed = resolveThroughLinks(at, expanded, links);
+    return !!landed && isKeyFileName(path.basename(landed));
+  });
+}
+
 // `/` and `\` both separate path components: a path written on Windows spells
 // the same location.
 const PATH_SEPARATOR_RE = /[\\/]/;
@@ -1392,6 +1508,24 @@ function opaqueProgram(word) {
   return { harness: true, sub, rest: [] };
 }
 
+// Where the CLI's subcommand stands. The CLI's parseArgs gives a `--name` word
+// the next word as its value unless that word starts with `--` too, and
+// dispatches on the first word left over, so `research-harness --x status
+// accept 1.1` runs accept: skipping the flag alone read it as status (SQ-185).
+// A value the guard cannot read may itself start with `--` and leave the word
+// after it in the command slot, so that value stands in for the subcommand as
+// the unknown it is.
+function cliSubAt(args, from) {
+  let k = from;
+  while (k < args.length && !args[k].opaque && args[k].text.startsWith('-')) {
+    const value = args[k + 1];
+    if (!args[k].text.startsWith('--') || !value || (!value.opaque && value.text.startsWith('--'))) k += 1;
+    else if (value.opaque) return k + 1;
+    else k += 2;
+  }
+  return k;
+}
+
 function harnessInvocation(args, depth = 0, splitsBlanks = false) {
   if (!args.length || depth > MAX_SUBSTITUTION_DEPTH) return null;
   if (args[0].opaque) {
@@ -1423,7 +1557,7 @@ function harnessInvocation(args, depth = 0, splitsBlanks = false) {
   const name = baseNameOf(args[0].text);
   if (SERVER_NAMES.has(name)) return { harness: true, server: true, sub: null, rest: args.slice(1) };
   if (CLI_NAMES.has(name)) {
-    const k = skipFlags(1);
+    const k = cliSubAt(args, 1);
     return { harness: true, sub: k < args.length ? args[k] : null, rest: args.slice(k + 1) };
   }
   if (WRAPPERS.has(name)) {
@@ -1443,7 +1577,12 @@ function harnessInvocation(args, depth = 0, splitsBlanks = false) {
       if (XARGS_VALUE_FLAGS.has(option.text)) commandAt += 1;
       commandAt += 1;
     }
-    return commandAt < args.length ? harnessInvocation(args.slice(commandAt), depth + 1, splitsBlanks) : null;
+    // xargs adds the words it reads from stdin to the command it runs, so the
+    // command carries a word the guard never sees: `echo accept 1.1 | xargs
+    // research-harness` runs accept, `echo --out f | xargs research-harness
+    // agenda` writes f (SQ-185). That word is read as the unknown it is.
+    const unseen = { text: EXP_UNKNOWN, opaque: true, quoted: false };
+    return commandAt < args.length ? harnessInvocation([...args.slice(commandAt), unseen], depth + 1, splitsBlanks) : null;
   }
   if (name === 'find') {
     const execAt = args.findIndex((w, k) => k > 0 && !w.opaque && (w.text === '-exec' || w.text === '-execdir'));
@@ -1489,7 +1628,7 @@ function harnessInvocation(args, depth = 0, splitsBlanks = false) {
   if (!script.opaque && SERVER_NAMES.has(baseNameOf(script.text))) {
     return { harness: true, server: true, sub: null, rest: args.slice(scriptAt + 1) };
   }
-  const subAt = skipFlags(scriptAt + 1);
+  const subAt = cliSubAt(args, scriptAt + 1);
   return {
     harness: !script.opaque && CLI_NAMES.has(baseNameOf(script.text)),
     sub: subAt < args.length ? args[subAt] : null,
@@ -1505,6 +1644,21 @@ function logKindOf(invocation) {
   if (!kind) return 'none';
   if (kind.opaque || !CLI_LOG_KINDS.has(kind.text)) return 'decision';
   return 'open';
+}
+
+const CLI_SUB_WHY = 'the CLI is being run with a subcommand that is not status, review, init, doctor, install-cli, title, agenda, session protocol, or log';
+
+// 0.5: `agenda` and `session protocol [<n>]` only print; `--out <file>` makes
+// either one write that file, and a read that writes a file is a write. They
+// pass only as literal words with no flag at all. `--out` is the one flag
+// either reads, and any other `--flag` would take the next word as its value
+// (cliSubAt), which moves the word the CLI reads as the action:
+// `session --x start protocol` starts a session.
+function printsOnly(invocation) {
+  if (invocation.rest.some((w) => w.opaque || w.text.startsWith('-'))) return false;
+  if (invocation.sub.text === 'agenda') return true;
+  const [action, seq, ...more] = invocation.rest;
+  return !!action && action.text === 'protocol' && (!seq || /^#?\d+$/.test(seq.text)) && !more.length;
 }
 
 // ---------- sed scripts ----------
@@ -1769,11 +1923,12 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
   if (invocation && invocation.harness && !invocation.action) {
     if (invocation.server) return 'it starts the session server, which only the researcher starts';
     if (!invocation.sub) return null;
-    if (invocation.sub.opaque) return 'the CLI is being run with a subcommand that is not status, review, init, install-cli or log';
+    if (invocation.sub.opaque) return CLI_SUB_WHY;
     if (invocation.sub.text === 'log') {
       return logKindOf(invocation) === 'open' ? null : 'the CLI\'s log command takes DISCOVERY or CONSTRAINT as a literal word';
     }
-    return CLI_READ_SUBS.has(invocation.sub.text) ? null : 'the CLI is being run with a subcommand that is not status, review, init, install-cli or log';
+    if (invocation.sub.text === 'agenda' || invocation.sub.text === 'session') return printsOnly(invocation) ? null : CLI_SUB_WHY;
+    return CLI_READ_SUBS.has(invocation.sub.text) ? null : CLI_SUB_WHY;
   }
   if (args[0].opaque) return 'the command name is assembled at runtime';
   const verb = baseNameOf(args[0].text);
@@ -1841,6 +1996,10 @@ const ENV_DENIAL = 'research-harness cannot be run with its own environment set 
 // that directory is part of the paper.
 function harnessStateDenial(label) {
   return `research-harness cannot let ${label} touch the harness state directory (${ledger.stateRoot()}): it holds the sealing key of the decision log, and a key the model can read or replace seals nothing. Nothing there is part of the paper; read the research state with Read, cat or grep instead.`;
+}
+
+function keyFileDenial(label) {
+  return `research-harness cannot let ${label} touch a file whose name ends in .seal.key: that is an exported sealing key (research-harness key export), and a key the model can read, copy or replace seals nothing. Carrying it to a second clone is the person's step: research-harness join --key-file <file> --name "<name>" in their own terminal.`;
 }
 
 // The research state is the canvas and the decision log. A state directory that
@@ -1937,9 +2096,9 @@ function bashVerdict(command, projectRoot) {
   if (!commands || tooDeep) {
     // Unreadable is not the same as harmless: judge it if it names the state.
     const names = [...stateNames].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-    if (!new RegExp(`${names}|research-harness`).test(cmd)) return null;
+    if (!new RegExp(`${names}|research-harness`).test(cmd) && !/\.seal\.key/i.test(cmd)) return null;
     const cause = tooDeep ? `: its command substitutions nest past the ${MAX_SUBSTITUTION_DEPTH}-deep limit` : '';
-    return `research-harness could not read this shell command well enough to judge it${cause}, and it names the research state, so it is denied. Split it into separate, simpler commands, or use the Edit tool.`;
+    return `research-harness could not read this shell command well enough to judge it${cause}, and it names the research state or a .seal.key file, so it is denied. Split it into separate, simpler commands, or use the Edit tool.`;
   }
 
   const values = new Map();
@@ -2031,6 +2190,15 @@ function bashVerdict(command, projectRoot) {
       // literal names it still spells out.
       if (redirect.unreadBody && wordTouchesHarness(redirect.unreadBody, base, harness, links)) return harnessStateDenial('this shell command');
       if (redirect.targets.some((target) => wordTouchesHarness(target, base, harness, links))) return harnessStateDenial('this shell command');
+    }
+    // So does an exported key file, wherever it lies (spec §7).
+    const programText = runsProgramText(sc.words);
+    for (const w of sc.words) {
+      if (wordNamesKeyFile(w, base, links, programText)) return keyFileDenial('this shell command');
+    }
+    for (const redirect of sc.redirects) {
+      if (redirect.unreadBody && wordNamesKeyFile(redirect.unreadBody, base, links, true)) return keyFileDenial('this shell command');
+      if (redirect.targets.some((target) => wordNamesKeyFile(target, base, links, false))) return keyFileDenial('this shell command');
     }
 
     // Leading `NAME=value` words are assignments, not the command.
@@ -2380,6 +2548,28 @@ function harnessStateVerdict(projectRoot, toolName, toolInput) {
   return null;
 }
 
+// An exported key file is refused to every tool, reads included, by the name
+// it is spelled with and by the name of the file it lands on (a symlink to it).
+// A tool this guard knows is read on its path fields only, so an Edit whose new
+// text documents `key export --out k.seal.key` is not a key; any other tool on
+// every string in its payload, as harnessStateVerdict reads it.
+const KNOWN_PATH_FIELDS = ['file_path', 'notebook_path', 'path', 'glob'];
+
+function keyFileVerdict(projectRoot, toolName, toolInput) {
+  const known = READ_TOOLS.has(toolName) || WRITE_TOOLS.has(toolName);
+  const candidates = known
+    ? [...KNOWN_PATH_FIELDS, ...(toolName === 'Glob' ? ['pattern'] : [])].map((key) => toolInput[key]).filter((v) => typeof v === 'string')
+    : payloadStrings(toolInput, [], 0);
+  for (const candidate of candidates) {
+    const text = expandTilde(candidate.trim());
+    if (!text) continue;
+    if (isKeyFileName(path.basename(text)) || isKeyFileName(path.basename(landingOf(projectRoot, text).canonicalPath))) {
+      return keyFileDenial(toolName ? `\`${toolName.slice(0, 40)}\`` : 'an unnamed tool');
+    }
+  }
+  return null;
+}
+
 function fileVerdict(target, toolName, toolInput) {
   if (target.unjudgeable) return `Cannot judge this write: ${target.file} is spelled under the research state but lands outside it through a symlink. ${NEXT_STEP}`;
   const name = path.basename(target.file);
@@ -2420,7 +2610,7 @@ function main() {
 
     if (toolName === 'Bash') {
       reason = bashVerdict(toolInput.command, projectRoot);
-    } else if ((reason = harnessStateVerdict(projectRoot, toolName, toolInput)) === null) {
+    } else if ((reason = harnessStateVerdict(projectRoot, toolName, toolInput) || keyFileVerdict(projectRoot, toolName, toolInput)) === null) {
       if (WRITE_TOOLS.has(toolName)) {
         const target = targetOf(projectRoot, toolInput);
         if (target) reason = fileVerdict(target, toolName, toolInput);

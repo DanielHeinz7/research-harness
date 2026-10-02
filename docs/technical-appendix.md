@@ -1,6 +1,6 @@
 # Technical appendix: the research record
 
-This appendix describes the implementation at main commit `4b382f3445fa127406cb30950b3b040138c5bcdb` (release 0.4.1), checked on 1 October 2026. Source line numbers below refer to that commit. The [public-data walkthrough](../plugins/research-harness/README.md#walkthrough-the-three-capabilities-on-a-public-dataset) demonstrates framing comparison, acceptance with an explanation, and review of the record. Its console commands are exercised by `demo.test.js`; a person's completion time has not been measured. The recorded run demonstrates the mechanism, not the quality of a live model's research judgment.[^demo]
+Sections 1–8 describe the implementation at main commit `4b382f3445fa127406cb30950b3b040138c5bcdb` (release 0.4.1), checked on 1 October 2026, except where a 0.5 addition is noted. Their source line numbers and measured counts refer to that commit. Section 9 describes the two-person commands at main `01e6d576fbd85675021509eedede26ce3b2bf31a`; it does not extend the earlier perimeter measurements. The [public-data walkthrough](../plugins/research-harness/README.md#walkthrough-the-three-capabilities-on-a-public-dataset) demonstrates framing comparison, acceptance with an explanation, and review of the record. Its console commands are exercised by `demo.test.js`; a person's completion time has not been measured. The recorded run demonstrates the mechanism, not the quality of a live model's research judgment.[^demo]
 
 ## 1. State and write paths
 
@@ -42,7 +42,7 @@ Both approval routes call `acceptStatement`. A missing, empty or whitespace-only
 
 Immediately before accepting, the library computes `openAtAccept` from the log: every `DISCOVERY` with ref exactly `<n.m> check` whose sequence is greater than the last `DECISION` on that question. If any exist, their sequence numbers are written as `**Open at acceptance:** #a, #b`. Earlier checks are closed by a decision on the question; unrelated discoveries do not count. CLI/library byte-identity tests assert the exact explanation, field order and open-check numbers. The server uses the same function.[^checks]
 
-Open checks do not block acceptance. The view lists them and offers “Accept anyway.” There is no required successful check and no model verdict in the acceptance function; the server calls no model for approval. Mechanical prerequisites still apply, including dependency status, a usable seal chain and an unambiguous target (with a stale-text check for browser requests). A mandatory model verdict would give model-authored questions authority the record cannot justify: entries have no actor field.[^advisory]
+Open checks do not block acceptance. The view lists them and offers “Accept anyway.” There is no required successful check and no model verdict in the acceptance function; the server calls no model for approval. Mechanical prerequisites still apply, including dependency status, a usable seal chain and an unambiguous target (with a stale-text check for browser requests). A mandatory model verdict would give model-authored questions authority the record cannot justify: the record supplies no verified actor identity.[^advisory]
 
 ## 5. Framing alternatives and the chosen record
 
@@ -65,7 +65,7 @@ Every `review` prints `Anchor:` followed by the last seal, the maximum sequence 
 
 ## 7. Honest limits
 
-The entry format has no actor or identity field. A verified chain establishes consistency under the key held by the writing machine, not which person wrote it, which machine actually ran a call, or whether a human approved it. The runtime-path bypass above is an observed example. Dates are UTC calendar dates (`YYYY-MM-DD`), not event timestamps. In the proposal's terminology, Ed25519 public-key seals and actor identity are Stage-2 work; the current implementation supplies neither. Neither a seal nor an explanation assesses source quality or guarantees understanding.[^identity]
+The 0.4.1 entry format had no actor or identity field; 0.5 adds the `By` statement described in §9, not verified identity. A verified chain establishes consistency under the shared key, not which person wrote it, which machine actually ran a call, or whether a human approved it. The runtime-path bypass above is an observed example. Dates are UTC calendar dates (`YYYY-MM-DD`), not event timestamps. Ed25519 public-key seals and verified actor identity remain unimplemented. Neither a seal nor an explanation assesses source quality or guarantees understanding.[^identity]
 
 The model-assisted canvas, check and record-review skills require Claude Code. The record-review skill is instructed to answer only from the canvas, log, mechanical report and git reads, cite log entries by `#seq` and statements by number, marker and exact words (it never computes a hash of a current statement), and otherwise say “not in the record.” Tests check its permissions and instructions, not reliable compliance by every model. Mechanical verification with the Node CLI is available without a model session. The demo tests run the recorded CLI workflow, not a live end-to-end model review or a timed human session.[^access]
 
@@ -81,9 +81,69 @@ node verification/SQ-29/probe-perimeter.js
 
 The test runner reported **306 passed, 0 failed, 0 skipped**, exit 0. The perimeter command exited 0 and printed **41 rows: 38 DENY, 3 ALLOW** (M17, M27 and M28 allowed). This is an observational probe, not 41 successful security assertions: M27 is the known sealed-choice bypass, and M28 creates the link whose later writes M29 and M30 deny. These counts come from this run, not the older counts in design documents. Named assertions supporting the claims are cited below.
 
+## 9. Two people and one sealed log
+
+### Names and session entries
+
+Every new entry carries `**By:** <name>`, from the user-wide name setting or,
+if unset, `git config user.name`. Old entries without it read as "unknown".
+`By` is a statement, not proof: whoever holds the key can write any name. The
+name is part of the body, which was already under seal. The seal formula has
+not changed, so existing seals remain valid.[^by]
+
+`SESSION` and `MERGE` are the two new kinds. `session start "<occasion>"`
+writes a SESSION marker; the session lasts until the next marker or the end of
+the log. `merge-log` writes MERGE to record moved or omitted entries. The
+ordinary `log` command cannot write either kind. Review and accept ignore them
+when computing acceptance cover, stale acceptances and open checks; both kinds
+still participate in chain verification.[^kinds]
+
+### Merge algorithm
+
+The CLI reads ours from git stage 2 and theirs from stage 3 during a merge
+conflict on the log. It refuses a rebase, where those roles are swapped. The
+pure merge in `hooks/lib/merge.js` follows these steps:[^merge]
+
+1. Verify both chains under our key; refuse a missing key or broken chain, and require theirs to be verified, not merely unbroken.
+2. Find the shared prefix by sequence and seal for sealed entries; the text above the first entry and shared unsealed entries must match byte for byte.
+3. If one log is a prefix of the other, keep the longer log unchanged, without a MERGE entry.
+4. Otherwise keep theirs unchanged, then renumber and re-seal our divergent copies after it; rewrite `Supersedes` and `Open at acceptance` references through the same map.
+5. Append a sealed MERGE entry naming the incoming commit and the moves or omissions, verify the result, and write it only if verification succeeds.
+
+Re-sealing moved copies is possible because both clones hold the same project
+key. Their dates, kinds, refs, text hashes and names stay the same; only the
+sequence, mapped reference fields and seals change. The MERGE entry records
+the moves. The original entries remain in git history. This is a consistent
+new chain under a shared key, not proof of an independent author's identity.
+Both clones must run 0.5; an incoming log without verifiable seals is refused.
+The command does not merge the canvas, stage files or commit.
+
+Moving an acceptance after the other clone's newly opened check would falsely
+close that check, so the merge refuses without writing. After aborting and
+pulling again without rebase, `merge-log --skip-decision <n>` leaves that one
+DECISION out of the moved copies and records the omission. It refuses a skip
+that would leave a dangling reference. The canvas may still have an
+`[accepted]` marker: the person resets it by hand after merging, reads the
+check, and accepts again. The [README](../README.md#two-people-one-canvas) gives
+the terminal steps.[^merge]
+
+### Guard boundaries and known limits
+
+The guard allows the model to print `agenda` and `session protocol [<n>]` only
+with no flags. Exports with `--out`, and `name`, `session start`, `merge-log`,
+`key` and `join`, are human steps. Tool calls naming a path ending in
+`.seal.key` are refused, including reads.[^two-person-guard]
+
+The guard does not see exported key-file names built at run time or
+whole-directory reads that do not name the key file.
+
+A later merge that moves an earlier MERGE entry leaves the old entry numbers
+in that entry's narrative text stale; only the two reference fields above are
+rewritten.
+
 ## Evidence references
 
-Paths below are repository-relative; `P` means `plugins/research-harness/`. Test names refer to tests executed, with none skipped, in the measured suite above.
+Paths below are repository-relative; `P` means `plugins/research-harness/`. For sections 1–8, test names refer to tests executed, with none skipped, in the measured 0.4.1 suite above. The 0.5 source references are listed separately at the end.
 
 [^demo]: `P/test/demo.test.js:174-185`, test “every console block of the walkthrough runs in README order and prints what the README shows”; `:234-277`, tests “the three recorded framings are proposals and findings only, tagged with sources that exist” and “the reviewer's copy verifies only under the released key, and a changed byte is named”. The test uses the recorded workflow; no human timing was run for this appendix.
 
@@ -120,3 +180,13 @@ Paths below are repository-relative; `P` means `plugins/research-harness/`. Test
 [^identity]: `P/hooks/lib/decisions.js:9,18-38,94-103` (entry fields, no actor); `P/hooks/lib/seal.js:99-109` (symmetric HMAC, no Ed25519); `P/hooks/lib/log.js:9-11` (UTC day date); `P/hooks/lib/accept.js:50-53` (nonempty explanation check). Stage 2 names deferred work in the proposal, not a shipped identity mechanism.
 
 [^access]: `P/skills/record-review/SKILL.md` and `P/skills/check/SKILL.md`; `P/test/skills.test.js`, tests “record-review grants no Write, Edit or NotebookEdit and no broad Bash” and “record-review is invoked by the researcher, cites, and says "not in the record"”; `P/bin/research-harness.js:1-20` (Node CLI imports); `P/test/demo.test.js:174-185,257-277` (recorded CLI verification). No live model-compliance trial was run for this appendix.
+
+The following references concern the 0.5 sources at `01e6d57`, not the 0.4.1 measurements above.
+
+[^by]: `P/hooks/lib/identity.js`, `P/hooks/lib/decisions.js`, `P/hooks/lib/seal.js`. Assertions: `P/test/identity.test.js`, “readName: the file first, then git config user.name, then a refusal naming the command”; `P/test/decisions.test.js`, “By is a field: formatEntry writes it first, parseDecisions reads it back, old entries read null”; `P/test/seal.test.js`, “a seal over an entry with By recomputes, and changing the name breaks it”.
+
+[^kinds]: `P/hooks/lib/session.js`, `P/hooks/lib/review.js`, `P/hooks/lib/accept.js`, `P/hooks/lib/decisions.js`. Assertions: `P/test/session.test.js`, “startSession appends one sealed SESSION entry: the occasion as ref, the name as By”; `P/test/decisions.test.js`, “SESSION and MERGE parse, format and verify in one chain”. Review considers DECISIONs for acceptance cover; `openChecks` in `accept.js` considers DECISIONs and DISCOVERY checks, not markers.
+
+[^merge]: `P/hooks/lib/merge.js`, `P/bin/research-harness.js` (`mergeLog`). Assertions: `P/test/merge.test.js`, “divergence: theirs unchanged, ours renumbered and re-sealed after it, references rewritten, one MERGE” and “legacy bytes before the first seal compare exactly, even when theirs verifies”; `P/test/merge-log.test.js`, “a pushed copy that replaced a sealed entry with an unsealed one is refused, and nothing is written” and “the check refusal names --skip-decision, and the skip drops the acceptance and points at the marker”. `rewriteRefs` rewrites only `Supersedes` and `Open at acceptance`, leaving narrative text unchanged, including an earlier MERGE entry's numbers.
+
+[^two-person-guard]: `P/hooks/guard-promotion.js` (`printsOnly`, `keyFileVerdict`). Assertions: `P/test/guard-promotion.test.js`, “0.5 subcommands: agenda and session protocol read; every writing one is the person's”, “SQ-185: agenda and session protocol pass only as literal words without flags” and “SQ-185: a key file is denied under every spelling the guard can read”. These cover visible spellings, not key-file names constructed at run time or unnamed whole-directory reads.

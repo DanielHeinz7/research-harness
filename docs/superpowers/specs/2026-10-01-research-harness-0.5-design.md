@@ -70,9 +70,12 @@ A pure function `mergeLogs(ours, theirs, key, { by, theirsCommit })` in
 `hooks/lib/merge.js` returns the merged text or a refusal.
 
 1. Verify both chains with `verifyChain`. Refuse if either is broken or the key
-   is missing.
+   is missing. Theirs must be `verified` under our key; an unsealed or otherwise
+   unverifiable incoming log is refused, not given a new sealed anchor.
 2. Shared prefix: the longest run of entries, from the start, with equal `seq`
-   and equal seal in both texts. Refuse if there is none.
+   and equal seal for sealed entries. The text above the first entry and every
+   unsealed entry in the shared prefix must match byte for byte. Refuse if
+   there is no shared entry or the prefix text differs.
 3. If one text is a prefix of the other, return the longer one unchanged; no
    re-seal, no MERGE entry.
 4. Otherwise: theirs, unchanged, then our entries after the shared prefix,
@@ -97,8 +100,14 @@ which theirs has a `<question> check` entry after the shared prefix, nothing is
 written. The message names the question and both entries and says to merge
 without that acceptance and accept again afterwards.
 
-How the user merges "without that acceptance" is not settled: the tool never
-deletes a sealed entry. A proposal stands in §10, open point 1.
+The recovery approved in §10.1 leaves that acceptance out of the moved copies:
+run `git merge --abort`, pull again with `git pull --no-rebase`, then run
+`research-harness merge-log --skip-decision <n>` with the refused DECISION's
+number, without `#` in the shell. The original entry stays in git history and
+the MERGE entry records the omission. After the merge, reset the statement's
+`[accepted]` marker by hand to its previous non-accepted marker, then accept
+again after reading the other clone's check. The command does not edit the
+canvas marker.
 
 ### Tests
 
@@ -355,7 +364,7 @@ in the right order.
 1. **Recovering from the check refusal (§2).** The tool never deletes a sealed
    entry, so a refused merge needs a path that does not require one. Proposal
    for the plan: the refusal tells the user to `git merge --abort`, and
-   `merge-log --skip-decision #n` merges while leaving that one DECISION out of
+   `merge-log --skip-decision <n>` merges while leaving that one DECISION out of
    the moved entries (it stays in git history on the abandoned commit, and the
    MERGE entry records "#n dropped, to be accepted again"). Approved by Daniel
    (2026-10-01); the merge plan builds on it.

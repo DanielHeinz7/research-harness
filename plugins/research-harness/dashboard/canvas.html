@@ -435,7 +435,7 @@
 
   .src-ref { font-size: 0.72em; color: var(--ink-soft); }
   .src-ref a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
-  .entry-note { display: block; margin-top: 3px; font-size: 0.9em; color: var(--ink-soft); }
+  .entry-note, .entry-by { display: block; margin-top: 3px; font-size: 0.9em; color: var(--ink-soft); }
 
   .field-totalk-full { margin-top: 20px; }
   .totalk-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -561,6 +561,10 @@
   }
 
   /* -- History (was: decision log) ------------------------------------ */
+  .by-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .by-filter button[aria-pressed="true"] { background: var(--surface); border-color: var(--ink-soft); color: var(--ink); }
+  .session-divider { border-top: 1px solid var(--border); padding-top: 12px; color: var(--ink-soft); font-size: 13px; }
+  .merge-line { margin: 0; color: var(--ink-soft); font-size: 13px; }
   .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 44rem; }
   .history-card {
     background: var(--surface);
@@ -802,6 +806,41 @@
   var fixturePath = qs.get('fixture');
   var fixtureMode = !!fixturePath;
 
+  // The filter narrows entry lists, never counts, statuses or the shared
+  // agenda. Its state lives only in the fragment and survives code redemption.
+  var UNKNOWN = 'unknown';
+  function nameOf(d) { return d.by || UNKNOWN; }
+  function readByFilter() {
+    return new URLSearchParams(location.hash.slice(1)).get('by');
+  }
+  var byFilter = readByFilter();
+  function writeByFilter() {
+    history.replaceState(null, '', location.pathname + location.search
+      + (byFilter !== null ? '#by=' + encodeURIComponent(byFilter) : ''));
+  }
+  function setByFilter(name) {
+    byFilter = name;
+    writeByFilter();
+    render();
+    // Replacing the entry lists also replaces the clicked button. Keep
+    // keyboard focus on the active filter instead of dropping it to the page.
+    var active = app.querySelector('.by-filter button[aria-pressed="true"]');
+    if (active) active.focus();
+  }
+  function passesFilter(d) { return byFilter === null || nameOf(d) === byFilter; }
+  function namesIn(decisions) {
+    var names = [];
+    var unknown = false;
+    decisions.forEach(function (d) {
+      if (!d.by) unknown = true;
+      else if (names.indexOf(d.by) < 0) names.push(d.by);
+    });
+    return unknown && names.indexOf(UNKNOWN) < 0 ? names.concat([UNKNOWN]) : names;
+  }
+  function renderEntryBy(d) {
+    return '<span class="entry-by">' + (d.by ? 'By ' + esc(d.by) : UNKNOWN) + '</span>';
+  }
+
   // The URL carries a single-use code, not the write token. The view trades
   // the code for the token once and keeps the token in this variable only:
   // never in storage, never back in the URL.
@@ -810,7 +849,7 @@
   if (!fixtureMode) {
     var m = /(?:^|[#&])c=([0-9a-f]+)/.exec(location.hash);
     sessionCode = m ? m[1] : null;
-    history.replaceState(null, '', location.pathname + location.search);
+    writeByFilter();
   }
   var LINK_USED = 'This session link was already used. Stop `serve` and start it again.';
 
@@ -919,7 +958,7 @@
     var parsed = parseFindingBody(raw);
     return esc(parsed.text)
       + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '')
-      + parsed.notes.map(function (n) {
+      + parsed.notes.filter(function (n) { return n.label !== 'By'; }).map(function (n) {
         return '<span class="entry-note">' + esc(n.label) + ': '
           + (n.label === 'Open at acceptance' ? seqLinks(n.text) : esc(n.text)) + '</span>';
       }).join('');
@@ -1326,11 +1365,11 @@
         }).join('') + '</ol></div>'
       : '';
 
-    var totalkRaw = findingsFor(state.decisions, e.number);
+    var totalkRaw = findingsFor(state.decisions, e.number).filter(passesFilter);
     var totalkFull = totalkRaw.length
       ? '<div class="field-totalk-full"><h3 class="view-sub" style="color:var(--ink);font-weight:700;">To talk about</h3>'
         + '<ul class="totalk-list">' + totalkRaw.map(function (d) {
-          return '<li class="totalk-item">' + renderEntryBody(d.body) + '</li>';
+          return '<li class="totalk-item">' + renderEntryBody(d.body) + renderEntryBy(d) + '</li>';
         }).join('') + '</ul></div>'
       : '';
 
@@ -1368,7 +1407,7 @@
         + '<span class="agenda-item-head"><span class="num-badge">' + f.number + '</span>'
         + '<span class="agenda-item-title">' + esc(f.question) + '</span></span>'
         + '<ul class="agenda-findings">' + f.findings.map(function (d) {
-            return '<li>' + renderEntryBody(d.body) + '</li>';
+            return '<li>' + renderEntryBody(d.body) + renderEntryBy(d) + '</li>';
           }).join('') + '</ul>'
         + '</button></li>';
     }).join('');
@@ -1433,17 +1472,32 @@
   }
 
   function renderHistory(s) {
+    var buttons = [null].concat(namesIn(s.decisions)).map(function (name) {
+      return '<button type="button" class="ghost-btn" data-by="' + esc(name === null ? '' : name)
+        + '" aria-pressed="' + (name === byFilter ? 'true' : 'false') + '">' + esc(name === null ? 'All' : name) + '</button>';
+    }).join('');
     var rows = s.decisions.map(function (d) {
+      if (d.kind === 'SESSION') {
+        return '<li id="entry-' + esc(d.seq) + '" tabindex="-1"><div role="separator" class="session-divider">Session: '
+          + esc(d.ref) + ' &middot; ' + esc(d.date) + renderEntryBy(d) + '</div></li>';
+      }
+      if (!passesFilter(d)) return '';
+      if (d.kind === 'MERGE') {
+        return '<li id="entry-' + esc(d.seq) + '" tabindex="-1"><p class="merge-line">Merged from '
+          + esc((d.ref || '').replace(/^from /, '')) + ' &mdash; ' + esc((d.body || '').split('\n')[0])
+          + renderEntryBy(d) + '</p></li>';
+      }
       var framing = d.kind === 'DECISION' ? FRAMING_REF.exec(d.ref || '') : null;
       return '<li class="history-card" id="entry-' + esc(d.seq) + '" tabindex="-1"><p class="history-meta">#' + esc(d.seq) + ' &middot; '
         + esc(framing ? 'Framing chosen' : historyLabel(d.kind)) + ' &middot; ' + esc(d.date) + ' &middot; ' + esc(framing ? framing[1] : refToQuestion(d.ref))
         + (SEAL_STATE[d.sealStatus] ? ' &middot; ' + esc(SEAL_STATE[d.sealStatus]) : '') + '</p>'
         + sealFlag(d, s)
-        + '<p class="history-body">' + renderEntryBody(d.body) + '</p>'
+        + '<p class="history-body">' + renderEntryBody(d.body) + renderEntryBy(d) + '</p>'
         + '</li>';
     }).join('');
     return '<section id="log" data-view="log" class="view page-section">'
       + '<div class="view-head"><h2>History</h2><p class="view-sub">What has been said and decided, in order.</p></div>'
+      + '<div class="by-filter" role="group" aria-label="Show entries by">' + buttons + '</div>'
       + (rows ? '<ol class="history-list">' + rows + '</ol>' : '<p class="empty-note">Nothing yet.</p>')
       + '</section>';
   }
@@ -1457,6 +1511,11 @@
   }
 
   function render() {
+    // A stale fragment must not leave the filter bar with no active button.
+    if (byFilter !== null && namesIn(state.decisions).indexOf(byFilter) < 0) {
+      byFilter = null;
+      writeByFilter();
+    }
     // The Framings tab exists while the project holds variants; once the last
     // one is gone a reload must not leave the reader on a view with no tab.
     if (activeView === 'compare' && !variantsOf(state).length) activeView = 'poster';
@@ -1731,6 +1790,8 @@
   }
 
   app.addEventListener('click', function (event) {
+    var byBtn = event.target.closest('button[data-by]');
+    if (byBtn) { setByFilter(byBtn.getAttribute('data-by') || null); return; }
     // Navigation (view switching) works in fixture mode too: it never writes.
     var navBtn = event.target.closest('[data-view-target]');
     if (navBtn) {

@@ -4,6 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const { viewState: buildViewState } = require('../bin/canvas-serve');
+const { header, formatEntry } = require('../hooks/lib/decisions');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'dashboard', 'canvas.html'), 'utf8');
 
@@ -161,6 +164,7 @@ function stubNode() {
     addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
     showModal() { this.open = true; },
     close() { this.open = false; (listeners.close || []).forEach((fn) => fn()); },
+    querySelector() { return null; },
     querySelectorAll() { return []; },
   };
 }
@@ -168,7 +172,7 @@ function stubNode() {
 // `routes` maps a URL to a state, or to a function of the request returning
 // `{ status, body }`. `mode` 'fixture' loads the state from `?fixture=`;
 // 'live' trades the code in the hash for the token 'T' first.
-async function mount({ state, query = '', mode = 'fixture', routes = {} }) {
+async function mount({ state, query = '', mode = 'fixture', hash = mode === 'fixture' ? '' : '#c=abc123', routes = {} }) {
   const nodes = {};
   const node = (id) => nodes[id] || (nodes[id] = stubNode());
   const errorBox = { textContent: '' };
@@ -186,9 +190,14 @@ async function mount({ state, query = '', mode = 'fixture', routes = {} }) {
   };
   const documentStub = { getElementById: (id) => (id === 'body-shell' ? null : node(id)) };
   const location = mode === 'fixture'
-    ? { search: `?fixture=/fixture.json${query}`, hash: '', pathname: '/' }
-    : { search: '', hash: '#c=abc123', pathname: '/' };
-  new Function('document', 'location', 'history', 'fetch', script)(documentStub, location, { replaceState() {} }, fetchStub);
+    ? { search: `?fixture=/fixture.json${query}`, hash, pathname: '/' }
+    : { search: '', hash, pathname: '/' };
+  const historyStub = { replaceState(_state, _title, url) {
+    const replaced = new URL(url, 'http://127.0.0.1');
+    location.hash = replaced.hash;
+    location.search = replaced.search;
+  } };
+  new Function('document', 'location', 'history', 'fetch', script)(documentStub, location, historyStub, fetchStub);
   await settle();
   const app = node('app');
   const dlg = node('dlg');
@@ -199,10 +208,14 @@ async function mount({ state, query = '', mode = 'fixture', routes = {} }) {
     notice: node('notice'),
     noticeText: node('notice-text'),
     calls,
+    location,
     writes: () => calls.filter((c) => c.opts && c.opts.method === 'POST' && c.url !== '/api/session'),
     click(attrs) {
       const btn = { getAttribute: (name) => (name in attrs ? attrs[name] : null) };
-      app.listeners.click[0]({ target: { closest: (selector) => (selector === 'button[data-action]' ? btn : null) } });
+      app.listeners.click[0]({ target: { closest: (selector) => {
+        const attr = /\[(data-[\w-]+)\]/.exec(selector);
+        return attr && attr[1] in attrs ? btn : null;
+      } } });
     },
     async submit(values) {
       const elements = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, { value: v }]));
@@ -414,7 +427,8 @@ test('History shows the framing choice and the explained accept with #seq links 
   const page = await mount({ state: chosenState, query: '&view=log' });
   const markup = page.app.innerHTML;
   assert.match(markup, /<li class="history-card" id="entry-3" tabindex="-1"><p class="history-meta">#3 &middot; Framing chosen &middot; \d{4}-\d{2}-\d{2} &middot; power &middot; verified<\/p>/);
-  assert.match(markup, /Framing power \(lens: power and hierarchy\) chosen; its statements are copied into the main canvas\.<span class="entry-note">By: A\. Researcher<\/span><span class="entry-note">Why: Every one of the twelve meetings records rank/);
+  assert.match(markup, /Framing power \(lens: power and hierarchy\) chosen; its statements are copied into the main canvas\.<span class="entry-note">Why: Every one of the twelve meetings records rank/);
+  assert.match(markup, /<span class="entry-by">By A\. Researcher<\/span>/);
   assert.match(markup, /<span class="entry-note">Rejected: rituals \(lens: meeting routines and turn-taking\); sense-making/);
   assert.match(markup, /<li class="history-card" id="entry-4" tabindex="-1"><p class="history-meta">#4 &middot; Decision &middot; \d{4}-\d{2}-\d{2} &middot; What puzzles us\? &middot; verified<\/p>/);
   assert.match(markup, /<span class="entry-note">Explained: Earlier work counts who speaks/);
@@ -505,4 +519,135 @@ test('statement text is never editable in the view, and a state without variants
 
 test('canvas.html reads By as an entry field, so it is never shown as raw body text', () => {
   assert.match(html, /ENTRY_LABEL = \/\^\\\*\\\*\(By\|Why\|/);
+});
+
+// Task 9: real viewState output, not hand-written dashboard state. Dropping a
+// name renderer, filtering the shared agenda, or stripping the entire hash
+// must fail these tests. Each marker deliberately starts with a field number.
+function namesFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-view-names-'));
+  const saved = Object.fromEntries(['RESEARCH_HARNESS_DIR', 'RESEARCH_HARNESS_STATE_DIR'].map((k) => [k, process.env[k]]));
+  try {
+    const research = path.join(root, 'research');
+    fs.mkdirSync(research);
+    const canvas = fs.readFileSync(path.join(__dirname, 'fixtures', 'voice-uptake', 'research', 'canvas.md'), 'utf8');
+    fs.writeFileSync(path.join(research, 'canvas.md'), canvas.replace(
+      'Speaking frequency is well documented; whether a proposal is taken up is not. [stated]',
+      'Speaking frequency is well documented; whether a proposal is taken up is not. [accepted]',
+    ));
+    process.env.RESEARCH_HARNESS_DIR = 'research';
+    process.env.RESEARCH_HARNESS_STATE_DIR = path.join(root, 'state');
+    fs.mkdirSync(process.env.RESEARCH_HARNESS_STATE_DIR);
+    fs.writeFileSync(path.join(process.env.RESEARCH_HARNESS_STATE_DIR, 'name'), 'A. Researcher\n');
+    const entries = [
+      { kind: 'DISCOVERY', ref: '2 Audience', body: 'Ask A about prior work.', by: 'A. Researcher' },
+      { kind: 'DISCOVERY', ref: '2 Audience', body: 'Ask B about assumptions.', by: 'B. Supervisor' },
+      { kind: 'DISCOVERY', ref: '2 Audience', body: 'An older unnamed finding.' },
+      { kind: 'SESSION', ref: '2 October supervision', body: 'Session started.', by: 'A. Researcher' },
+      { kind: 'MERGE', ref: 'from 2 clone', body: 'Replayed entries 6, 7.\nAnother detail.', by: 'A. Researcher' },
+    ];
+    fs.writeFileSync(path.join(research, 'decisions.md'), header('names-fixture') + entries.map((e, i) => formatEntry({ seq: i + 1, date: '2026-10-02', ...e })).join('\n'));
+    const result = buildViewState(root, path.resolve(__dirname, '..'));
+    assert.equal(result.ok, true, result.error);
+    return result.body;
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+const namesState = namesFixture();
+const sectionOf = (page, id) => page.app.innerHTML.match(new RegExp(`<section id="${id}"[\\s\\S]*?</section>`))[0];
+const filterButtons = (page) => [...sectionOf(page, 'log').matchAll(/<button[^>]*data-by="([^"]*)"[^>]*aria-pressed="(true|false)"[^>]*>([^<]*)<\/button>/g)]
+  .map((m) => ({ by: m[1], pressed: m[2], label: m[3] }));
+const historySeqs = (page) => [...sectionOf(page, 'log').matchAll(/class="history-card" id="entry-(\d+)"/g)].map((m) => Number(m[1]));
+
+// 1. An author line in all three entry consumers; no duplicate body-field By.
+test('Names: History, field findings and agenda show one quiet name line, or bare unknown', async () => {
+  const page = await mount({ state: namesState });
+  for (const id of ['log', 'element-2', 'agenda']) {
+    const markup = sectionOf(page, id);
+    for (const label of ['By A. Researcher', 'By B. Supervisor', 'unknown']) {
+      assert.ok(markup.includes(`class="entry-by">${label}</`), `${id}: ${label}`);
+    }
+    assert.doesNotMatch(visibleText(markup), /By unknown|By:|\*\*By/);
+  }
+  const field = sectionOf(page, 'element-2');
+  assert.equal((field.match(/class="entry-by"/g) || []).length, 3, 'one line per finding');
+});
+
+// 2. Markers are not findings, even when their refs start with a field number.
+test('Names: SESSION is a dated separator and MERGE is a quiet summary, neither a finding', async () => {
+  const page = await mount({ state: namesState, query: '&view=log' });
+  const log = sectionOf(page, 'log');
+  assert.match(log, /role="separator"[^>]*>[\s\S]*?Session: 2 October supervision &middot; 2026-10-02/);
+  assert.match(log, /class="merge-line">Merged from 2 clone &mdash; Replayed entries 6, 7\./);
+  assert.deepEqual(historySeqs(page), [1, 2, 3], 'markers are not cards');
+  assert.doesNotMatch(log, /Another detail\./, 'only the first merge body line is shown');
+  for (const id of ['element-2', 'agenda']) {
+    assert.doesNotMatch(sectionOf(page, id), /Session started|Replayed entries|2 October supervision/);
+  }
+});
+
+// 3. Accessibility: one active name; All on first load.
+test('Names: the History filter offers All, both names and unknown with exactly one pressed button', async () => {
+  const page = await mount({ state: namesState, query: '&view=log' });
+  assert.match(sectionOf(page, 'log'), /class="by-filter" role="group" aria-label="Show entries by"/);
+  assert.deepEqual(filterButtons(page).map((b) => [b.label, b.pressed]), [
+    ['All', 'true'], ['A. Researcher', 'false'], ['B. Supervisor', 'false'], ['unknown', 'false'],
+  ]);
+});
+
+// 4. The entry lists narrow; the shared agenda and status/count consumers do not.
+test('Names: choosing B narrows History and field findings without changing agenda, poster or badges', async () => {
+  const page = await mount({ state: namesState, query: '&view=log' });
+  const before = Object.fromEntries(['agenda', 'poster', 'element-1'].map((id) => [id, sectionOf(page, id)]));
+  assert.ok(namesState.elements.some((e) => e.status.status === 'accepted'), 'fixture includes an accepted field');
+  page.click({ 'data-by': 'B. Supervisor' });
+  assert.deepEqual(historySeqs(page), [2]);
+  assert.match(sectionOf(page, 'log'), /role="separator"/);
+  assert.doesNotMatch(sectionOf(page, 'log'), /Merged from/);
+  const field = sectionOf(page, 'element-2');
+  assert.match(field, /Ask B about assumptions/);
+  assert.doesNotMatch(field, /Ask A about prior work|An older unnamed finding/);
+  for (const id of Object.keys(before)) assert.equal(sectionOf(page, id), before[id], `${id} stays unchanged`);
+  assert.deepEqual(filterButtons(page).filter((b) => b.pressed === 'true').map((b) => b.label), ['B. Supervisor']);
+});
+
+// 5. The fragment is the only persistent state; fixture query survives too.
+test('Names: clicking B writes the encoded fragment and reload restores that filter', async () => {
+  const page = await mount({ state: namesState, query: '&view=log' });
+  page.click({ 'data-by': 'B. Supervisor' });
+  assert.equal(page.location.hash, '#by=B.%20Supervisor');
+  assert.equal(page.location.search, '?fixture=/fixture.json&view=log');
+  const reloaded = await mount({ state: namesState, query: '&view=log', hash: page.location.hash });
+  assert.deepEqual(historySeqs(reloaded), [2]);
+  assert.deepEqual(filterButtons(reloaded).filter((b) => b.pressed === 'true').map((b) => b.label), ['B. Supervisor']);
+});
+
+// 6. Trading c= must not erase by=; a code-free live reload is filtered too.
+test('Names: stripping the single-use code preserves by and applies it before and after a live reload', async () => {
+  const page = await mount({ state: namesState, mode: 'live', hash: '#c=abc123&by=B.%20Supervisor' });
+  assert.equal(page.location.hash, '#by=B.%20Supervisor');
+  assert.deepEqual(historySeqs(page), [2]);
+  assert.deepEqual(page.calls.find((c) => c.url === '/api/session').body, { code: 'abc123' });
+  const reloaded = await mount({ state: namesState, mode: 'live', hash: page.location.hash });
+  assert.deepEqual(historySeqs(reloaded), [2]);
+  assert.equal(reloaded.calls.some((c) => c.url === '/api/session'), false, 'a reload does not redeem again');
+});
+
+// 7. No browser storage; unknown and All follow the same delegated DOM path.
+test('Names: unknown and All filter without browser storage and an absent name leaves All active', async () => {
+  const page = await mount({ state: namesState });
+  page.click({ 'data-by': 'unknown' });
+  assert.equal(page.location.hash, '#by=unknown');
+  assert.deepEqual(historySeqs(page), [3]);
+  assert.deepEqual(filterButtons(page).filter((b) => b.pressed === 'true').map((b) => b.label), ['unknown']);
+  page.click({ 'data-by': '' });
+  assert.equal(page.location.hash, '');
+  assert.deepEqual(historySeqs(page), [1, 2, 3]);
+  const absent = await mount({ state: namesState, hash: '#by=Nobody' });
+  assert.deepEqual(filterButtons(absent).filter((b) => b.pressed === 'true').map((b) => b.label), ['All']);
+  assert.doesNotMatch(html, /localStorage|sessionStorage/);
 });

@@ -1,0 +1,136 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const seal = require('../hooks/lib/seal');
+
+const pluginRoot = path.resolve(__dirname, '..');
+const cli = path.join(pluginRoot, 'bin', 'research-harness.js');
+const fixtureDir = path.join(__dirname, 'fixtures', 'voice-uptake', 'research');
+const GIT_ENV = { GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@example.invalid', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+
+function git(cwd, ...args) {
+  return childProcess.spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...GIT_ENV } });
+}
+function rh(cwd, state, args) {
+  const { CLAUDE_PROJECT_DIR: _p, RESEARCH_HARNESS_DIR: _d, ...ambient } = process.env;
+  return childProcess.spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', env: { ...ambient, ...GIT_ENV, CLAUDE_PLUGIN_ROOT: pluginRoot, RESEARCH_HARNESS_STATE_DIR: state } });
+}
+function keyPathIn(state, root) {
+  const saved = process.env.RESEARCH_HARNESS_STATE_DIR;
+  process.env.RESEARCH_HARNESS_STATE_DIR = state;
+  try { return seal.keyPath(root); } finally { if (saved === undefined) delete process.env.RESEARCH_HARNESS_STATE_DIR; else process.env.RESEARCH_HARNESS_STATE_DIR = saved; }
+}
+
+// A bare origin, clone A (who inits and holds the key) and clone B (who gets
+// a copy of the key file), each with its own state dir and name.
+function twoClones() {
+  const top = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-merge-'));
+  const origin = path.join(top, 'origin.git');
+  git(top, 'init', '-q', '--bare', '-b', 'main', origin);
+  const A = path.join(top, 'a');
+  const B = path.join(top, 'b');
+  const sa = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+  const sb = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+  git(top, 'clone', '-q', origin, A);
+  fs.mkdirSync(path.join(A, 'research'));
+  fs.copyFileSync(path.join(fixtureDir, 'canvas.md'), path.join(A, 'research', 'canvas.md'));
+  fs.copyFileSync(path.join(fixtureDir, 'decisions.md'), path.join(A, 'research', 'decisions.md'));
+  const init = rh(A, sa, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  assert.equal(init.status, 0, init.stdout + init.stderr);
+  const named = rh(A, sa, ['name', 'A. Researcher']);
+  assert.equal(named.status, 0, named.stdout + named.stderr);
+  const logged = rh(A, sa, ['log', 'DISCOVERY', '7', '--body', 'Shared finding.']);
+  assert.equal(logged.status, 0, logged.stdout + logged.stderr);
+  git(A, 'add', '-A'); git(A, 'commit', '-qm', 'start'); git(A, 'push', '-q', 'origin', 'HEAD:main');
+  git(top, 'clone', '-q', origin, B);
+  git(B, 'config', 'pull.rebase', 'false');
+  git(A, 'config', 'pull.rebase', 'false');
+  const kb = keyPathIn(sb, B);
+  fs.mkdirSync(path.dirname(kb), { recursive: true });
+  fs.copyFileSync(keyPathIn(sa, A), kb);
+  const namedB = rh(B, sb, ['name', 'B. Supervisor']);
+  assert.equal(namedB.status, 0, namedB.stdout + namedB.stderr);
+  return { A, B, sa, sb, key: fs.readFileSync(kb, 'utf8').trim() };
+}
+
+test('two clones log in parallel, pull conflicts, merge-log joins the logs, both verify after the round trip', () => {
+  const { A, B, sa, sb, key } = twoClones();
+  rh(A, sa, ['log', 'DISCOVERY', '7', '--body', 'From A.']);
+  git(A, 'commit', '-qam', 'a'); git(A, 'push', '-q', 'origin', 'HEAD:main');
+  rh(B, sb, ['log', 'DISCOVERY', '6', '--body', 'From B.']);
+  git(B, 'commit', '-qam', 'b');
+  const pull = git(B, 'pull', '--no-rebase', '-q', 'origin', 'main');
+  assert.notEqual(pull.status, 0, 'the pull conflicts on decisions.md');
+
+  const out = rh(B, sb, ['merge-log']);
+  assert.equal(out.status, 0, out.stdout);
+  assert.match(out.stdout, /git add research\/decisions\.md/);
+  const merged = fs.readFileSync(path.join(B, 'research', 'decisions.md'), 'utf8');
+  assert.doesNotMatch(merged, /^<<<<<<<|^>>>>>>>/m);
+  assert.equal(seal.verifyChain(merged, Buffer.from(key, 'hex')).status, 'verified');
+  assert.match(merged, /· MERGE · from [0-9a-f]{7,}/);
+  assert.match(merged, /\*\*By:\*\* B\. Supervisor/);
+
+  git(B, 'add', 'research/decisions.md'); git(B, 'commit', '-qm', 'merge'); git(B, 'push', '-q', 'origin', 'HEAD:main');
+  assert.equal(git(A, 'pull', '--no-rebase', '-q', 'origin', 'main').status, 0);
+  const atA = fs.readFileSync(path.join(A, 'research', 'decisions.md'), 'utf8');
+  assert.equal(atA, merged);
+  assert.equal(seal.verifyChain(atA, Buffer.from(key, 'hex')).status, 'verified');
+});
+
+test('merge-log refuses outside a merge and during a rebase', () => {
+  const { B, sb } = twoClones();
+  const none = rh(B, sb, ['merge-log']);
+  assert.equal(none.status, 1);
+  assert.match(none.stdout, /no merge in progress/);
+  fs.mkdirSync(path.join(B, '.git', 'rebase-merge'));
+  const rebasing = rh(B, sb, ['merge-log']);
+  assert.equal(rebasing.status, 1);
+  assert.match(rebasing.stdout, /git pull --no-rebase/);
+});
+
+test('--skip-decision needs a value, and a bare one (the shell ate "#12") is refused before anything runs', () => {
+  const { B, sb } = twoClones();
+  const bare = rh(B, sb, ['merge-log', '--skip-decision']);
+  assert.equal(bare.status, 2);
+  assert.match(bare.stdout, /--skip-decision needs a value/);
+  assert.equal(rh(B, sb, ['merge-log', '--skip-decision', 'x']).status, 2);
+});
+
+// The check refusal end to end, against the fixture canvas: their check on a
+// question our moved acceptance closes. The fixture's 7.1 is empty, so the
+// acceptance picks 1.2 — element 1 has no dependency and the [stated]
+// statement is a single candidate with --match.
+test('the check refusal names --skip-decision, and the skip drops the acceptance and points at the marker', () => {
+  const { A, B, sa, sb, key } = twoClones();
+  const check = rh(A, sa, ['log', 'DISCOVERY', '1.2 check', '--body', 'The framing needs a decision before the finding is read.']);
+  assert.equal(check.status, 0, check.stdout);
+  git(A, 'commit', '-qam', 'a-check'); git(A, 'push', '-q', 'origin', 'HEAD:main');
+  const accepted = rh(B, sb, ['accept', '1.2', '--match', 'Speaking frequency', '--explained', 'The frequency claim holds for the twelve recorded meetings.']);
+  assert.equal(accepted.status, 0, accepted.stdout);
+  git(B, 'commit', '-qam', 'b-accept');
+  assert.notEqual(git(B, 'pull', '--no-rebase', '-q', 'origin', 'main').status, 0, 'the pull conflicts on decisions.md');
+
+  const refused = rh(B, sb, ['merge-log']);
+  assert.equal(refused.status, 1, refused.stdout);
+  const named = refused.stdout.match(/--skip-decision (\d+)/);
+  assert.ok(named, refused.stdout);
+  assert.match(refused.stdout, /git merge --abort/);
+  assert.match(fs.readFileSync(path.join(B, 'research', 'decisions.md'), 'utf8'), /^<<<<<<</m, 'the refusal writes nothing');
+
+  assert.equal(git(B, 'merge', '--abort').status, 0);
+  assert.notEqual(git(B, 'pull', '--no-rebase', '-q', 'origin', 'main').status, 0, 'the second pull conflicts again');
+  const skipped = rh(B, sb, ['merge-log', '--skip-decision', `#${named[1]}`]);
+  assert.equal(skipped.status, 0, skipped.stdout);
+  assert.match(skipped.stdout, /research\/canvas\.md/);
+  assert.match(skipped.stdout, /set its marker back by hand/);
+  const merged = fs.readFileSync(path.join(B, 'research', 'decisions.md'), 'utf8');
+  assert.doesNotMatch(merged, /^<<<<<<<|^>>>>>>>/m);
+  assert.equal(seal.verifyChain(merged, Buffer.from(key, 'hex')).status, 'verified');
+});

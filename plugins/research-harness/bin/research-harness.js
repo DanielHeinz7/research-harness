@@ -16,6 +16,7 @@ const stateLib = require('../hooks/lib/state');
 const { acceptStatement } = require('../hooks/lib/accept');
 const { chooseFraming } = require('../hooks/lib/choose');
 const { appendLog } = require('../hooks/lib/log');
+const { mergeLogs } = require('../hooks/lib/merge');
 const { startSession } = require('../hooks/lib/session');
 const { mechanicalReview, ledgerReport, coverNote, ledgerSummary, COVER_STATE } = require('../hooks/lib/review');
 const { agendaOf, agendaMarkdown } = require('../hooks/lib/agenda');
@@ -36,6 +37,7 @@ const USAGE = [
   'research-harness name [<name>]',
   'research-harness key export --out <file>.seal.key',
   'research-harness join --key-file <file> --name "<name>"',
+  'research-harness merge-log [--skip-decision <n>]',
   'research-harness session start "<occasion>"',
   'research-harness serve [--no-open]',
   'research-harness doctor',
@@ -64,16 +66,16 @@ function parseArgs(argv) {
   return { positional, flags };
 }
 
-// The value flags SQ-167 names. parseArgs cannot tell one given without a value
-// from a switch: both arrive as `true`, and a command that then reads the value
-// with `typeof flags.x === 'string'` sees "not given". That is how a bare
-// --match accepted a question's single candidate without checking it, a bare
-// --profile became the default profile, and a bare --title, --outlet, --why or
-// --rejected vanished without a word. main refuses a bare flag of this set
-// before the command runs, so no state is read or written on the way to the
-// refusal; --project, --mode, --dir and --supersedes keep the bare-flag refusal
-// their own command already has.
-const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'key-file', 'name', 'out', 'variant', 'lens']);
+// The value flags SQ-167 names, `skip-decision` among them. parseArgs cannot
+// tell one given without a value from a switch: both arrive as `true`, and a
+// command that then reads the value with `typeof flags.x === 'string'` sees
+// "not given". That is how a bare --match accepted a question's single
+// candidate without checking it, a bare --profile became the default profile,
+// and a bare --title, --outlet, --why or --rejected vanished without a word.
+// main refuses a bare flag of this set before the command runs, so no state is
+// read or written on the way to the refusal; --project, --mode, --dir and
+// --supersedes keep the bare-flag refusal their own command already has.
+const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'key-file', 'name', 'out', 'variant', 'lens', 'skip-decision']);
 
 // Every message goes to stdout: the skills embed this command through a `!`
 // line, and that line carries stdout only (§5.4). A refusal the researcher
@@ -585,6 +587,63 @@ function join(flags) {
   return 0;
 }
 
+// ---------- merge-log ----------
+
+function gitIn(root, args) {
+  return childProcess.spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+}
+
+// Entry numbers arrive as `12` or `#12`; a shell drops an unquoted `#12` as a
+// comment, which the bare-flag refusal in main already catches.
+function entryNumber(value) {
+  const m = /^#?([1-9]\d*)$/.exec(String(value));
+  return m ? Number(m[1]) : null;
+}
+
+// Run inside a `git pull --no-rebase` that conflicted on decisions.md (spec
+// §2). Ours is stage 2, theirs stage 3. Writes the working file and nothing
+// else: staging and committing stay the person's steps.
+function mergeLog(flags) {
+  const root = project.projectDir({});
+  let skip = [];
+  if (flags['skip-decision'] !== undefined) {
+    const n = entryNumber(flags['skip-decision']);
+    if (n === null) return fail(`--skip-decision takes an entry number, e.g. 12.\n${USAGE}`, 2);
+    skip = [n];
+  }
+  const gitPath = (name) => {
+    const r = gitIn(root, ['rev-parse', '--git-path', name]);
+    return r.status === 0 ? path.resolve(root, r.stdout.trim()) : null;
+  };
+  if (['rebase-merge', 'rebase-apply'].some((n) => { const p = gitPath(n); return p && fs.existsSync(p); })) {
+    return fail('A rebase is in progress; in a rebase ours and theirs are swapped, so merge-log refuses. Abort it (git rebase --abort) and pull with git pull --no-rebase.');
+  }
+  const head = gitIn(root, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']);
+  if (head.status !== 0) return fail('There is no merge in progress. Run merge-log after a git pull --no-rebase that conflicted on research/decisions.md.');
+  const state = stateLib.loadState(root, { pluginRoot: pluginRoot() });
+  if (state.error) return fail(state.error);
+  const refusal = stateLib.ledgerRefusal({ ...state, decisionsText: '' });
+  if (refusal) return fail(`Cannot merge: ${refusal.error}`);
+  const rel = `./${path.relative(root, state.paths.decisions)}`;
+  const ours = gitIn(root, ['show', `:2:${rel}`]);
+  const theirs = gitIn(root, ['show', `:3:${rel}`]);
+  if (ours.status !== 0 || theirs.status !== 0) return fail(`${rel.slice(2)} is not in conflict in this merge; nothing to do.`);
+  const short = gitIn(root, ['rev-parse', '--short', 'MERGE_HEAD']).stdout.trim();
+  const result = mergeLogs(ours.stdout, theirs.stdout, state.key, { by: state.by, theirsCommit: short, skip });
+  if (!result.ok) return fail(result.error);
+  fs.writeFileSync(state.paths.decisions, result.text);
+  if (seal.verifyChain(fs.readFileSync(state.paths.decisions, 'utf8'), state.key).status !== 'verified') {
+    return fail(`${rel.slice(2)} was written but does not verify. Do not commit it; run git merge --abort.`);
+  }
+  if (!result.merged) say(`One log already holds the other (${result.kept} kept, unchanged).`);
+  else say(`Merged: their log up to #${result.mergeSeq - result.moved.length - 1}, then ours as ${result.moved.map(([o, n]) => `#${o}→#${n}`).join(', ') || 'nothing'}; MERGE entry #${result.mergeSeq}.`);
+  for (const s of result.dropped || []) {
+    say(`#${s} was left out. Its statement in research/canvas.md may still read [accepted]: set its marker back by hand after the merge, then accept it again with research-harness accept.`);
+  }
+  say(`Next: git add ${rel.slice(2)}, resolve any other conflicts, git commit.`);
+  return 0;
+}
+
 // ---------- session ----------
 
 // The session marker (§4). A session runs from its SESSION entry to the next
@@ -986,6 +1045,7 @@ function main(argv) {
     case 'name': return name(positional);
     case 'key': return keyCommand(positional, flags);
     case 'join': return join(flags);
+    case 'merge-log': return mergeLog(flags);
     case 'session': return session(positional, flags);
     case 'agenda': return agenda(flags);
     case 'serve': return serve(flags);

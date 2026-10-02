@@ -32,6 +32,8 @@ const USAGE = [
   'research-harness title [<text>]',
   'research-harness profile [<id>]',
   'research-harness name [<name>]',
+  'research-harness key export --out <file>.seal.key',
+  'research-harness join --key-file <file> --name "<name>"',
   'research-harness session start "<occasion>"',
   'research-harness serve [--no-open]',
   'research-harness doctor',
@@ -69,7 +71,7 @@ function parseArgs(argv) {
 // before the command runs, so no state is read or written on the way to the
 // refusal; --project, --mode, --dir and --supersedes keep the bare-flag refusal
 // their own command already has.
-const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'variant', 'lens']);
+const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'key-file', 'name', 'out', 'variant', 'lens']);
 
 // Every message goes to stdout: the skills embed this command through a `!`
 // line, and that line carries stdout only (§5.4). A refusal the researcher
@@ -181,12 +183,11 @@ function init(flags) {
     // A log that already carries seals was sealed with a key this machine does
     // not have, and a seal recomputes under that key alone: a fresh key here
     // would report an intact log as BROKEN (SQ-122). init refuses to make one
-    // and names where the sealing machine's key belongs instead.
+    // and names where the sealing machine's key comes from instead.
     const keyFile = seal.keyPath(root);
     const logText = fs.existsSync(decisionsFile) ? fs.readFileSync(decisionsFile, 'utf8') : '';
     if (!fs.existsSync(keyFile) && decisions.parseDecisions(logText).entries.some((e) => e.seal !== null)) {
-      say(`${path.relative(root, decisionsFile)} is sealed on another machine: it stays unverifiable here until that machine's key is copied to ${keyFile}; nothing was changed.`);
-      return 0;
+      return fail(`${path.relative(root, decisionsFile)} is sealed on another machine. Do not create a new key here: ask whoever holds the key to run research-harness key export --out <file>${EXPORT_SUFFIX}, then run research-harness join --key-file <file> --name "<your name>". Nothing was changed.`);
     }
     const key = seal.createKey(root);
     if (!key.created) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
@@ -507,6 +508,70 @@ function name(positional) {
   return 0;
 }
 
+// ---------- key export / join ----------
+
+const EXPORT_SUFFIX = '.seal.key';
+
+// The key holder's one step (spec §7): the project key into a file of their
+// choosing, mode 600, never on stdout. The guard refuses this to the model.
+function keyCommand(positional, flags) {
+  if (positional[0] !== 'export' || positional.length !== 1) return fail(`key takes export.\n${USAGE}`, 2);
+  if (typeof flags.out !== 'string' || !flags.out.endsWith(EXPORT_SUFFIX)) {
+    return fail(`key export needs --out <file> ending in ${EXPORT_SUFFIX}.\n${USAGE}`, 2);
+  }
+  const root = project.projectDir({});
+  let key;
+  try {
+    key = seal.readKey(root);
+  } catch (err) {
+    return fail(err.message);
+  }
+  if (!key) return fail('There is no sealing key for this project on this machine, so there is nothing to export.');
+  try {
+    fs.writeFileSync(flags.out, `${key.toString('hex')}\n`, { mode: 0o600, flag: 'wx' });
+  } catch (err) {
+    if (err && err.code === 'EEXIST') return fail(`${flags.out} already exists; nothing was written.`);
+    throw err;
+  }
+  say(`Key written to ${flags.out} (mode 0600). Hand it to the second person yourself — not as plain-text mail, not into the repository. They run: research-harness join --key-file <file> --name "<their name>"`);
+  return 0;
+}
+
+// The second person's one step: check the key against this clone's log, copy
+// it, set the name. A key that does not verify the log is refused before
+// anything is copied — a wrong key here would report every later merge as
+// broken.
+function join(flags) {
+  if (typeof flags['key-file'] !== 'string' || typeof flags.name !== 'string') return fail(`join needs --key-file <file> and --name "<name>".\n${USAGE}`, 2);
+  const bad = identity.nameRefusal(flags.name);
+  if (bad) return fail(bad, 2);
+  let key;
+  try {
+    key = seal.readKeyFile(flags['key-file']);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const state = loadState();
+  if (state.error) return fail(state.error);
+  const chain = seal.verifyChain(state.decisionsText, key);
+  if (chain.status === 'broken') {
+    return fail(`This key does not verify ${path.relative(state.root, state.paths.decisions)}: it fails at #${chain.broken.seq} (${chain.broken.why}). It belongs to another project, or the log was changed. Nothing was copied.`);
+  }
+  if (state.keyError) return fail(`${state.keyError}; nothing was copied.`);
+  const file = seal.keyPath(state.root);
+  if (state.key && !state.key.equals(key)) return fail(`A different key is already at ${file}; nothing was copied. If it is wrong, the person who set it up decides which key is the project's.`);
+  if (!state.key) {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, key.toString('hex'), { mode: 0o600, flag: 'wx' });
+  }
+  identity.writeName(flags.name);
+  say(`${state.key ? 'The same key was already here; kept.' : `Key copied to ${file}.`} Name set: ${flags.name.trim()}.`);
+  say(`You can delete ${flags['key-file']} now; join does not delete it.`);
+  say('research-harness doctor:');
+  doctor();
+  return 0;
+}
+
 // ---------- session ----------
 
 // The session marker (§4). A session runs from its SESSION entry to the next
@@ -744,9 +809,37 @@ function checkSessionMarkers() {
   return { ok: true, note: true, name: 'note', detail: `#${entries[at - 1].seq} and #${entries[at].seq} are two session markers in a row; the first session is empty` };
 }
 
+// The key on this machine must verify this clone's log (spec §7): a key from
+// another project, or a log that grew under another key, makes every later
+// write a chain the other clone reports broken. Only inside a project with a
+// key — the project-state check already reports a missing one.
+function checkKeyVerifies() {
+  const state = loadState();
+  if (state.error || state.keyError || !state.key) return null;
+  const chain = seal.verifyChain(state.decisionsText, state.key);
+  if (chain.status === 'broken') {
+    return { ok: false, name: 'key verifies', detail: `the key here does not verify decisions.md (fails at #${chain.broken.seq}); run research-harness join with the project key` };
+  }
+  return { ok: true, name: 'key verifies', detail: chain.status === 'verified' ? 'the key here verifies decisions.md' : 'no sealed entry yet for the key here to verify' };
+}
+
+// Notes about the git clone the project sits in (spec §7), never failures: a
+// project with one person and no remote is healthy. Outside a git work tree
+// there is nothing to say.
+function checkGit() {
+  const root = project.projectDir({});
+  if (childProcess.spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: root, encoding: 'utf8' }).status !== 0) return [];
+  const notes = [];
+  const remotes = childProcess.spawnSync('git', ['remote'], { cwd: root, encoding: 'utf8' }).stdout.trim();
+  if (!remotes) notes.push({ ok: true, note: true, name: 'note', detail: 'no git remote; a second clone needs one' });
+  const rebase = childProcess.spawnSync('git', ['config', '--get', 'pull.rebase'], { cwd: root, encoding: 'utf8' }).stdout.trim();
+  if (rebase && rebase !== 'false') notes.push({ ok: true, note: true, name: 'note', detail: `pull.rebase is ${rebase} here, so merge-log would refuse after a pull; run git config pull.rebase false` });
+  return notes;
+}
+
 function doctor() {
   const root = project.projectDir({});
-  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState(), checkName(), checkSessionMarkers(), checkTerminalCommand()].filter(Boolean);
+  const checks = [checkPluginEnabled(root), checkGuardDenies(), checkProjectState(), checkName(), checkKeyVerifies(), checkSessionMarkers(), ...checkGit(), checkTerminalCommand()].filter(Boolean);
   const failed = checks.filter((c) => !c.ok);
   say(`research-harness doctor: ${failed.length === 0 ? `ok (${checks.length} checks)` : `${failed.length} of ${checks.length} checks failed`}`);
   for (const c of failed) say(`- ${c.name}: ${c.detail}`);
@@ -863,6 +956,8 @@ function main(argv) {
     case 'title': return title(positional);
     case 'profile': return profile(positional);
     case 'name': return name(positional);
+    case 'key': return keyCommand(positional, flags);
+    case 'join': return join(flags);
     case 'session': return session(positional, flags);
     case 'serve': return serve(flags);
     case 'doctor': return doctor();

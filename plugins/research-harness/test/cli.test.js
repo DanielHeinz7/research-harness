@@ -281,9 +281,9 @@ test('init in a clone whose log is already sealed creates no key, and review the
   const sealedLog = fs.readFileSync(file, 'utf8');
 
   const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
-  assert.equal(out.status, 0, out.stdout);
+  assert.equal(out.status, 1, out.stdout);
   assert.match(out.stdout, /sealed on another machine/);
-  assert.match(out.stdout, /unverifiable here/);
+  assert.match(out.stdout, /research-harness join --key-file/);
   const keyFile = path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key');
   assert.equal(fs.existsSync(keyFile), false, 'a fresh key here would make every seal fail to recompute');
   assert.equal(fs.readFileSync(file, 'utf8'), sealedLog, 'the log is not touched');

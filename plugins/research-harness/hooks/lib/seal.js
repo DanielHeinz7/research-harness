@@ -157,7 +157,7 @@ function sealedAppend(filePath, fields, key, { decision = false } = {}) {
   if (fields.kind === 'DECISION' && !decision) {
     throw new Error('the append path does not seal a DECISION: an acceptance is the researcher\'s act, via research-harness accept');
   }
-  if (!key) throw new Error('no sealing key for this project on this machine; run research-harness init to create one');
+  if (!key) throw new Error('no sealing key for this project on this machine; on a log sealed elsewhere run research-harness join, on a new project research-harness init');
   let current = '';
   try {
     current = fs.readFileSync(filePath, 'utf8');

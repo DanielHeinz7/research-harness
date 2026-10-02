@@ -11,6 +11,8 @@ const canvas = require('../hooks/lib/canvas');
 const decisions = require('../hooks/lib/decisions');
 const seal = require('../hooks/lib/seal');
 const { textHash } = require('../hooks/lib/hash');
+const { agendaOf, agendaMarkdown } = require('../hooks/lib/agenda');
+const { ledgerSummary } = require('../hooks/lib/review');
 
 const pluginRoot = path.resolve(__dirname, '..');
 const cli = path.join(pluginRoot, 'bin', 'research-harness.js');
@@ -952,4 +954,31 @@ test('doctor notes two session markers in a row without failing on it', () => {
   run(root, ['session', 'start', 'One']);
   run(root, ['session', 'start', 'Two']);
   assert.match(run(root, ['doctor']).stdout, /note: .*#\d+ and #\d+ are two session markers in a row/);
+});
+
+test('agenda prints the To talk about tab as Markdown, and --out writes exactly that file', () => {
+  const root = keyedProject();
+  const decisionsText = fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8');
+  const parsed = canvas.parseCanvas(fs.readFileSync(path.join(root, 'research', 'canvas.md'), 'utf8'));
+  // The same inputs the command builds, so the bytes are compared, not a shape.
+  const expected = agendaMarkdown(agendaOf(parsed, decisionsText), {
+    title: parsed.frontmatter.title || parsed.frontmatter.project || 'Untitled',
+    date: new Date().toISOString().slice(0, 10),
+    seal: ledgerSummary(seal.verifyChain(decisionsText, seal.readKey(root))),
+  });
+
+  const printed = run(root, ['agenda']);
+  assert.equal(printed.status, 0, printed.stdout + printed.stderr);
+  assert.equal(printed.stderr, '');
+  assert.equal(printed.stdout, expected);
+
+  const file = path.join(root, 'agenda.md');
+  const written = run(root, ['agenda', '--out', file]);
+  assert.equal(written.status, 0, written.stdout + written.stderr);
+  assert.equal(written.stdout, `Written to ${file}.\n`);
+  assert.equal(fs.readFileSync(file, 'utf8'), expected);
+
+  const bare = run(root, ['agenda', '--out']);
+  assert.equal(bare.status, 2, bare.stdout);
+  assert.match(bare.stdout, /--out needs a value/);
 });

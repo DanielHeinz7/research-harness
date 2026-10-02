@@ -25,6 +25,7 @@ const { acceptStatement, openChecks } = require('../hooks/lib/accept');
 const { chooseFraming } = require('../hooks/lib/choose');
 const { setStated } = require('../hooks/lib/stated');
 const { appendLog } = require('../hooks/lib/log');
+const { agendaOf, HUMAN_QUESTIONS } = require('../hooks/lib/agenda');
 
 const HOST = '127.0.0.1';
 const MAX_BODY = 64 * 1024;
@@ -82,6 +83,10 @@ function canvasState(state, pluginRoot) {
     decisions: parseDecisions(state.decisionsText).entries.map((e) => ({ ...e, sealStatus: sealStatus(e) })),
     profileError: state.profileError || null,
     keyError: state.keyError || null,
+    // Spec §6: the same agenda the `agenda` command exports, and the human
+    // questions it is headed by, so the view renders them and holds no copy.
+    agenda: agendaOf(state.parsed, state.decisionsText),
+    humanQuestions: HUMAN_QUESTIONS,
   };
 }
 

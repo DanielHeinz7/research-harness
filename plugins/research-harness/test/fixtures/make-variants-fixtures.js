@@ -27,6 +27,11 @@ delete process.env.RESEARCH_HARNESS_DIR;
 process.env.RESEARCH_HARNESS_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-fixture-state-'));
 const { viewState } = require('../../bin/canvas-serve');
 
+// The name every entry carries as `By` (SQ-177): set here, where the state dir
+// is the script's own, so the fixtures hold the same bytes on a machine with a
+// git identity and on one without.
+fs.writeFileSync(path.join(process.env.RESEARCH_HARNESS_STATE_DIR, 'name'), 'A. Researcher\n');
+
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-fixture-'));
 
 function run(args) {

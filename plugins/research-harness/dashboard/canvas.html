@@ -782,20 +782,10 @@
 
   // Daniel's 2026-09-30 direction (SQ-110 comment c_mun9rkzh_c1fd1c, point 1):
   // each of the nine fields is headed by a plain human question; the canvas
-  // term goes underneath, small. This is the standard nine-element canvas
-  // (references/canvas-elements.md); an element number outside 1-9 falls
-  // back to its own title.
-  var HUMAN_QUESTIONS = {
-    1: 'What puzzles us?',
-    2: 'Who cares, and what do they already know?',
-    3: 'What exactly do we ask?',
-    4: 'What is it made of?',
-    5: 'Where do we look?',
-    6: 'How do we look?',
-    7: 'What did we find?',
-    8: 'What does it change?',
-    9: 'Where does it stop?'
-  };
+  // term goes underneath, small. The wording lives in hooks/lib/agenda.js and
+  // arrives with every state, so the tab and the CLI's Markdown export cannot
+  // drift apart; an element number outside 1-9 falls back to its own title.
+  var HUMAN_QUESTIONS = {};
   var ROW_LABELS = [
     { from: 1, to: 3, label: 'Motivation' },
     { from: 4, to: 6, label: 'Method' },
@@ -1013,18 +1003,6 @@
     return (n && HUMAN_QUESTIONS[n]) || ref;
   }
 
-  // Point 6: the questions nobody has answered yet, across every field —
-  // what "To talk about" adds to the fields that already have a finding.
-  function gapQuestions(s) {
-    var gaps = [];
-    s.elements.forEach(function (e) {
-      e.questions.forEach(function (q) {
-        if (!q.statements.length) gaps.push({ element: e, question: q });
-      });
-    });
-    return gaps;
-  }
-
   // Renders one statement as a prose span. `full` (field view) adds a
   // focusable status cue whose word appears on hover or keyboard focus, plus
   // the accept/mark-as-said actions. Point 5: a suggestion carries one
@@ -1203,7 +1181,7 @@
     elements.forEach(function (e) {
       var rowLabel = ROW_LABELS.filter(function (r) { return r.from === e.number; })[0];
       if (rowLabel) cells.push('<li class="poster-row-label" aria-hidden="true">' + esc(rowLabel.label) + '</li>');
-      cells.push(renderPosterCard(e, accent, agendaFindings(s, e).length));
+      cells.push(renderPosterCard(e, accent, (s.agenda.fields.filter(function (f) { return f.number === e.number; })[0] || { findings: [] }).findings.length));
     });
 
     return '<section id="poster" data-view="poster" class="view page-section" tabindex="-1">'
@@ -1379,33 +1357,25 @@
       + '</section>';
   }
 
-  // The findings "To talk about" lists for a field: none once the field is
-  // accepted. The poster chip counts exactly these, so it never points at an
-  // empty spot in that tab.
-  function agendaFindings(s, e) {
-    return e.status.status === 'accepted' ? [] : findingsFor(s.decisions, e.number);
-  }
-
   // Point 6: "To talk about" is a meeting starter, not a nine-row form — it
   // lists only fields that actually have a finding, plus the questions
-  // nobody has answered yet, named by the field's human question.
+  // nobody has answered yet, named by the field's human question. Both lists
+  // are computed by hooks/lib/agenda.js and arrive with the state: the tab and
+  // the Markdown the agenda command prints are the same agenda (spec §6).
   function renderAgenda(s) {
-    var items = s.elements.map(function (e) {
-      var findings = agendaFindings(s, e);
-      if (!findings.length) return '';
-      return '<li id="agenda-field-' + e.number + '" tabindex="-1"><button type="button" class="agenda-item-open" data-view-target="element-' + e.number + '">'
-        + '<span class="agenda-item-head"><span class="num-badge">' + e.number + '</span>'
-        + '<span class="agenda-item-title">' + esc(HUMAN_QUESTIONS[e.number] || e.title) + '</span></span>'
-        + '<ul class="agenda-findings">' + findings.map(function (d) {
+    var items = s.agenda.fields.map(function (f) {
+      return '<li id="agenda-field-' + f.number + '" tabindex="-1"><button type="button" class="agenda-item-open" data-view-target="element-' + f.number + '">'
+        + '<span class="agenda-item-head"><span class="num-badge">' + f.number + '</span>'
+        + '<span class="agenda-item-title">' + esc(f.question) + '</span></span>'
+        + '<ul class="agenda-findings">' + f.findings.map(function (d) {
             return '<li>' + renderEntryBody(d.body) + '</li>';
           }).join('') + '</ul>'
         + '</button></li>';
     }).join('');
 
-    var gapItems = gapQuestions(s).map(function (g) {
-      var question = HUMAN_QUESTIONS[g.element.number] || g.element.title;
-      return '<li><button type="button" class="agenda-gap-item" data-view-target="element-' + g.element.number + '">'
-        + 'Not answered yet: <strong>' + esc(question) + '</strong> &mdash; ' + esc(g.question.text)
+    var gapItems = s.agenda.gaps.map(function (g) {
+      return '<li><button type="button" class="agenda-gap-item" data-view-target="element-' + g.number + '">'
+        + 'Not answered yet: <strong>' + esc(g.question) + '</strong> &mdash; ' + esc(g.text)
         + '</button></li>';
     }).join('');
 
@@ -1546,7 +1516,11 @@
   }
 
   function refreshState() {
-    return fetchState().then(function (s) { state = s; render(); });
+    return fetchState().then(function (s) {
+      state = s;
+      HUMAN_QUESTIONS = s.humanQuestions || {};
+      render();
+    });
   }
 
   function post(path, payload) {

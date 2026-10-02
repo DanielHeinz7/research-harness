@@ -69,6 +69,104 @@ The [technical appendix](docs/technical-appendix.md) describes the state and sea
 the measured promotion guard, off-machine verification, and their limits at a
 named main revision.
 
+## Two people, one canvas
+
+A researcher and supervisor can work on one canvas at one machine or in two git
+clones, including remotely. The log records both people's entries. Both clones
+must run research-harness 0.5 and share the project's sealing key. A clone still
+on a pre-seal version cannot merge its log with a sealing clone: `merge-log`
+refuses an incoming log that does not verify under the shared key.
+
+For two clones, the key holder first exports the existing project key from the
+original project, in their own terminal:
+
+```sh
+research-harness key export --out /path/outside-repo/project.seal.key
+```
+
+The output file must end in `.seal.key`. It is created with mode `0600`; the
+command never prints the key. Hand over the file separately, not as plain-text
+mail, not through a command line or transcript, and not through the repository.
+
+The second person installs the plugin as described in
+[Install](plugins/research-harness/README.md#install), runs
+`research-harness install-cli` once in Claude Code to make the terminal command
+available, and clones the paper project. In their own terminal:
+
+```sh
+git clone <project-url> paper-project
+cd paper-project
+research-harness join --key-file /path/outside-repo/project.seal.key --name "B. Supervisor"
+```
+
+`join` checks the key against the log before copying it and sets the local name.
+It runs `doctor` and tells you when the exported file can be deleted; it does
+not delete it. Do not initialize a second key for a sealed log.
+
+In each clone, make pulls use a merge rather than a rebase:
+
+```sh
+git config pull.rebase false
+```
+
+At one machine no key handover is needed. Before each person's writes, set
+`research-harness name "A. Researcher"` or
+`research-harness name "B. Supervisor"` as appropriate. The name setting is
+user-wide, not per project; without it the CLI uses `git config user.name`.
+`By` is a statement, not proof: whoever holds the key can write any name.
+
+Before the session, export the agenda, which contains the view's "To talk about"
+items. Then mark the start of the session:
+
+```sh
+research-harness agenda --out agenda.md
+research-harness session start "Supervision on the study framing"
+```
+
+After the session, export its protocol:
+
+```sh
+research-harness session protocol --out protocol.md
+```
+
+This selects the latest session. To select an earlier one, put its SESSION entry
+number after `protocol`, for example `research-harness session protocol 12`.
+A session runs until the next SESSION marker or the end of the log; there is no
+end command. People send the agenda and protocol themselves.
+
+When a pull conflicts on `research/decisions.md`, run the following inside that
+merge, not during a rebase:
+
+```sh
+research-harness merge-log
+git add research/decisions.md
+git commit
+```
+
+Resolve any other conflicts before committing. `merge-log` keeps the other
+clone's log unchanged and moves your divergent entries after it, renumbered and
+re-sealed. It records the moves in a MERGE entry. It handles only the log; git
+handles `canvas.md` and other files. The text above the first entry and all
+shared unsealed entries must match byte for byte.
+
+A merge is refused if moving your acceptance after a check the other clone
+opened would make that unseen check read as closed. Nothing is written. Follow
+the refusal's entry number: abort with `git merge --abort`, pull again with
+`git pull --no-rebase`, then run `research-harness merge-log --skip-decision <n>`.
+For example, `research-harness merge-log --skip-decision 12` leaves out DECISION
+12; do not put `#` before the number in a shell command. The omitted entry stays
+in git history and the MERGE entry records it. Stage and commit as above.
+The statement in `canvas.md` may still read `[accepted]`: reset its marker by
+hand to its previous non-accepted marker after the merge, then accept it again
+with `research-harness accept <n.m> --explained "<your sentence>"` after reading
+the other person's check. The tool does not reset the canvas marker for you.
+
+These setup and writing steps belong to people: the guard refuses model calls
+to `name`, `key`, `join`, `session start` and `merge-log`, and reads or writes
+naming a path ending in `.seal.key`. The model may run `agenda` and
+`session protocol [<n>]` only without any flag. The `--out` exports above are
+human steps too.
+
 ## Where the rules come from
 
 The harness's question set is derived from published methodological and

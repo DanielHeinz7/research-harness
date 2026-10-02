@@ -17,6 +17,7 @@ const { acceptStatement } = require('../hooks/lib/accept');
 const { chooseFraming } = require('../hooks/lib/choose');
 const { appendLog } = require('../hooks/lib/log');
 const { startSession } = require('../hooks/lib/session');
+const { protocolOf } = require('../hooks/lib/protocol');
 const { mechanicalReview, ledgerReport, coverNote, ledgerSummary, COVER_STATE } = require('../hooks/lib/review');
 const { agendaOf, agendaMarkdown } = require('../hooks/lib/agenda');
 const { summarize } = require('../hooks/inject-state');
@@ -37,6 +38,7 @@ const USAGE = [
   'research-harness key export --out <file>.seal.key',
   'research-harness join --key-file <file> --name "<name>"',
   'research-harness session start "<occasion>"',
+  'research-harness session protocol [<n>] [--out <file>]',
   'research-harness serve [--no-open]',
   'research-harness doctor',
   'research-harness install-cli [--dir <path>]',
@@ -62,6 +64,14 @@ function parseArgs(argv) {
     }
   }
   return { positional, flags };
+}
+
+// An entry number on the command line, as `12` or `#12`. A shell eats a bare
+// `#12` as a comment, so both spellings reach a command as what the hint
+// prints; null for anything that is not an entry number.
+function entryNumber(arg) {
+  const m = /^#?([1-9]\d*)$/.exec(String(arg === undefined || arg === null ? '' : arg));
+  return m ? Number(m[1]) : null;
 }
 
 // The value flags SQ-167 names. parseArgs cannot tell one given without a value
@@ -598,6 +608,19 @@ function session(positional, flags) {
     if (!result.ok) return refused(result);
     say(`Session #${result.seq} started, sealed ${result.seal}. It runs until the next session start.`);
     return 0;
+  }
+  // The protocol (§5): what the entries between two markers decided, noted and
+  // left open. Read-only, like the agenda: it prints, or writes the one file
+  // the person named.
+  if (action === 'protocol') {
+    if (rest.length > 1) return fail(`session protocol takes at most one entry number.\n${USAGE}`, 2);
+    const seq = rest.length ? entryNumber(rest[0]) : undefined;
+    if (seq === null) return fail(`session protocol takes an entry number, e.g. 12.\n${USAGE}`, 2);
+    const state = loadState();
+    if (state.error) return fail(state.error);
+    const result = protocolOf({ decisionsText: state.decisionsText, canvasText: state.canvasText, key: state.key, seq });
+    if (!result.ok) return fail(result.error);
+    return writeOrSay(result.markdown, flags.out);
   }
   return fail(`session takes start or protocol.\n${USAGE}`, 2);
 }

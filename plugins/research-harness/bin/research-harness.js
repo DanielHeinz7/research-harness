@@ -17,7 +17,8 @@ const { acceptStatement } = require('../hooks/lib/accept');
 const { chooseFraming } = require('../hooks/lib/choose');
 const { appendLog } = require('../hooks/lib/log');
 const { startSession } = require('../hooks/lib/session');
-const { mechanicalReview, ledgerReport, coverNote, COVER_STATE } = require('../hooks/lib/review');
+const { mechanicalReview, ledgerReport, coverNote, ledgerSummary, COVER_STATE } = require('../hooks/lib/review');
+const { agendaOf, agendaMarkdown } = require('../hooks/lib/agenda');
 const { summarize } = require('../hooks/inject-state');
 
 const MODES = ['brainstorming', 'seed', 'import'];
@@ -26,6 +27,7 @@ const USAGE = [
   'research-harness init --variant <name> --lens <text> [--mode brainstorming|seed|import]',
   'research-harness status [--variant <name>] [--key <file>]',
   'research-harness review [--variant <name>] [--key <file>]',
+  'research-harness agenda [--out <file>]',
   'research-harness accept <n.m> --explained <text> [--match <substring>] [--why <text>] [--rejected <text>]',
   'research-harness choose <name> --why <text> [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>] [--variant <name>]',
@@ -69,7 +71,7 @@ function parseArgs(argv) {
 // before the command runs, so no state is read or written on the way to the
 // refusal; --project, --mode, --dir and --supersedes keep the bare-flag refusal
 // their own command already has.
-const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'variant', 'lens']);
+const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'variant', 'lens', 'out']);
 
 // Every message goes to stdout: the skills embed this command through a `!`
 // line, and that line carries stdout only (§5.4). A refusal the researcher
@@ -88,6 +90,17 @@ function fail(text, code = 1) {
 function refused(result) {
   if (result.code !== 'invalid') return fail(result.error);
   return fail(result.usage ? `${result.error}\n${USAGE}` : result.error, 2);
+}
+
+// Read-only exports print, or write the one file the person named.
+function writeOrSay(markdown, out) {
+  if (out === undefined) {
+    process.stdout.write(markdown);
+    return 0;
+  }
+  fs.writeFileSync(out, markdown);
+  say(`Written to ${out}.`);
+  return 0;
 }
 
 // ---------- init ----------
@@ -524,6 +537,21 @@ function session(positional, flags) {
   return fail(`session takes start or protocol.\n${USAGE}`, 2);
 }
 
+// ---------- agenda ----------
+
+// The "To talk about" tab as Markdown, before a session (spec §6). Read-only.
+function agenda(flags) {
+  const state = loadState();
+  if (state.error) return fail(state.error);
+  const fm = state.parsed.frontmatter;
+  const markdown = agendaMarkdown(agendaOf(state.parsed, state.decisionsText), {
+    title: fm.title || fm.project || 'Untitled',
+    date: today(),
+    seal: ledgerSummary(seal.verifyChain(state.decisionsText, state.key)),
+  });
+  return writeOrSay(markdown, flags.out);
+}
+
 // ---------- serve ----------
 
 // The session view (US-2). A human runs this in their own terminal; the URL
@@ -864,6 +892,7 @@ function main(argv) {
     case 'profile': return profile(positional);
     case 'name': return name(positional);
     case 'session': return session(positional, flags);
+    case 'agenda': return agenda(flags);
     case 'serve': return serve(flags);
     case 'doctor': return doctor();
     case 'install-cli': return installCli(flags);

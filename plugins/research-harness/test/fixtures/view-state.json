@@ -553,5 +553,176 @@
     }
   ],
   "profileError": null,
-  "keyError": null
+  "keyError": null,
+  "agenda": {
+    "fields": [
+      {
+        "number": 1,
+        "question": "What puzzles us?",
+        "findings": [
+          {
+            "seq": 2,
+            "ref": "1 Puzzle",
+            "date": "2026-09-12",
+            "body": "Two meetings show proposals adopted weeks later without attribution to their originator. [tentative, src: memo-02]",
+            "by": null,
+            "why": null
+          },
+          {
+            "seq": 5,
+            "ref": "1 Puzzle",
+            "date": "2026-09-30",
+            "body": "Ask whether the twelve meetings cover more than one team.\n**Why:** The puzzle may hold for only one group.",
+            "by": null,
+            "why": "The puzzle may hold for only one group."
+          }
+        ]
+      }
+    ],
+    "gaps": [
+      {
+        "number": 1,
+        "question": "What puzzles us?",
+        "questionId": "1.3",
+        "text": "Why does this matter — for practice, for theory, or both?"
+      },
+      {
+        "number": 2,
+        "question": "Who cares, and what do they already know?",
+        "questionId": "2.1",
+        "text": "Who are the ten to twenty scholars whose conversation this joins?"
+      },
+      {
+        "number": 2,
+        "question": "Who cares, and what do they already know?",
+        "questionId": "2.3",
+        "text": "How has prior work handled this puzzle, and where is it inconsistent or silent?"
+      },
+      {
+        "number": 2,
+        "question": "Who cares, and what do they already know?",
+        "questionId": "2.4",
+        "text": "Which assumption of that work do you challenge, and on what grounds?"
+      },
+      {
+        "number": 3,
+        "question": "What exactly do we ask?",
+        "questionId": "3.2",
+        "text": "What would a well-informed person answer intuitively, and why is that not enough?"
+      },
+      {
+        "number": 3,
+        "question": "What exactly do we ask?",
+        "questionId": "3.3",
+        "text": "How does answering it move the puzzle forward?"
+      },
+      {
+        "number": 4,
+        "question": "What is it made of?",
+        "questionId": "4.1",
+        "text": "What are the core concepts, and where does each definition come from?"
+      },
+      {
+        "number": 4,
+        "question": "What is it made of?",
+        "questionId": "4.2",
+        "text": "How do they relate — and is that relationship given in advance or emerging from the material?"
+      },
+      {
+        "number": 4,
+        "question": "What is it made of?",
+        "questionId": "4.3",
+        "text": "What mechanism explains the relationship?"
+      },
+      {
+        "number": 5,
+        "question": "Where do we look?",
+        "questionId": "5.2",
+        "text": "Why is this setting the right one for the question — what does it make visible?"
+      },
+      {
+        "number": 5,
+        "question": "Where do we look?",
+        "questionId": "5.3",
+        "text": "What would a more suitable setting be, and why are you not there?"
+      },
+      {
+        "number": 6,
+        "question": "How do we look?",
+        "questionId": "6.1",
+        "text": "What data, from where, collected how?"
+      },
+      {
+        "number": 6,
+        "question": "How do we look?",
+        "questionId": "6.2",
+        "text": "How is the data analysed, and how does the procedure earn trust?"
+      },
+      {
+        "number": 6,
+        "question": "How do we look?",
+        "questionId": "6.3",
+        "text": "Which choices in design or analysis would a sceptical reviewer challenge first?"
+      },
+      {
+        "number": 7,
+        "question": "What did we find?",
+        "questionId": "7.1",
+        "text": "What does the material show — separated from what you make of it?"
+      },
+      {
+        "number": 7,
+        "question": "What did we find?",
+        "questionId": "7.2",
+        "text": "Which instances run counter to the pattern, and what happens to them?"
+      },
+      {
+        "number": 8,
+        "question": "What does it change?",
+        "questionId": "8.1",
+        "text": "What does the field know now that it did not before?"
+      },
+      {
+        "number": 8,
+        "question": "What does it change?",
+        "questionId": "8.2",
+        "text": "Which assumption in prior work does this change, and how?"
+      },
+      {
+        "number": 8,
+        "question": "What does it change?",
+        "questionId": "8.3",
+        "text": "What follows for practice?"
+      },
+      {
+        "number": 9,
+        "question": "Where does it stop?",
+        "questionId": "9.1",
+        "text": "Where does the claim stop applying, and why?"
+      },
+      {
+        "number": 9,
+        "question": "Where does it stop?",
+        "questionId": "9.2",
+        "text": "Which limitations follow from design choices, and which from the setting?"
+      },
+      {
+        "number": 9,
+        "question": "Where does it stop?",
+        "questionId": "9.3",
+        "text": "What would refute the contribution?"
+      }
+    ]
+  },
+  "humanQuestions": {
+    "1": "What puzzles us?",
+    "2": "Who cares, and what do they already know?",
+    "3": "What exactly do we ask?",
+    "4": "What is it made of?",
+    "5": "Where do we look?",
+    "6": "How do we look?",
+    "7": "What did we find?",
+    "8": "What does it change?",
+    "9": "Where does it stop?"
+  }
 }

@@ -10,7 +10,9 @@ const path = require('node:path');
 
 const seal = require('../hooks/lib/seal');
 const profileLib = require('../hooks/lib/profile');
+const stateLib = require('../hooks/lib/state');
 const { textHash } = require('../hooks/lib/hash');
+const { HUMAN_QUESTIONS, agendaOf } = require('../hooks/lib/agenda');
 const { start, viewState } = require('../bin/canvas-serve');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -472,6 +474,15 @@ test('a write from the view carries the name of the person who started the serve
   const comment = await post(srv, '/api/comment', { ref: '1.2', body: 'Ask the supervisor about chairing.' });
   assert.equal(comment.status, 200, comment.text);
   assert.match(read(root, 'decisions.md'), new RegExp(`## \\[#${comment.json.seq}\\] \\d{4}-\\d{2}-\\d{2} · DISCOVERY · 1\\.2 · seal ${comment.json.seal}\\nAsk the supervisor about chairing\\.\\n\\*\\*By:\\*\\* B\\. Supervisor\\n`));
+});
+
+test('viewState carries the agenda and the human questions, computed by agendaOf', () => {
+  const root = copyFixture();
+  const { ok, body } = viewState(root, pluginRoot);
+  assert.equal(ok, true);
+  const state = stateLib.loadState(root, { pluginRoot });
+  assert.deepEqual(body.agenda, agendaOf(state.parsed, state.decisionsText));
+  assert.deepEqual(body.humanQuestions, HUMAN_QUESTIONS);
 });
 
 test.after(() => {

@@ -56,6 +56,13 @@ test('canvas.html gives a poster card a "to talk about" line that opens that fie
   assert.match(html, /id="agenda-field-'/);
 });
 
+test('the view holds no copy of the agenda logic or the human questions; it renders what the server sends', () => {
+  assert.doesNotMatch(html, /What puzzles us\?/);
+  assert.doesNotMatch(html, /function gapQuestions|function agendaFindings/);
+  assert.match(html, /s\.agenda/);
+  assert.match(html, /humanQuestions/);
+});
+
 test('canvas.html shows the paper title once: the top bar carries no title', () => {
   assert.doesNotMatch(html, /project-name|project-tag/);
   assert.equal((html.match(/esc\(paperTitle\(/g) || []).length, 1);
@@ -407,7 +414,7 @@ test('History shows the framing choice and the explained accept with #seq links 
   const page = await mount({ state: chosenState, query: '&view=log' });
   const markup = page.app.innerHTML;
   assert.match(markup, /<li class="history-card" id="entry-3" tabindex="-1"><p class="history-meta">#3 &middot; Framing chosen &middot; \d{4}-\d{2}-\d{2} &middot; power &middot; verified<\/p>/);
-  assert.match(markup, /Framing power \(lens: power and hierarchy\) chosen; its statements are copied into the main canvas\.<span class="entry-note">Why: Every one of the twelve meetings records rank/);
+  assert.match(markup, /Framing power \(lens: power and hierarchy\) chosen; its statements are copied into the main canvas\.<span class="entry-note">By: A\. Researcher<\/span><span class="entry-note">Why: Every one of the twelve meetings records rank/);
   assert.match(markup, /<span class="entry-note">Rejected: rituals \(lens: meeting routines and turn-taking\); sense-making/);
   assert.match(markup, /<li class="history-card" id="entry-4" tabindex="-1"><p class="history-meta">#4 &middot; Decision &middot; \d{4}-\d{2}-\d{2} &middot; What puzzles us\? &middot; verified<\/p>/);
   assert.match(markup, /<span class="entry-note">Explained: Earlier work counts who speaks/);
@@ -462,6 +469,29 @@ test('History: a legacy or unverifiable DECISION is marked too, a legacy DISCOVE
   delete older.review;
   const plain = await mount({ state: older, query: '&view=log' });
   assert.doesNotMatch(plain.app.innerHTML, /seal-flag|notices-banner|&middot; verified/);
+});
+
+// The agenda is the server's now: the tab renders every open field and every
+// unanswered question the state carries, and the poster chip counts the same
+// list the tab renders.
+test('To talk about renders the agenda the server sends: every open field with its findings, every gap question', async () => {
+  const page = await mount({ state: variantsState, query: '&view=agenda' });
+  const markup = page.app.innerHTML;
+  const text = visibleText(markup);
+  assert.ok(variantsState.agenda.fields.length, 'the fixture puts a field on the agenda');
+  assert.ok(variantsState.agenda.gaps.length, 'the fixture leaves questions unanswered');
+  for (const f of variantsState.agenda.fields) {
+    assert.match(markup, new RegExp(`id="agenda-field-${f.number}"`), `field ${f.number} is on the tab`);
+    assert.ok(text.includes(f.question), `field ${f.number} is named by its human question`);
+    for (const d of f.findings) {
+      assert.ok(text.includes(visibleText(renderEntryBody(d.body))), `finding #${d.seq} is on the tab`);
+    }
+    assert.match(markup, new RegExp(`data-scroll-to="agenda-field-${f.number}">${f.findings.length} thing`), `the poster chip counts field ${f.number}'s findings`);
+  }
+  for (const g of variantsState.agenda.gaps) {
+    assert.ok(text.includes(g.text), `${g.questionId} is named as unanswered`);
+    assert.match(markup, new RegExp(`class="agenda-gap-item" data-view-target="element-${g.number}"`), `${g.questionId} opens its field`);
+  }
 });
 
 test('statement text is never editable in the view, and a state without variants shows no Framings tab', async () => {

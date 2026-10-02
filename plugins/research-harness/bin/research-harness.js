@@ -605,8 +605,14 @@ function entryNumber(value) {
 // Run inside a `git pull --no-rebase` that conflicted on decisions.md (spec
 // §2). Ours is stage 2, theirs stage 3. Writes the working file and nothing
 // else: staging and committing stay the person's steps.
-function mergeLog(flags) {
+function mergeLog(flags, argv) {
   const root = project.projectDir({});
+  // parseArgs reads `--skip-decision=5` as a switch of its own name and keeps
+  // only the last of two values; either way the merge would run without the
+  // skip the person asked for (SQ-192).
+  const given = argv.filter((a) => a === '--skip-decision' || a.startsWith('--skip-decision='));
+  if (given.some((a) => a !== '--skip-decision')) return fail(`--skip-decision takes its number after a space, e.g. --skip-decision 12.\n${USAGE}`, 2);
+  if (given.length > 1) return fail(`--skip-decision is given more than once; merge-log leaves out one decision per run.\n${USAGE}`, 2);
   let skip = [];
   if (flags['skip-decision'] !== undefined) {
     const n = entryNumber(flags['skip-decision']);
@@ -1060,7 +1066,7 @@ function main(argv) {
     case 'name': return name(positional);
     case 'key': return keyCommand(positional, flags);
     case 'join': return join(flags);
-    case 'merge-log': return mergeLog(flags);
+    case 'merge-log': return mergeLog(flags, argv);
     case 'session': return session(positional, flags);
     case 'agenda': return agenda(flags);
     case 'serve': return serve(flags);

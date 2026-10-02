@@ -14,24 +14,34 @@ function refuse(code, error) {
   return { ok: false, code, error };
 }
 
-// Legacy entries carry no seal; they are the same entry when every parsed
-// part is the same. The first sealed entry's anchor covers them anyway.
-function sameEntry(a, b) {
-  if (a.seq !== b.seq) return false;
-  if (a.seal !== null || b.seal !== null) return a.seal === b.seal;
-  return a.date === b.date && a.kind === b.kind && a.ref === b.ref && a.body === b.body;
+// An entry's own bytes, heading to the next heading, without the blank lines
+// that separate it from what follows.
+function rawEntry(text, entries, k) {
+  return text.slice(entries[k].offset, k + 1 < entries.length ? entries[k + 1].offset : text.length).trimEnd();
+}
+
+// A sealed entry is the same entry when seq and seal match: the seal chains
+// over everything before it. A legacy entry has no seal of its own, so it is
+// the same entry only byte for byte, text hash included (SQ-193).
+function sameEntry(ours, a, k, theirs, b) {
+  if (a[k].seq !== b[k].seq) return false;
+  if (a[k].seal !== null || b[k].seal !== null) return a[k].seal === b[k].seal;
+  return rawEntry(ours, a, k) === rawEntry(theirs, b, k);
 }
 
 const ACCEPT_REF = /^([1-9]\.\d+) accepted$/;
-const REF_LINE = /^\*\*(Supersedes|Open at acceptance):\*\* ?(.*)$/;
+const REF_FIELDS = new Set(['Supersedes', 'Open at acceptance']);
 
-// Only the field lines that name entries by number move with the map; the
-// first line is the entry's text and is never read as a field.
+// Only the fields that name entries by number move with the map, and all of
+// such a field: the parser reads a field's continuation lines as part of it.
+// The first line is the entry's text and is never read as a field.
 function rewriteRefs(body, map) {
   const lines = body.split('\n');
+  let refs = false;
   for (let i = 1; i < lines.length; i += 1) {
-    const m = REF_LINE.exec(lines[i]);
-    if (m) lines[i] = `**${m[1]}:** ${m[2].replace(/#(\d+)/g, (all, n) => (map.has(Number(n)) ? `#${map.get(Number(n))}` : all))}`;
+    const label = decisions.fieldLabelIn(lines[i]);
+    if (label) refs = REF_FIELDS.has(label);
+    if (refs) lines[i] = lines[i].replace(/#(\d+)/g, (all, n) => (map.has(Number(n)) ? `#${map.get(Number(n))}` : all));
   }
   return lines.join('\n');
 }
@@ -47,11 +57,22 @@ function mergeLogs(ours, theirs, key, { by, theirsCommit, skip = [] } = {}) {
     if (chain.status === 'broken') {
       return refuse('broken', `${side} is broken at #${chain.broken.seq} (line ${chain.broken.line}, ${chain.broken.why}); nothing is merged. The harness never repairs a ledger.`);
     }
+    // Theirs is what the merge keeps byte for byte and seals our entries onto,
+    // so it has to verify under our key. A copy without seals reads as
+    // unverifiable, not broken: one that dropped a seal, forged a later entry
+    // unsealed, or rewrote the bytes before its first seal would otherwise be
+    // re-anchored here into a log that verifies (SQ-192).
+    if (side === 'theirs' && chain.status !== 'verified') {
+      return refuse('unverifiable', 'theirs carries no seal that verifies under our key, so nothing in it can be checked; nothing is merged. A copy whose seals were dropped or never written is not merged onto a sealed log.');
+    }
   }
   const a = decisions.parseDecisions(ours).entries;
   const b = decisions.parseDecisions(theirs).entries;
   let n = 0;
-  while (n < a.length && n < b.length && sameEntry(a[n], b[n])) n += 1;
+  while (n < a.length && n < b.length && sameEntry(ours, a, n, theirs, b)) n += 1;
+  if (n > 0 && ours.slice(0, a[0].offset) !== theirs.slice(0, b[0].offset)) {
+    return refuse('no-prefix', 'The text above #1 differs between the two logs; nothing is merged.');
+  }
   if (n === a.length) return { ok: true, text: theirs, merged: false, kept: 'theirs' };
   if (n === b.length) return { ok: true, text: ours, merged: false, kept: 'ours' };
   if (n === 0) return refuse('no-prefix', 'The two logs share no entry; they are not two copies of one log. Nothing is merged.');

@@ -1152,15 +1152,18 @@ function spellsKeyFile(text) {
 
 // A pattern expands onto the files that are there (SQ-76), so it is judged by
 // what it would expand onto now: `cat ~/Downloads/*` reads a key lying there.
-// One that fans out past MAX_GLOB_MATCHES paths counts as reaching a key. One
-// whose class the engine refuses is left to wordTouchesState, which already
-// weighs a pattern it cannot compute by the position it stands in (SQ-54).
+// The last component names the files themselves, so its matches are judged by
+// name, never counted: `ls binlog.*` over ten thousand logs reaches no key
+// (SQ-199). Only a directory component that fans out past MAX_GLOB_MATCHES
+// paths counts as reaching a key. One whose class the engine refuses is left
+// to wordTouchesState, which already weighs a pattern it cannot compute by the
+// position it stands in (SQ-54).
 const MAX_GLOB_MATCHES = 4096;
 
 function globLandsOnKeyFile(candidate, base) {
   const parts = path.resolve(base, candidate).split(path.sep).filter(Boolean);
   let paths = [path.parse(path.resolve(base)).root];
-  for (const part of parts) {
+  for (const [n, part] of parts.entries()) {
     if (!isPattern(part)) {
       paths = paths.map((at) => path.join(at, part));
       continue;
@@ -1179,7 +1182,11 @@ function globLandsOnKeyFile(candidate, base) {
       } catch (_) {
         continue;
       }
-      for (const entry of entries) if (re.test(entry)) next.push(path.join(at, entry));
+      for (const entry of entries) {
+        if (!re.test(entry)) continue;
+        if (n < parts.length - 1) next.push(path.join(at, entry));
+        else if (isKeyFileName(entry)) return true;
+      }
       if (next.length > MAX_GLOB_MATCHES) return true;
     }
     paths = next;

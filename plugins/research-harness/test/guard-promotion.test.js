@@ -1753,6 +1753,35 @@ test('SQ-185: a key file is denied under every spelling the guard can read', (t)
   ]) assert.equal((run(root, tool, input) || {}).permissionDecision, 'deny', `${tool} ${JSON.stringify(input)}`);
 });
 
+// SQ-199: the 0.5.0 replay denied five benign commands in projects without
+// research state, each because a glob's last component matched more than
+// MAX_GLOB_MATCHES (4096) files and the count alone stood for a key. The last
+// component's matches are now judged by name; only a directory component that
+// fans out that far still counts as reaching a key.
+test('SQ-199: a glob over many ordinary files is not a key file', () => {
+  const bare = makeBareProject();
+  const logs = path.join(bare, 'sent', '2026-09');
+  fs.mkdirSync(logs, { recursive: true });
+  for (let i = 0; i <= 4096; i += 1) fs.writeFileSync(path.join(logs, `binlog.${i}.md`), '');
+  fs.writeFileSync(path.join(bare, 'SKILL.md'), 'x');
+  for (const command of [
+    'for m in pypdf zipfile; do python3 -c "import $m" 2>/dev/null && echo "DA: $m" || echo "--: $m"; done; ls -t sent/2026-09/*.md | head -3',
+    'cid=$(comm -12 a.txt b.txt | head -1); echo "$cid"; grep -l -F "$cid" sent/*/*.md | head',
+    'f=$(ls sent/*/*.md | tail -1) && echo "=== $f" && sed -n \'1,25p\' "$f"',
+    "ls -t sent/2026-09 | head -3; ls sent/2026-09 | grep -c '^binlog\\.'; du -ch sent/2026-09/binlog.* | tail -1",
+    'grep -n -i "lösch\\|delete" SKILL.md | head; grep -l "^reason: thread" sent/*/*.md | wc -l',
+  ]) assert.equal(run(bare, 'Bash', { command }), null, command);
+  // A key among those files is still found by its name, not by the count.
+  fs.writeFileSync(path.join(logs, 'binlog.seal.key'), '00');
+  const found = run(bare, 'Bash', { command: 'du -ch sent/2026-09/binlog.* | tail -1' });
+  assert.equal(found && found.permissionDecision, 'deny');
+  assert.match(found.permissionDecisionReason, /\.seal\.key/);
+  // A directory component that fans out past the bound still counts as one.
+  const fan = path.join(bare, 'fan');
+  for (let i = 0; i <= 4096; i += 1) fs.mkdirSync(path.join(fan, `d${i}`), { recursive: true });
+  assert.equal((run(bare, 'Bash', { command: 'cat fan/*/*' }) || {}).permissionDecision, 'deny');
+});
+
 test('Write: adding a title to the frontmatter stays the researcher\'s', () => {
   const root = makeProject();
   const file = path.join(root, 'research', 'canvas.md');

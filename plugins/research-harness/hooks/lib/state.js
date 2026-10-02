@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const project = require('./project');
 const canvas = require('./canvas');
+const { parseDecisions } = require('./decisions');
 const identity = require('./identity');
 const profileLib = require('./profile');
 const seal = require('./seal');
@@ -68,7 +69,10 @@ function ledgerRefusal(state) {
   const refuse = (error) => ({ error, code: 'ledger' });
   if (state.keyError) return refuse(`${state.keyError}; nothing is written.`);
   if (!state.key) {
-    return refuse('No sealing key for this project on this machine, so nothing is written: an entry counts only if it verifies (§4.7). Run `research-harness init --project <slug> --mode <mode>` once here to create the key, then retry.');
+    const sealed = parseDecisions(state.decisionsText).entries.some((e) => e.seal !== null);
+    return refuse(sealed
+      ? 'No sealing key for this project on this machine, and the log is already sealed elsewhere; nothing is written. Get the project key from whoever holds it and run research-harness join --key-file <file> --name "<your name>". Do not run init: a new key would make the log read as broken.'
+      : 'No sealing key for this project on this machine, so nothing is written: an entry counts only if it verifies (§4.7). Run `research-harness init --project <slug> --mode <mode>` once here to create the key, then retry.');
   }
   const chain = seal.verifyChain(state.decisionsText, state.key);
   if (chain.status === 'broken') {

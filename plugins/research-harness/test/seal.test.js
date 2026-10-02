@@ -215,6 +215,22 @@ test('sealedAppend chains the first sealed entry onto the hash of everything bef
   assert.deepEqual([...result.verified], [4, 5]);
 });
 
+// Captured by running the two appends below against the code as it stood
+// before sealEntry was extracted (SQ-179). The refactor may not move a byte of
+// what sealedAppend writes, so the expected text is frozen here rather than
+// recomputed with the same functions it is meant to check.
+const SEALED_APPEND_BYTES = '# Decision log — t\n\n## [#1] 2026-10-08 · DISCOVERY · 1 Puzzle · seal 6a9529aeb20154ce\nFirst finding. [tentative]\n**By:** A. Researcher\n\n## [#2] 2026-10-08 · CONSTRAINT · 2 Prior Research · seal 5788b9ba31ad04d7\nA constraint. [stated]\n**By:** A. Researcher\n**Why:** because\n';
+
+test('sealedAppend writes the same bytes as before sealEntry was extracted', () => {
+  const dir = tempProject();
+  const file = path.join(dir, 'decisions.md');
+  fs.writeFileSync(file, '# Decision log — t\n');
+  const first = seal.sealedAppend(file, { date: '2026-10-08', kind: 'DISCOVERY', ref: '1 Puzzle', body: 'First finding. [tentative]', by: 'A. Researcher' }, KEY);
+  const second = seal.sealedAppend(file, { date: '2026-10-08', kind: 'CONSTRAINT', ref: '2 Prior Research', body: 'A constraint. [stated]', why: 'because', by: 'A. Researcher' }, KEY);
+  assert.deepEqual([first.seq, first.seal, second.seq, second.seal], [1, '6a9529aeb20154ce', 2, '5788b9ba31ad04d7']);
+  assert.equal(fs.readFileSync(file, 'utf8'), SEALED_APPEND_BYTES);
+});
+
 test('sealedAppend seals a DECISION only when told to and refuses a broken chain', () => {
   const dir = tempProject();
   const file = path.join(dir, 'decisions.md');

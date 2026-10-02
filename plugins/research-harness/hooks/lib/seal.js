@@ -149,6 +149,23 @@ function verifyChain(text, key) {
   return result('verified', null, legacy, null, verified);
 }
 
+// The seal an append to `current` chains onto: the last seal there is, or for
+// a log that has none yet, the anchor over every byte the new entry follows.
+function lastSealOf(current) {
+  const sealed = decisions.parseDecisions(current).entries.filter((e) => e.seal !== null);
+  return sealed.length ? sealed[sealed.length - 1].seal : anchorOf(current + decisions.separatorAfter(current));
+}
+
+// One sealed entry as text, without touching a file. The body under seal is
+// what the parser will read back, so it is taken from a parse of the
+// formatted draft rather than assembled twice.
+function sealEntry(previousSeal, fields, key) {
+  const draft = decisions.formatEntry({ ...fields, seal: undefined });
+  const entry = decisions.parseDecisions(draft).entries[0];
+  const s = sealOf(key, previousSeal, entry);
+  return { text: decisions.formatEntry({ ...fields, seal: s }), seal: s };
+}
+
 // The one append path. It refuses to seal a DECISION unless the caller is the
 // approval path, refuses without a key, and refuses to extend a broken chain:
 // the harness never repairs a ledger, and appending to a broken one would bury
@@ -168,19 +185,10 @@ function sealedAppend(filePath, fields, key, { decision = false } = {}) {
   if (chain.status === 'broken') {
     throw new Error(`decisions.md is broken at #${chain.broken.seq} (line ${chain.broken.line}, ${chain.broken.why}); nothing is appended to a broken ledger`);
   }
-  const parsed = decisions.parseDecisions(current);
-  const sealedBefore = parsed.entries.filter((e) => e.seal !== null);
-  const previous = sealedBefore.length
-    ? sealedBefore[sealedBefore.length - 1].seal
-    : anchorOf(current + decisions.separatorAfter(current));
-  const seq = parsed.maxSeq + 1;
-  // The body under seal is what the parser will read back, so it is taken
-  // from a parse of the formatted entry rather than assembled twice.
-  const draft = decisions.formatEntry({ ...fields, seq, seal: undefined });
-  const entry = decisions.parseDecisions(draft).entries[0];
-  const seal = sealOf(key, previous, entry);
-  decisions.appendEntry(filePath, decisions.formatEntry({ ...fields, seq, seal }));
-  return { seq, seal };
+  const seq = decisions.parseDecisions(current).maxSeq + 1;
+  const { text, seal: s } = sealEntry(lastSealOf(current), { ...fields, seq }, key);
+  decisions.appendEntry(filePath, text);
+  return { seq, seal: s };
 }
 
-module.exports = { KEY_FILE, keyPath, readKey, readKeyFile, createKey, anchorOf, logAnchor, sealOf, verifyChain, sealedAppend };
+module.exports = { KEY_FILE, keyPath, readKey, readKeyFile, createKey, anchorOf, logAnchor, sealOf, verifyChain, lastSealOf, sealEntry, sealedAppend };

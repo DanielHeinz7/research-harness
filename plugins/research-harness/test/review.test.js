@@ -202,3 +202,15 @@ test('mechanicalReview runs the check only when the profile names it', () => {
   assert.deepEqual(review.mechanicalReview({ parsed, graph: null, decisionsText: text }).findingsBeforeHypotheses, []);
   assert.equal(review.mechanicalReview({ parsed, graph: null, checks: ['hypotheses-before-data'], decisionsText: text }).findingsBeforeHypotheses.length, 2);
 });
+
+test('hypotheses-before-data does not read a session occasion that starts with a digit as a finding', () => {
+  const text = logOf([{ kind: 'SESSION', ref: '7 October supervision', body: 'Session started.' }]);
+  assert.deepEqual(review.findingsBeforeHypotheses(text), []);
+  const literal = [
+    '# Decision log — t', '',
+    '## [#1] 2026-10-08 · SESSION · 7 October supervision', 'Session started.', '',
+  ].join('\n');
+  assert.deepEqual(review.findingsBeforeHypotheses(literal), []);
+  const merged = logOf([{ kind: 'MERGE', ref: 'from abc1234', body: 'Taken up to #1.' }, { kind: 'DISCOVERY', ref: '2.1 check' }]);
+  assert.deepEqual(review.findingsBeforeHypotheses(merged), []);
+});

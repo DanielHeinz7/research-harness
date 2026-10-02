@@ -2,7 +2,7 @@
 
 const { allStatements, COMMITTED } = require('./canvas');
 const { textHash } = require('./hash');
-const { parseDecisions } = require('./decisions');
+const { parseDecisions, MARKER_KINDS } = require('./decisions');
 const { verifyChain } = require('./seal');
 const { dependencyViolations, statusByNumber } = require('./profile');
 
@@ -19,9 +19,10 @@ function elementOfRef(ref) {
 // The `hypotheses-before-data` check (references/preregistration.md): the
 // sealed log orders events, so it can show whether the hypotheses (4) and the
 // design (6) were accepted before the first finding (7) was recorded. It
-// reports; it never blocks.
+// reports; it never blocks. A session marker is not a finding: an occasion
+// like "7 October supervision" would otherwise read as element 7 (§4).
 function findingsBeforeHypotheses(decisionsText) {
-  const { entries } = parseDecisions(decisionsText || '');
+  const entries = parseDecisions(decisionsText || '').entries.filter((e) => !MARKER_KINDS.has(e.kind));
   const first = entries.find((e) => elementOfRef(e.ref) === 7);
   if (!first) return [];
   return [4, 6]

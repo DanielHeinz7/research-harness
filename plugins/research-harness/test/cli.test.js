@@ -929,3 +929,27 @@ test('name sets and prints the name; log writes it as By; no name at all refuses
   const doctor = run(root, ['doctor'], { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' });
   assert.match(doctor.stdout, /^- name: no name is set for the decision log on this machine; run research-harness name "<your name>" once$/m);
 });
+
+test('session start appends a sealed SESSION marker with By; log refuses SESSION and MERGE', () => {
+  const root = makeProject();
+  assert.equal(run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']).status, 0);
+  assert.equal(run(root, ['name', 'A. Researcher']).status, 0);
+  const out = run(root, ['session', 'start', 'Supervision with B. Supervisor']);
+  assert.equal(out.status, 0, out.stdout);
+  assert.match(out.stdout, /Session #\d+ started/);
+  assert.match(readLog(root), /· SESSION · Supervision with B\. Supervisor · seal [0-9a-f]{16}\nSession started\.\n\*\*By:\*\* A\. Researcher\n/);
+  assert.equal(run(root, ['log', 'SESSION', 'x', '--body', 'y']).status, 2);
+  assert.equal(run(root, ['log', 'MERGE', 'x', '--body', 'y']).status, 2);
+  assert.equal(run(root, ['session', 'start', 'a · b']).status, 2);
+  assert.equal(run(root, ['session', 'start']).status, 2);
+  assert.equal(run(root, ['session']).status, 2);
+});
+
+test('doctor notes two session markers in a row without failing on it', () => {
+  const root = makeProject();
+  run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  run(root, ['name', 'A. Researcher']);
+  run(root, ['session', 'start', 'One']);
+  run(root, ['session', 'start', 'Two']);
+  assert.match(run(root, ['doctor']).stdout, /note: .*#\d+ and #\d+ are two session markers in a row/);
+});

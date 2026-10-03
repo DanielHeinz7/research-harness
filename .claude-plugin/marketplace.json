@@ -4,13 +4,13 @@
     "name": "Daniel Heinz"
   },
   "description": "Claude Code plugins for steering paper projects.",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "plugins": [
     {
       "name": "research-harness",
       "source": "./plugins/research-harness",
       "description": "A research harness for paper projects: the AMJ research canvas as version-controlled project state, with an enforced line between what an agent proposed and what the researcher accepted.",
-      "version": "0.4.3",
+      "version": "0.5.0",
       "author": {
         "name": "Daniel Heinz"
       },

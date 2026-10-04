@@ -22,7 +22,14 @@ const cli = path.join(pluginRoot, 'bin', 'research-harness.js');
 
 const stateDirs = new Map();
 function stateDirOf(root) {
-  if (!stateDirs.has(root)) stateDirs.set(root, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')));
+  if (!stateDirs.has(root)) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+    // The name every entry carries as `By` (SQ-177), written into the fixture's
+    // own state dir. It comes before git config user.name, so the expected
+    // bytes are the same on a machine with a git identity and on one without.
+    fs.writeFileSync(path.join(dir, 'name'), 'A. Researcher\n');
+    stateDirs.set(root, dir);
+  }
   return stateDirs.get(root);
 }
 

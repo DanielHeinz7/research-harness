@@ -164,3 +164,24 @@ test('the check refusal names --skip-decision, and the skip drops the acceptance
   assert.doesNotMatch(merged, /^<<<<<<<|^>>>>>>>/m);
   assert.equal(seal.verifyChain(merged, Buffer.from(key, 'hex')).status, 'verified');
 });
+
+// SQ-196 end to end: ours carries no seals (the fixture's legacy log) and theirs
+// has no entries (a log reset to its header). The merged text would be ours,
+// which cannot verify, so merge-log refuses before the write and the conflicted
+// working file stays byte-identical instead of failing only afterwards.
+test('ours without a seal and a theirs without entries is refused before the write', () => {
+  const { A, B, sb } = twoClones();
+  fs.writeFileSync(path.join(A, 'research', 'decisions.md'), '# Decision log — voice-uptake\n');
+  git(A, 'commit', '-qam', 'empty'); git(A, 'push', '-q', 'origin', 'HEAD:main');
+  fs.copyFileSync(path.join(fixtureDir, 'decisions.md'), path.join(B, 'research', 'decisions.md'));
+  git(B, 'commit', '-qam', 'unsealed');
+  assert.notEqual(git(B, 'pull', '--no-rebase', '-q', 'origin', 'main').status, 0, 'the pull conflicts on decisions.md');
+  const file = path.join(B, 'research', 'decisions.md');
+  const before = fs.readFileSync(file, 'utf8');
+  assert.match(before, /^<<<<<<</m, 'the working file holds the conflict');
+
+  const out = rh(B, sb, ['merge-log']);
+  assert.equal(out.status, 1, out.stdout);
+  assert.match(out.stdout, /no seal that verifies/);
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'the refusal writes nothing');
+});

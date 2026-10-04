@@ -74,7 +74,16 @@ function mergeLogs(ours, theirs, key, { by, theirsCommit, skip = [] } = {}) {
     return refuse('no-prefix', 'The text above #1 differs between the two logs; nothing is merged.');
   }
   if (n === a.length) return { ok: true, text: theirs, merged: false, kept: 'theirs' };
-  if (n === b.length) return { ok: true, text: ours, merged: false, kept: 'ours' };
+  // Theirs being a prefix of ours means ours is what would be written out, and
+  // the CLI verifies only after that write; an ours without a seal would leave
+  // a log that cannot verify on disk, so it is refused before anything is
+  // returned (SQ-196).
+  if (n === b.length) {
+    if (seal.verifyChain(ours, key).status !== 'verified') {
+      return refuse('unverifiable', 'ours carries no seal that verifies under our key, so keeping it would write a log that does not verify; nothing is merged.');
+    }
+    return { ok: true, text: ours, merged: false, kept: 'ours' };
+  }
   if (n === 0) return refuse('no-prefix', 'The two logs share no entry; they are not two copies of one log. Nothing is merged.');
 
   const mine = a.slice(n);

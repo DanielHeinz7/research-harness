@@ -166,3 +166,16 @@ test('SESSION entries move like any other entry', () => {
   const r = mergeLogs(o, theirs, KEY, { by: 'A', theirsCommit: 'x' });
   assert.deepEqual(decisions.parseDecisions(r.text).entries.map((e) => e.kind).slice(-2), ['SESSION', 'MERGE']);
 });
+
+// SQ-196: theirs holds no entries, so ours is what the merge would keep — but
+// ours carries no seal, and the CLI writes before it verifies. The refusal has
+// to come first, or the working file is left modified by a merge that fails.
+test('ours without a seal and a theirs without entries: refused, no text', () => {
+  assert.equal(seal.verifyChain(LEGACY, KEY).status, 'unverifiable');
+  const r = mergeLogs(LEGACY, HEADER, KEY, { by: 'A', theirsCommit: 'abc1234' });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'unverifiable');
+  assert.equal(r.text, undefined);
+  assert.match(r.error, /no seal that verifies/);
+  assert.deepEqual(mergeLogs(base, HEADER, KEY, { by: 'A', theirsCommit: 'abc1234' }), { ok: true, text: base, merged: false, kept: 'ours' }, 'a sealed ours with an entry-less theirs is still kept unchanged');
+});

@@ -32,6 +32,18 @@ function makeBareProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'rh-bare-'));
 }
 
+// A notes repo whose research directory is not harness state.
+function makeNotesProject(t) {
+  const parent = makeBareProject();
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const root = path.join(parent, 'repo');
+  fs.mkdirSync(path.join(root, 'research'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'areas'));
+  fs.writeFileSync(path.join(root, 'research', 'note.md'), 'note');
+  fs.writeFileSync(path.join(root, 'areas', 'a.md'), 'x');
+  return root;
+}
+
 // A paper project whose own directory name holds brackets. The guard builds the
 // state path out of real directories, and one of them spells a character class.
 function makeBracketProject() {
@@ -1028,6 +1040,35 @@ test('SQ-75: without research state a word below the state directory is judged o
     const out = run(where, 'Bash', { command });
     assert.equal(out && out.permissionDecision, 'deny', command);
   }
+});
+
+// SQ-201 could not reproduce the reported false denial on 0.5.0: SQ-75
+// already handles these literal paths. Keep the exact reports as regressions.
+// Removing the absent-state exception would break the allow cases; ignoring
+// state-file names or existing state would break the deny cases.
+test('SQ-201: git mv into a notes-only research directory is allowed', (t) => {
+  const root = makeNotesProject(t);
+  assert.equal(run(root, 'Bash', { command: 'git mv areas/a.md research/a.md' }), null);
+});
+
+test('SQ-201: sed after cd with an exit fallback in a notes repo is allowed', (t) => {
+  const root = makeNotesProject(t);
+  assert.equal(run(path.dirname(root), 'Bash', {
+    command: "cd repo || exit 1; sed -i '' s/x/y/ research/a.md",
+  }), null);
+});
+
+test('SQ-201: creating canvas.md in a notes-only research directory is denied', (t) => {
+  const root = makeNotesProject(t);
+  const out = run(root, 'Bash', { command: 'echo x > research/canvas.md' });
+  assert.equal(out && out.permissionDecision, 'deny');
+});
+
+test('SQ-201: git mv into a research directory holding canvas.md is denied', (t) => {
+  const root = makeNotesProject(t);
+  fs.writeFileSync(path.join(root, 'research', 'canvas.md'), canvasText);
+  const out = run(root, 'Bash', { command: 'git mv areas/a.md research/a.md' });
+  assert.equal(out && out.permissionDecision, 'deny');
 });
 
 // SQ-86: a loop body that rebinds its variable (`do f=…`, `export f=…`,

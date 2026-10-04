@@ -17,6 +17,11 @@ const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-replacement-'));
 const project = path.join(scratch, 'project');
 fs.mkdirSync(project);
 const state = path.join(scratch, 'private-state');
+// The name every entry carries as `By` (SQ-177). Written into this fixture's own
+// state dir, which comes before git config user.name, so the walkthrough prints
+// the same bytes on a machine with a git identity and on one without.
+fs.mkdirSync(state, { recursive: true, mode: 0o700 });
+fs.writeFileSync(path.join(state, 'name'), 'A. Researcher\n');
 const { CLAUDE_PROJECT_DIR: _p, RESEARCH_HARNESS_DIR: _d, ...ambient } = process.env;
 const env = { ...ambient, RESEARCH_HARNESS_STATE_DIR: state, CLAUDE_PLUGIN_ROOT: path.join(root, 'plugins', 'research-harness') };
 

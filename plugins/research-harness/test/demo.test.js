@@ -135,7 +135,17 @@ const reviewer = path.join(scratch, 'rh-review');
 fs.mkdirSync(project);
 const stateOf = (dir) => path.join(scratch, `state-${path.basename(dir)}`);
 
+// The name every entry carries as `By` (SQ-177). Written into the fixture's own
+// state dir, which comes before git config user.name, so the walkthrough prints
+// the same bytes on a machine with a git identity and on one without.
+function setName(dir) {
+  const state = stateOf(dir);
+  fs.mkdirSync(state, { recursive: true, mode: 0o700 });
+  if (!fs.existsSync(path.join(state, 'name'))) fs.writeFileSync(path.join(state, 'name'), 'A. Researcher\n');
+}
+
 function shell(command, cwd) {
+  setName(cwd);
   const { CLAUDE_PROJECT_DIR: _p, RESEARCH_HARNESS_DIR: _d, CLAUDE_PLUGIN_ROOT: _r, ...ambient } = process.env;
   return childProcess.spawnSync('/bin/sh', ['-c', command], {
     cwd,

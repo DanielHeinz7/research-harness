@@ -12,6 +12,10 @@ function refuse(code, error) {
 }
 
 const ACCEPT_REF = /^([1-9]\.\d+) accepted$/;
+// A glossary acceptance is named by the entry id, and its body is the accepted
+// payload (§ Authorization and text binding), so the section can show it
+// without reading the glossary the section was written against.
+const GLOSSARY_ACCEPT_REF = /^glossary ([a-z0-9]+(?:-[a-z0-9]+)*) accepted$/;
 const CHECK_REF = /^([1-9]\.\d+) check$/;
 const firstLine = (body) => String(body || '').split('\n')[0];
 const who = (e) => e.by || 'unknown';
@@ -54,7 +58,10 @@ function protocolOf({ decisionsText, canvasText, key = null, seq } = {}) {
   if (!accepted.length) out.push('Nothing was accepted.');
   for (const e of accepted) {
     const q = ACCEPT_REF.exec(e.ref);
-    out.push(q ? `- **${q[1]}** (#${e.seq}) — ${statementOf(e, q[1])}` : `- **${e.ref}** (#${e.seq}) — ${firstLine(e.body)}`);
+    const g = q ? null : GLOSSARY_ACCEPT_REF.exec(e.ref);
+    if (q) out.push(`- **${q[1]}** (#${e.seq}) — ${statementOf(e, q[1])}`);
+    else if (g) out.push(`- **glossary ${g[1]}** (#${e.seq}) — accepted payload ${firstLine(e.body)}`);
+    else out.push(`- **${e.ref}** (#${e.seq}) — ${firstLine(e.body)}`);
     if (e.explained) out.push(`  Explained: ${e.explained}`);
     out.push(`  By: ${who(e)}`);
     if (e.supersedes) out.push(`  Supersedes: #${e.supersedes}`);

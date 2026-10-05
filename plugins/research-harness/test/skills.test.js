@@ -28,7 +28,7 @@ function readSkill(name) {
 const names = fs.readdirSync(skillsDir).filter((n) => fs.existsSync(path.join(skillsDir, n, 'SKILL.md')));
 
 test('the new skills exist', () => {
-  for (const n of ['canvas', 'canvas-review', 'accept', 'check', 'record-review']) {
+  for (const n of ['canvas', 'canvas-review', 'accept', 'check', 'record-review', 'glossary-accept']) {
     assert.ok(names.includes(n), `skills/${n}/SKILL.md is missing`);
   }
 });
@@ -168,6 +168,17 @@ test('record-review allows only review, status and git read verbs', () => {
 
 test('accept declares no allowed-tools: its ! line runs outside the model', () => {
   assert.equal(readSkill('accept').fm['allowed-tools'], undefined);
+});
+
+// SQ-203: the glossary acceptance is the researcher's act on the same terms as
+// the canvas one, so its skill is the same shape: no tool grant, no model
+// invocation, and the command runs outside the model.
+test('glossary-accept declares no allowed-tools and is the researcher\'s to invoke', () => {
+  const { fm, body } = readSkill('glossary-accept');
+  assert.equal(fm['disable-model-invocation'], 'true');
+  assert.equal(fm['allowed-tools'], undefined);
+  assert.match(body, /glossary accept \$ARGUMENTS/);
+  assert.match(body, /Do not run `glossary accept` through the\s+Bash tool/);
 });
 
 test('the README and the technical appendix describe record-review citing words, not a hash of a current statement', () => {

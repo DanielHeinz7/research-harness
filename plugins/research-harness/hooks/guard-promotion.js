@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const project = require('./lib/project');
 const canvas = require('./lib/canvas');
+const glossary = require('./lib/glossary');
 const profile = require('./lib/profile');
 const output = require('./lib/output');
 const ledger = require('./lib/ledger');
@@ -25,6 +26,9 @@ const CANVAS_SCHEMA = '2';
 // Every refusal ends here, because a guard that only says no blocks the
 // harness against itself (§5.3).
 const NEXT_STEP = 'Propose the change as [proposed] alongside the existing statement, or let the researcher make it with /research-harness:accept.';
+// The glossary's equivalent (SQ-203): an entry is accepted by the researcher
+// alone, through the skill that calls `research-harness glossary accept`.
+const GLOSSARY_NEXT_STEP = 'Propose the change as a new [proposed] entry, or let the researcher accept the entry with /research-harness:glossary-accept <id> --explained "<their sentence>".';
 
 function readStdin() {
   try {
@@ -46,8 +50,8 @@ function headingKeys(parsed) {
   return keys;
 }
 
-function cannotJudge(what) {
-  return `Cannot judge this write: ${what}. ${NEXT_STEP}`;
+function cannotJudge(what, step = NEXT_STEP) {
+  return `Cannot judge this write: ${what}. ${step}`;
 }
 
 // §5.3: a `profile:` that does not resolve to a shipped profile makes the
@@ -69,15 +73,15 @@ function profileRefusal(frontmatter) {
 // enumerating them would leave the next key added unprotected by default. The
 // researcher changes the frontmatter in their own editor or through the canvas
 // view, neither of which is a model tool call.
-function frontmatterRefusal(before, after) {
+function frontmatterRefusal(before, after, { what = 'canvas', nextStep = NEXT_STEP } = {}) {
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   for (const k of [...keys].sort()) {
     const had = Object.prototype.hasOwnProperty.call(before, k);
     const has = Object.prototype.hasOwnProperty.call(after, k);
-    if (had && !has) return `Removing the frontmatter key "${k}" is not allowed; the frontmatter is the researcher's. ${NEXT_STEP}`;
-    if (!had && has) return `Adding the frontmatter key "${k}" is not allowed; the frontmatter is the researcher's. ${NEXT_STEP}`;
+    if (had && !has) return `Removing the frontmatter key "${k}" is not allowed; the frontmatter is the researcher's. ${nextStep}`;
+    if (!had && has) return `Adding the frontmatter key "${k}" is not allowed; the frontmatter is the researcher's. ${nextStep}`;
     if (before[k] !== after[k]) {
-      return `The frontmatter key "${k}" is the researcher's to change ("${before[k]}" to "${after[k]}" was refused); it decides how the whole canvas is read and judged. ${NEXT_STEP}`;
+      return `The frontmatter key "${k}" is the researcher's to change ("${before[k]}" to "${after[k]}" was refused); it decides how the whole ${what} is read and judged. ${nextStep}`;
     }
   }
   return null;
@@ -180,6 +184,113 @@ function canvasVerdict(beforeText, afterText) {
     }
     if (gained.marker === 'stated') continue;
     return `Only the researcher may write [${gained.marker}] (question ${gained.question}). ${NEXT_STEP}`;
+  }
+  return null;
+}
+
+// ---------- glossary.md ----------
+
+// SQ-203 (§ Authorization and text binding). A [stated] or [accepted] glossary
+// entry is what the researcher said or accepted, and it is protected the way a
+// canvas commitment is: the model may add a [proposed] or [tentative] entry,
+// and may neither change, retitle, downgrade nor remove a committed one, nor
+// promote a proposal to a commitment. The payload is the fixed-order fields as
+// canonical JSON, so a rewrite that moves a definition, an alias list or an
+// origin is the same kind of change as a canvas rewrite; the id is part of the
+// commitment, because it is the link a Distinctions line points at.
+const GLOSSARY_COMMITTED = new Set(['stated', 'accepted']);
+
+function glossaryKey(id, payload) {
+  return `${id}|${JSON.stringify(payload)}`;
+}
+
+function glossaryCommitments(parsed) {
+  const items = [];
+  for (const entry of parsed.entries) {
+    if (entry.id === null || !GLOSSARY_COMMITTED.has(entry.marker)) continue;
+    const payload = glossary.entryPayload(entry);
+    items.push({
+      canonical: JSON.stringify([entry.marker, ...payload]),
+      id: entry.id,
+      marker: entry.marker,
+      payload,
+      hash: glossary.payloadHash(entry),
+      term: entry.term,
+    });
+  }
+  return items;
+}
+
+// What became of a commitment that is no longer in C(after), said in the terms
+// the refusal should say it in. The comparison is against every entry with the
+// id, not only the committed ones: an entry whose marker the model dropped or
+// relabelled is still that entry, and "was removed" would misdescribe it.
+function describeGlossaryLoss(lost, after) {
+  const sameId = after.entries.filter((e) => e.id === lost.id);
+  if (!sameId.length) return 'was removed, or its id was renamed';
+  for (const cand of sameId) {
+    if (JSON.stringify(glossary.entryPayload(cand)) !== JSON.stringify(lost.payload)) continue;
+    return cand.marker === null ? 'lost its authorization marker' : `was relabelled [${lost.marker}] to [${cand.marker}]`;
+  }
+  return 'was altered (its term, aliases, definition, origin or distinctions changed)';
+}
+
+function glossaryVerdict(beforeText, afterText) {
+  const before = glossary.parseGlossary(beforeText || '');
+  const after = glossary.parseGlossary(afterText || '');
+  const existed = String(beforeText || '').trim() !== '';
+
+  // A block this reader cannot judge could be a payload the model wrote and a
+  // reader would read differently, so it is refused before anything is
+  // compared — a duplicate id, a field out of order, an unsupported schema.
+  const bad = after.problems[0] || (after.entries.find((e) => e.problems.length) || { problems: [] }).problems[0];
+  if (bad) return cannotJudge(`${bad}. Keep the glossary structure — frontmatter with glossary-schema, "## <id>", the fields Term, Aliases, Definition, Origin and Distinctions in that order, and the authorization marker last`, GLOSSARY_NEXT_STEP);
+  if (!after.entries.length) return cannotJudge('the result has no entries', GLOSSARY_NEXT_STEP);
+
+  // The frontmatter is the document's, not a write's: creating the glossary
+  // writes it for the first time, and after that nothing in it moves.
+  if (existed) {
+    const fm = frontmatterRefusal(before.frontmatter, after.frontmatter, { what: 'glossary', nextStep: GLOSSARY_NEXT_STEP });
+    if (fm) return fm;
+  }
+
+  // Every entry id that was there stays: it is the link target its Distinctions
+  // references point at, so removing or renaming one breaks references.
+  const afterIds = new Set(after.entries.map((e) => e.id).filter((id) => id !== null));
+  for (const entry of before.entries) {
+    if (entry.id !== null && !afterIds.has(entry.id)) {
+      return `Removing or renaming the glossary entry ${entry.id} is not allowed; the id is the link target its Distinctions references point at. ${GLOSSARY_NEXT_STEP}`;
+    }
+  }
+
+  const beforeSet = glossaryCommitments(before);
+  const afterSet = glossaryCommitments(after);
+
+  // Clause 1: C(before) ⊆ C(after). Nothing committed is lost or rewritten.
+  for (const lost of beforeSet) {
+    if (afterSet.some((c) => c.canonical === lost.canonical)) continue;
+    return `The [${lost.marker}] glossary entry ${lost.id} (payload ${lost.hash}) ${describeGlossaryLoss(lost, after)}. It records the definition the researcher stated or accepted, with the id its references point at. ${GLOSSARY_NEXT_STEP}`;
+  }
+
+  // Promotion, the gap the set rule cannot see: a [proposed] or [tentative]
+  // entry relabelled [stated] is new to C and carries a permitted marker.
+  const proposals = new Map();
+  for (const entry of before.entries) {
+    if (entry.marker === null || GLOSSARY_COMMITTED.has(entry.marker)) continue;
+    proposals.set(glossaryKey(entry.id, glossary.entryPayload(entry)), entry.marker);
+  }
+  const beforeCanonical = new Set(beforeSet.map((c) => c.canonical));
+
+  // Clause 2: every commitment gained carries [stated] — the model may
+  // transcribe what it just heard, and may never declare a commitment.
+  for (const gained of afterSet) {
+    if (beforeCanonical.has(gained.canonical)) continue;
+    const was = proposals.get(glossaryKey(gained.id, gained.payload));
+    if (was !== undefined) {
+      return `A [${was}] glossary entry cannot be promoted to [${gained.marker}] by the model (entry ${gained.id}); only the researcher accepts it. ${GLOSSARY_NEXT_STEP}`;
+    }
+    if (gained.marker === 'stated') continue;
+    return `Only the researcher may write [${gained.marker}] (glossary entry ${gained.id}). ${GLOSSARY_NEXT_STEP}`;
   }
   return null;
 }
@@ -1255,7 +1366,7 @@ function hasPathSeparator(text) {
 // `research` — cannot reach the canvas. `research/canva?.md` is still judged:
 // the state is read once, on entry, and a line that first creates it with a
 // bare name (`git checkout HEAD -- research`) would have the glob land on it.
-const STATE_FILES = [project.CANVAS_FILE, project.DECISIONS_FILE];
+const STATE_FILES = [project.CANVAS_FILE, project.DECISIONS_FILE, project.GLOSSARY_FILE];
 
 //
 // SQ-75 carries the same rule over to a literal word: `git mv research/a.md
@@ -1661,6 +1772,12 @@ const CLI_SUB_WHY = 'the CLI is being run with a subcommand that is not status, 
 // either reads, and any other `--flag` would take the next word as its value
 // (cliSubAt), which moves the word the CLI reads as the action:
 // `session --x start protocol` starts a session.
+function glossaryPrintsOnly(invocation) {
+  const [action, id, ...more] = invocation.rest;
+  return !!action && !action.opaque && action.text === 'show'
+    && !!id && !id.opaque && glossary.ID_RE.test(id.text) && !more.length;
+}
+
 function printsOnly(invocation) {
   if (invocation.rest.some((w) => w.opaque || w.text.startsWith('-'))) return false;
   if (invocation.sub.text === 'agenda') return true;
@@ -1934,6 +2051,7 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
     if (invocation.sub.text === 'log') {
       return logKindOf(invocation) === 'open' ? null : 'the CLI\'s log command takes DISCOVERY or CONSTRAINT as a literal word';
     }
+    if (invocation.sub.text === 'glossary') return glossaryPrintsOnly(invocation) ? null : CLI_SUB_WHY;
     if (invocation.sub.text === 'agenda' || invocation.sub.text === 'session') return printsOnly(invocation) ? null : CLI_SUB_WHY;
     return CLI_READ_SUBS.has(invocation.sub.text) ? null : CLI_SUB_WHY;
   }
@@ -1982,6 +2100,9 @@ const UNCOMPUTABLE_PATTERN_WHY = 'it carries a pattern this guard cannot compute
 // Acceptance is the researcher's act wherever it is invoked from: running it
 // from the shell would be the model declaring a commitment (§4.3).
 const ACCEPT_DENIAL = 'Accepting a statement is the researcher\'s act, so `research-harness accept` cannot be run from the shell — under any name, quoting, or variable. Leave the statement as it stands and ask the researcher for /research-harness:accept <n.m> --explained "<your sentence>".';
+// SQ-203: accepting a glossary entry is the researcher's act for the same
+// reason (§ Authorization and text binding), found on the same routes.
+const GLOSSARY_DENIAL = 'Accepting a glossary entry is the researcher\'s act, so `research-harness glossary accept` cannot be run from the shell — under any name, quoting, or variable. Leave the entry as [proposed] and ask the researcher for /research-harness:glossary-accept <id> --explained "<your sentence>".';
 // SQ-146. A subcommand the guard cannot read — a word built at run time
 // (`research-harness "$SUB"`) or a program text that only names the CLI — is
 // judged as strictly as `accept` is, because it may be one. The verdict stays
@@ -2034,7 +2155,7 @@ function statePresent(stateDir) {
 // and empty quote pairs are dropped first, so `research-harn''ess` reads as the
 // name the shell makes of it. A name built at run time is not seen (spec §5.3).
 // US-3 adds `choose`, the researcher's other act on the record.
-const NAMED_WRITE_VERBS = new Set(['accept', 'choose', 'serve']);
+const NAMED_WRITE_VERBS = new Set(['accept', 'choose', 'serve', 'glossary']);
 const NAME_SPLIT = /[^A-Za-z0-9._\-/~+@:]+/;
 
 function namedWrite(text) {
@@ -2077,7 +2198,7 @@ function bashVerdict(command, projectRoot) {
   const stateDir = project.stateDir(root);
   const stateRoot = canonical(stateDir, 0);
   const stateParts = stateDir.split(path.sep).filter(Boolean);
-  const stateNames = new Set([project.CANVAS_FILE, project.DECISIONS_FILE, path.basename(stateDir)]);
+  const stateNames = new Set([project.CANVAS_FILE, project.DECISIONS_FILE, project.GLOSSARY_FILE, path.basename(stateDir)]);
   // SQ-71: state that is not there cannot be touched. A word the guard cannot
   // read — an unknown substitution, a pattern it cannot compute, a `cd` it
   // cannot follow — is speculation about where the state might be, and in a
@@ -2116,6 +2237,7 @@ function bashVerdict(command, projectRoot) {
   let touches = false;
   let uncomputable = false;
   let acceptAttempt = false;
+  let glossaryAttempt = false;
   let opaqueSubAttempt = false;
   let chooseAttempt = false;
   let serveAttempt = false;
@@ -2258,6 +2380,7 @@ function bashVerdict(command, projectRoot) {
       if (invocation.harness) touches = true;
       if (invocation.harness && verbAt > 0) envAttempt = true;
       if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'accept') acceptAttempt = true;
+      else if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'glossary' && !glossaryPrintsOnly(invocation)) glossaryAttempt = true;
       else if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'choose') chooseAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.opaque) opaqueSubAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;
@@ -2274,6 +2397,7 @@ function bashVerdict(command, projectRoot) {
     for (const text of programs) {
       const named = namedWrite(text);
       if (named === 'accept') acceptAttempt = true;
+      else if (named === 'glossary') glossaryAttempt = true;
       else if (named === 'choose') chooseAttempt = true;
       else if (named === 'serve') serveAttempt = true;
     }
@@ -2297,6 +2421,7 @@ function bashVerdict(command, projectRoot) {
   }
 
   if (acceptAttempt) return ACCEPT_DENIAL;
+  if (glossaryAttempt) return GLOSSARY_DENIAL;
   if (opaqueSubAttempt) return OPAQUE_SUB_DENIAL;
   if (chooseAttempt) return CHOOSE_DENIAL;
   if (serveAttempt) return bashDenial(NAMED_SERVER_WHY);
@@ -2307,6 +2432,7 @@ function bashVerdict(command, projectRoot) {
   if (hasState && !allReadOnly) {
     const named = namedWrite(cmd);
     if (named === 'accept') return ACCEPT_DENIAL;
+    if (named === 'glossary') return GLOSSARY_DENIAL;
     if (named === 'choose') return CHOOSE_DENIAL;
     if (named === 'serve') return bashDenial(NAMED_SERVER_WHY);
   }
@@ -2404,9 +2530,14 @@ function landingOf(projectRoot, raw) {
 
 // US-3: every variant's canvas and log is state too. The ones that exist are
 // listed here so that a link to one is caught by its identity; one that does
-// not exist yet is caught by where it lands (stateFileAt).
+// not exist yet is caught by where it lands (stateFileAt). SQ-203 adds the
+// glossary of each state directory: it holds the accepted definitions.
 function stateFiles(projectRoot) {
-  const pairs = [['canvas', project.canvasPath(projectRoot)], ['decisions', project.decisionsPath(projectRoot)]];
+  const pairs = [
+    ['canvas', project.canvasPath(projectRoot)],
+    ['decisions', project.decisionsPath(projectRoot)],
+    ['glossary', project.glossaryPath(projectRoot)],
+  ];
   let variants = [];
   try {
     variants = fs.readdirSync(project.variantsDir(projectRoot));
@@ -2415,7 +2546,7 @@ function stateFiles(projectRoot) {
   }
   for (const name of variants) {
     const dir = path.join(project.variantsDir(projectRoot), name);
-    pairs.push(['canvas', path.join(dir, project.CANVAS_FILE)], ['decisions', path.join(dir, project.DECISIONS_FILE)]);
+    pairs.push(['canvas', path.join(dir, project.CANVAS_FILE)], ['decisions', path.join(dir, project.DECISIONS_FILE)], ['glossary', path.join(dir, project.GLOSSARY_FILE)]);
   }
   return pairs.map(([kind, statePath]) => ({ kind, file: canonical(statePath, 0), id: identity(statePath) }));
 }
@@ -2423,7 +2554,7 @@ function stateFiles(projectRoot) {
 // US-3: a canvas.md or decisions.md anywhere below the state directory is
 // state, whether or not it exists yet and whatever the directory between is
 // called — the guard does not decide which subdirectories hold a variant.
-const STATE_KIND_BY_NAME = new Map([[project.CANVAS_FILE, 'canvas'], [project.DECISIONS_FILE, 'decisions']]);
+const STATE_KIND_BY_NAME = new Map([[project.CANVAS_FILE, 'canvas'], [project.DECISIONS_FILE, 'decisions'], [project.GLOSSARY_FILE, 'glossary']]);
 
 function nestedStateAt(projectRoot, landing) {
   const base = path.basename(landing.canonicalPath);
@@ -2604,7 +2735,7 @@ function fileVerdict(target, toolName, toolInput) {
       return `Cannot judge this edit: old_string was not found exactly once in ${name}. Re-read the file and retry with an old_string that appears exactly once.`;
     }
   }
-  return canvasVerdict(before, after);
+  return target.kind === 'glossary' ? glossaryVerdict(before, after) : canvasVerdict(before, after);
 }
 
 function main() {

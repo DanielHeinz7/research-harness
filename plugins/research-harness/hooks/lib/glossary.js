@@ -327,6 +327,20 @@ function payloadHash(entry) {
   return textHash(JSON.stringify(entryPayload(entry)));
 }
 
+// The one thing an acceptance rewrites (§ Authorization and text binding): the
+// authorization marker line, and only it. The fields keep the order, the
+// wrapping and the words the researcher read, and the payload hash excludes
+// the marker, so the accepted payload is the payload the decision binds. An
+// entry without a marker line is not one this function may rewrite silently.
+function withEntryMarker(text, entry, marker) {
+  const lines = String(text).split('\n');
+  if (entry.markerLine === null) {
+    throw new Error(`glossary entry ${entry.id === null ? '(no id)' : entry.id} has no authorization marker line; nothing was rewritten`);
+  }
+  lines[entry.markerLine - 1] = `[${marker}]`;
+  return lines.join('\n');
+}
+
 // A source or manuscript path is resolved against the project root, and the
 // answer distinguishes what it is: a path that climbs out of the project or a
 // symlink that leaves it is refused, a missing target is reported as missing
@@ -399,6 +413,7 @@ module.exports = {
   entryById,
   entryPayload,
   payloadHash,
+  withEntryMarker,
   resolveLocal,
   resolveOrigin,
   manuscriptList,

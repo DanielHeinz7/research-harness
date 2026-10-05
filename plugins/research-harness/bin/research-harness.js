@@ -13,7 +13,7 @@ const identity = require('../hooks/lib/identity');
 const profileLib = require('../hooks/lib/profile');
 const seal = require('../hooks/lib/seal');
 const stateLib = require('../hooks/lib/state');
-const { acceptStatement } = require('../hooks/lib/accept');
+const { acceptStatement, acceptGlossaryEntry } = require('../hooks/lib/accept');
 const { chooseFraming } = require('../hooks/lib/choose');
 const { appendLog } = require('../hooks/lib/log');
 const { mergeLogs } = require('../hooks/lib/merge');
@@ -31,6 +31,7 @@ const USAGE = [
   'research-harness review [--variant <name>] [--key <file>]',
   'research-harness agenda [--out <file>]',
   'research-harness accept <n.m> --explained <text> [--match <substring>] [--why <text>] [--rejected <text>]',
+  'research-harness glossary accept <id> --explained <text> [--why <text>] [--rejected <text>]',
   'research-harness choose <name> --why <text> [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>] [--variant <name>]',
   'research-harness title [<text>]',
@@ -303,7 +304,8 @@ function review(flags) {
   // With `--key`, the key this machine happens to hold is not what this run
   // judges with, so a complaint about reading that one is not its business.
   const key = given.key === undefined ? state.key : given.key;
-  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, checks: state.checks, decisionsText: state.decisionsText, key });
+  const glossaryText = project.readIfExists(state.paths.glossary);
+  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, checks: state.checks, decisionsText: state.decisionsText, glossaryText, key });
   const list = (arr) => (arr.length ? arr.join(', ') : 'none');
   const stmt = (s) => `${s.question} [${s.marker === null ? 'unmarked' : s.marker}] (line ${s.line}): ${s.text}`;
   const lines = [variant === undefined ? '# Mechanical review' : `# Mechanical review — variant ${variant} (lens: ${state.parsed.frontmatter.lens || '?'})`, ''];
@@ -338,6 +340,16 @@ function review(flags) {
   lines.push('## Stale acceptances', ...(report.staleAcceptances.length ? report.staleAcceptances.map((s) => `#${s.seq} ${s.ref} — text ${s.hash} no longer matches any accepted statement`) : ['none']), '');
   lines.push('## Unlogged acceptances', '(no verified DECISION entry accounts for these)', ...(report.unloggedAcceptances.length ? report.unloggedAcceptances.map((s) => `${s.question} (line ${s.line}): ${s.text}${coverNote(s.coveredBy)}`) : ['none']), '');
   lines.push('## Unverified decisions', '(DECISION entries that give no cover)', ...(report.unverifiedDecisions.length ? report.unverifiedDecisions.map((d) => `#${d.seq} ${d.ref} — ${COVER_STATE[d.state]}`) : ['none']), '');
+  // The glossary's own cover question (SQ-203), printed only where a glossary
+  // or a glossary decision exists: an [accepted] entry needs a verified
+  // `glossary <id> accepted` entry binding the payload it now has.
+  if (report.glossary !== null || report.glossaryStaleAcceptances.length || report.glossaryUnloggedAcceptances.length) {
+    const glossaryFindings = [
+      ...report.glossaryUnloggedAcceptances.map((e) => `${e.id} (line ${e.line}): ${e.term === null ? 'no term' : e.term} — payload ${e.hash}${coverNote(e.coveredBy)}`),
+      ...report.glossaryStaleAcceptances.map((s) => `#${s.seq} ${s.ref} — payload ${s.hash} no longer matches any accepted entry`),
+    ];
+    lines.push('## Glossary acceptances', '(what the `glossary <id> accepted` decisions cover)', ...(glossaryFindings.length ? glossaryFindings : ['none']), '');
+  }
   say(lines.join('\n'));
   return 0;
 }
@@ -363,6 +375,31 @@ function accept(positional, flags) {
   say(`Accepted ${questionId} (was [${result.was}]): ${result.text}`);
   if (result.openAtAccept.length) say(`Accepted with open check questions: ${result.openAtAccept.map((n) => `#${n}`).join(', ')}.`);
   say(`Logged as #${result.seq} with text ${result.hash}, sealed ${result.seal}.`);
+  return 0;
+}
+
+// ---------- glossary ----------
+
+// The glossary's acceptance path, beside the canvas's: the same researcher's
+// act, named the same way on the command line, and refused to the model by the
+// same guard. A variant glossary is not accepted here: the framing is chosen
+// first, exactly as for a canvas acceptance.
+function glossaryCommand(positional, flags) {
+  const sub = positional[0];
+  if (sub !== 'accept') return fail(`glossary has one subcommand: accept.\n${USAGE}`, 2);
+  if (flags.variant !== undefined) return fail(`glossary accept works on the main glossary only; choose a framing with research-harness choose <name> first.\n${USAGE}`, 2);
+  const id = positional[1];
+  const result = acceptGlossaryEntry({
+    root: project.projectDir({}),
+    id,
+    why: flags.why,
+    explained: flags.explained,
+    rejected: flags.rejected,
+    pluginRoot: pluginRoot(),
+  });
+  if (!result.ok) return refused(result);
+  say(`Accepted glossary entry ${id} (was [${result.was}]): ${result.term}`);
+  say(`Logged as #${result.seq} with payload ${result.hash}, sealed ${result.seal}.`);
   return 0;
 }
 
@@ -1060,6 +1097,7 @@ function main(argv) {
     case 'review': return review(flags);
     case 'choose': return choose(positional, flags);
     case 'accept': return accept(positional, flags);
+    case 'glossary': return glossaryCommand(positional, flags);
     case 'log': return log(positional, flags);
     case 'title': return title(positional);
     case 'profile': return profile(positional);

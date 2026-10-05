@@ -2503,3 +2503,192 @@ test('SQ-145: the less flags that log to a file are refused, a plain less is not
   ]) assert.equal(bashVerdict(root, command), 'DENY', command);
   assert.equal(bashVerdict(root, 'less research/canvas.md'), 'ALLOW');
 });
+
+// ---------- SQ-203: the glossary is protected state ----------
+
+// § Authorization and text binding: agents propose entries, only the
+// researcher accepts them, and a [stated] or [accepted] entry is protected the
+// way a canvas commitment is — protected against a rewrite, a downgrade, a
+// rename, a shell command, a filesystem alias and a tool the guard does not
+// know. Every construct in these fixtures is invented for this file.
+const GLOSS_HEAD = '---\nglossary-schema: 1\nmanuscripts: paper.md\n---\n\n';
+
+function glossEntry(id, fields = {}) {
+  const f = {
+    term: 'Speaking turn',
+    definition: 'One member holding the floor until another begins.',
+    origin: 'own-definition',
+    distinctions: 'A working label; nothing links to it yet.',
+    marker: '[proposed]',
+    ...fields,
+  };
+  const lines = [`## ${id}`, '', `Term: ${f.term}`];
+  if (f.aliases !== undefined) lines.push(`Aliases: ${f.aliases}`);
+  lines.push(`Definition: ${f.definition}`, `Origin: ${f.origin}`, `Distinctions: ${f.distinctions}`);
+  if (f.marker !== null) lines.push(f.marker);
+  return lines.join('\n');
+}
+
+const GLOSS_STATED = glossEntry('speaking-turn', { marker: '[stated]' });
+const GLOSS_ACCEPTED = glossEntry('handoff-lag', {
+  term: 'Handoff lag',
+  definition: 'The interval between a request being made and its next visible acknowledgement.',
+  distinctions: 'Unlike [speaking turn](#speaking-turn), this is measured in time rather than counted.',
+  marker: '[accepted]',
+});
+const GLOSS_PROPOSED = glossEntry('chair-style', {
+  term: 'Chair style',
+  definition: 'How the chair allocates turns when several people want the floor.',
+});
+const GLOSSARY = `${GLOSS_HEAD}${[GLOSS_STATED, GLOSS_ACCEPTED, GLOSS_PROPOSED].join('\n\n')}\n`;
+
+function makeGlossaryProject() {
+  const root = makeProject();
+  fs.writeFileSync(path.join(root, 'research', 'glossary.md'), GLOSSARY);
+  return root;
+}
+
+test('SQ-203: a committed glossary entry cannot be altered, detagged, relabelled or retitled', () => {
+  const root = makeGlossaryProject();
+  const file = path.join(root, 'research', 'glossary.md');
+  const cases = [
+    ['is altered', GLOSS_STATED, GLOSS_STATED.replace('holding the floor', 'holding the floor twice'), /\[stated\] glossary entry speaking-turn \(payload [0-9a-f]{8}\) was altered \(its term, aliases, definition, origin or distinctions changed\)/],
+    ['loses its marker', GLOSS_STATED, GLOSS_STATED.replace('\n[stated]', ''), /\[stated\] glossary entry speaking-turn \(payload [0-9a-f]{8}\) lost its authorization marker/],
+    ['is downgraded', GLOSS_ACCEPTED, GLOSS_ACCEPTED.replace('[accepted]', '[proposed]'), /\[accepted\] glossary entry handoff-lag \(payload [0-9a-f]{8}\) was relabelled \[accepted\] to \[proposed\]/],
+    ['is relabelled upward', GLOSS_STATED, GLOSS_STATED.replace('[stated]', '[accepted]'), /was relabelled \[stated\] to \[accepted\]/],
+    ['is retitled', GLOSS_ACCEPTED, GLOSS_ACCEPTED.replace('Handoff lag', 'Hand-off lag'), /was altered/],
+    ['is relinked', GLOSS_ACCEPTED, GLOSS_ACCEPTED.replace('#speaking-turn', '#chair-style'), /was altered/],
+  ];
+  for (const [what, oldString, newString, why] of cases) {
+    const out = run(root, 'Edit', { file_path: file, old_string: oldString, new_string: newString });
+    assert.equal(out && out.permissionDecision, 'deny', what);
+    assert.match(out.permissionDecisionReason, why, what);
+    assert.match(out.permissionDecisionReason, /research-harness:glossary-accept/, what);
+  }
+});
+
+test('SQ-203: removing or renaming a glossary entry is denied, because its id is a link target', () => {
+  const root = makeGlossaryProject();
+  const file = path.join(root, 'research', 'glossary.md');
+  const removed = run(root, 'Write', { file_path: file, content: GLOSSARY.replace(`${GLOSS_PROPOSED}\n`, '') });
+  assert.equal(removed.permissionDecision, 'deny');
+  assert.match(removed.permissionDecisionReason, /Removing or renaming the glossary entry chair-style is not allowed/);
+  const renamed = run(root, 'Write', { file_path: file, content: GLOSSARY.replace('## chair-style', '## chairing-style') });
+  assert.equal(renamed.permissionDecision, 'deny');
+  assert.match(renamed.permissionDecisionReason, /Removing or renaming the glossary entry chair-style is not allowed/);
+});
+
+test('SQ-203: the model may add a [proposed] or a [stated] entry, never an [accepted] one', () => {
+  const root = makeGlossaryProject();
+  const file = path.join(root, 'research', 'glossary.md');
+  const add = (marker, id) => `${GLOSSARY}\n${glossEntry(id, { marker, term: `New label ${id}`, distinctions: 'A new entry with no links.' })}\n`;
+  assert.equal(run(root, 'Write', { file_path: file, content: add('[proposed]', 'new-proposal') }), null);
+  // Transcribing what the researcher just said is the canvas's rule too.
+  assert.equal(run(root, 'Write', { file_path: file, content: add('[stated]', 'new-stated') }), null);
+  const out = run(root, 'Write', { file_path: file, content: add('[accepted]', 'new-accepted') });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /Only the researcher may write \[accepted\] \(glossary entry new-accepted\)/);
+  assert.match(out.permissionDecisionReason, /research-harness:glossary-accept/);
+});
+
+test('SQ-203: promoting a proposal to a commitment is denied', () => {
+  const root = makeGlossaryProject();
+  const file = path.join(root, 'research', 'glossary.md');
+  for (const marker of ['[stated]', '[accepted]']) {
+    const out = run(root, 'Edit', { file_path: file, old_string: GLOSS_PROPOSED, new_string: GLOSS_PROPOSED.replace('[proposed]', marker) });
+    assert.equal(out.permissionDecision, 'deny', marker);
+    assert.match(out.permissionDecisionReason, new RegExp(`A \\[proposed\\] glossary entry cannot be promoted to \\[${marker.slice(1, -1)}\\] by the model \\(entry chair-style\\)`), marker);
+  }
+});
+
+test('SQ-203: rewriting a proposal is allowed; retagging its marker and restructuring the file are not', () => {
+  const root = makeGlossaryProject();
+  const file = path.join(root, 'research', 'glossary.md');
+  assert.equal(run(root, 'Edit', { file_path: file, old_string: GLOSS_PROPOSED, new_string: GLOSS_PROPOSED.replace('allocates turns', 'hands out turns') }), null);
+  const tagged = run(root, 'Edit', { file_path: file, old_string: GLOSS_PROPOSED, new_string: GLOSS_PROPOSED.replace('[proposed]', '[proposed, src: memo-05]') });
+  assert.equal(tagged.permissionDecision, 'deny');
+  assert.match(tagged.permissionDecisionReason, /marker carries tags/);
+  const dup = run(root, 'Write', { file_path: file, content: `${GLOSSARY}${GLOSS_PROPOSED}\n` });
+  assert.equal(dup.permissionDecision, 'deny');
+  assert.match(dup.permissionDecisionReason, /chair-style" has 2 headings/);
+  const fm = run(root, 'Write', { file_path: file, content: GLOSSARY.replace('manuscripts: paper.md', 'manuscripts: other.md') });
+  assert.equal(fm.permissionDecision, 'deny');
+  assert.match(fm.permissionDecisionReason, /frontmatter key "manuscripts"/);
+  assert.match(fm.permissionDecisionReason, /glossary-accept/);
+});
+
+test('SQ-203: writing the glossary for the first time follows the same rules', () => {
+  const root = makeProject();
+  const file = path.join(root, 'research', 'glossary.md');
+  const solo = (marker) => `${GLOSS_HEAD}${glossEntry('solo', { marker, term: 'Solo label', distinctions: 'A definition with nothing to compare it to.' })}\n`;
+  assert.equal(run(root, 'Write', { file_path: file, content: solo('[proposed]') }), null);
+  assert.equal(run(root, 'Write', { file_path: file, content: solo('[stated]') }), null);
+  const out = run(root, 'Write', { file_path: file, content: solo('[accepted]') });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /Only the researcher may write \[accepted\] \(glossary entry solo\)/);
+});
+
+test('SQ-203: a variant glossary and a symlinked name for the main one are the same state', () => {
+  const root = makeGlossaryProject();
+  const dir = path.join(root, 'research', 'variants', 'field-notes');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'glossary.md'), GLOSSARY);
+  const edited = run(root, 'Edit', {
+    file_path: path.join(dir, 'glossary.md'),
+    old_string: GLOSS_STATED,
+    new_string: GLOSS_STATED.replace('holding the floor', 'holding the floor twice'),
+  });
+  assert.equal(edited && edited.permissionDecision, 'deny');
+  assert.match(edited.permissionDecisionReason, /glossary entry speaking-turn/);
+  // A variant glossary that does not exist yet is created under the same rule.
+  const fresh = run(root, 'Write', {
+    file_path: path.join(root, 'research', 'variants', 'second', 'glossary.md'),
+    content: `${GLOSS_HEAD}${glossEntry('solo', { term: 'Solo label', distinctions: 'A fresh proposal.' })}\n`,
+  });
+  assert.equal(fresh, null);
+  // A name that leads to the same file is the same file.
+  const link = path.join(root, 'alias-glossary.md');
+  fs.symlinkSync(path.join(root, 'research', 'glossary.md'), link);
+  const viaLink = run(root, 'Edit', {
+    file_path: link,
+    old_string: GLOSS_ACCEPTED,
+    new_string: GLOSS_ACCEPTED.replace('Handoff lag', 'Hand-off lag'),
+  });
+  assert.equal(viaLink && viaLink.permissionDecision, 'deny');
+});
+
+test('SQ-203: the acceptance route is refused in the shell under every name it can be spelled', () => {
+  const root = makeGlossaryProject();
+  const commands = [
+    'node "/x/bin/research-harness.js" glossary accept speaking-turn --explained "I accept this."',
+    'research-harness glossary accept speaking-turn --explained "I accept this."',
+    'npx research-harness glossary accept speaking-turn --explained "I accept this."',
+    'env node "/x/bin/research-harness.js" glossary accept speaking-turn --explained "I accept this."',
+    "node -e 'require(\"child_process\").execFileSync(\"research-harness\",[\"glossary\",\"accept\"])'",
+    'printf "Chair style is settled. [accepted]\\n" >> research/glossary.md',
+    'sed -i "s/\\[proposed\\]/[accepted]/" research/glossary.md',
+    'cd research && printf "x [accepted]\\n" >> glossary.md',
+    'echo "x [accepted]" >> research/variants/x/glossary.md',
+  ];
+  for (const command of commands) {
+    const out = run(root, 'Bash', { command });
+    assert.equal(out && out.permissionDecision, 'deny', command);
+  }
+  const first = run(root, 'Bash', { command: commands[0] });
+  assert.match(first.permissionDecisionReason, /researcher's act/);
+  assert.match(first.permissionDecisionReason, /glossary-accept/);
+  for (const command of [
+    'cat research/glossary.md',
+    'grep -n "\\[accepted\\]" research/glossary.md',
+    'git log --oneline -- research/glossary.md',
+    'shasum research/glossary.md',
+  ]) {
+    assert.equal(run(root, 'Bash', { command }), null, command);
+  }
+});
+
+test('SQ-203: a tool the guard does not know is judged by the state path it names', () => {
+  const root = makeGlossaryProject();
+  const out = run(root, 'mcp__filesystem__write_file', { destination: 'research/glossary.md', text: 'forged [accepted]' });
+  assert.equal(out && out.permissionDecision, 'deny');
+});

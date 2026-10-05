@@ -5,8 +5,12 @@ const { textHash } = require('./hash');
 const { parseDecisions, MARKER_KINDS } = require('./decisions');
 const { verifyChain } = require('./seal');
 const { dependencyViolations, statusByNumber } = require('./profile');
+const glossaryLib = require('./glossary');
 
 const ACCEPT_REF_RE = /^([1-9]\.\d+) accepted$/;
+// The glossary's acceptance ref (§ Authorization and text binding): the same
+// question asked about an entry payload instead of a statement text.
+const GLOSSARY_ACCEPT_REF_RE = /^glossary ([a-z0-9]+(?:-[a-z0-9]+)*) accepted$/;
 const COMMITTED_MARKERS = COMMITTED;
 
 // The element a log entry is about: `4.1 accepted`, `7.2 check`, a bare `7`.
@@ -36,7 +40,7 @@ function findingsBeforeHypotheses(decisionsText) {
 // computes what needs no judgment at all.
 // `key` is the sealing key of this machine, or null on a checkout that has
 // none; the ledger verdict and every acceptance's cover depend on it (§4.7).
-function mechanicalReview({ parsed, graph, checks = [], decisionsText, key = null }) {
+function mechanicalReview({ parsed, graph, checks = [], decisionsText, glossaryText = null, key = null }) {
   const statuses = statusByNumber(parsed);
   const numbers = parsed.elements.map((e) => e.number);
   const statements = allStatements(parsed);
@@ -61,6 +65,17 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, key = nul
     if (!acceptedByQuestion.has(s.question)) acceptedByQuestion.set(s.question, []);
     acceptedByQuestion.get(s.question).push({ ...s, hash: textHash(s.text) });
   }
+  // The glossary's side of the same question (§ Authorization and text
+  // binding): an entry marked [accepted] is covered by a verified DECISION that
+  // names the entry and the payload hash it binds, and by nothing else.
+  const glossary = glossaryText === null || glossaryText === undefined ? null : glossaryLib.parseGlossary(glossaryText);
+  const acceptedEntries = [];
+  if (glossary) {
+    for (const e of glossary.entries) {
+      if (e.marker !== 'accepted' || e.id === null) continue;
+      acceptedEntries.push({ id: e.id, line: e.line, term: e.term, hash: glossaryLib.payloadHash(e), coveredBy: null });
+    }
+  }
   // What a DECISION entry that does not verify is, in the order the researcher
   // needs to know it: after the break everything is broken; before the first
   // seal everything is legacy; a sealed entry with no key here is unverifiable.
@@ -77,6 +92,8 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, key = nul
   const coverByAcceptance = new Map();
   const staleAcceptances = [];
   const unverifiedDecisions = [];
+  const glossaryCover = new Map();
+  const glossaryStaleAcceptances = [];
   for (const e of log.entries) {
     if (e.kind !== 'DECISION') continue;
     const state = stateOf(e);
@@ -84,6 +101,19 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, key = nul
     // `framing chosen` entry is as much the researcher's act as an acceptance
     // (SQ-139). Only the cover and stale bookkeeping below is about acceptances.
     if (state !== 'verified') unverifiedDecisions.push({ seq: e.seq, ref: e.ref, hash: e.hash, line: e.line, state });
+    // A `glossary <id> accepted` entry binds a payload hash exactly as an
+    // acceptance binds a statement text, and it is read first because the
+    // canvas rule's ref shape is not this one.
+    const g = e.hash ? GLOSSARY_ACCEPT_REF_RE.exec(e.ref) : null;
+    if (g) {
+      const cover = { seq: e.seq, state };
+      const coverKey = `${g[1]}:${e.hash}`;
+      const covered = glossaryCover.get(coverKey);
+      if (!covered || (state === 'verified' && covered.state !== 'verified')) glossaryCover.set(coverKey, cover);
+      const live = acceptedEntries.some((a) => a.id === g[1] && a.hash === e.hash);
+      if (!live) glossaryStaleAcceptances.push({ seq: e.seq, ref: e.ref, hash: e.hash });
+      continue;
+    }
     const m = e.hash ? ACCEPT_REF_RE.exec(e.ref) : null;
     if (!m) continue;
     const cover = { seq: e.seq, state };
@@ -104,6 +134,15 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, key = nul
       unloggedAcceptances.push({ question: s.question, line: s.line, hash: s.hash, text: s.text, coveredBy: cover });
     }
   }
+  // Accepted glossary entries no verified entry accounts for — a hand edit, a
+  // merge, or a marker written by hand. Reported the same way, with the entry
+  // id where the canvas names a question.
+  const glossaryUnloggedAcceptances = [];
+  for (const a of acceptedEntries) {
+    a.coveredBy = glossaryCover.get(`${a.id}:${a.hash}`) || null;
+    if (a.coveredBy && a.coveredBy.state === 'verified') continue;
+    glossaryUnloggedAcceptances.push(a);
+  }
 
   return {
     statuses,
@@ -117,6 +156,9 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, key = nul
     staleAcceptances,
     unloggedAcceptances,
     unverifiedDecisions,
+    glossary,
+    glossaryStaleAcceptances,
+    glossaryUnloggedAcceptances,
     ledger,
     problems: parsed.problems,
     findingsBeforeHypotheses: checks.includes('hypotheses-before-data') ? findingsBeforeHypotheses(decisionsText) : [],

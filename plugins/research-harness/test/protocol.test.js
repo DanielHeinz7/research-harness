@@ -109,3 +109,27 @@ test('a broken chain still gives a protocol, headed BROKEN; no marker refuses', 
   assert.equal(none.ok, false);
   assert.match(none.error, /session start/);
 });
+
+// SQ-203: a glossary acceptance is named by the entry id, and its body is the
+// accepted payload, so the section shows it without reading the glossary the
+// section was written against — and it is never read as a canvas question.
+test('a glossary acceptance renders as its payload, not as a canvas question', () => {
+  const body = '{"id":"quiet-window","term":"Quiet window","definition":"A signal was expected and did not arrive."}';
+  const text = append(HEADER, [
+    { kind: 'SESSION', ref: 'Glossary round', body: 'Session started.', by: 'A. Researcher' },
+    {
+      kind: 'DECISION',
+      ref: 'glossary quiet-window accepted',
+      hash: textHash(body),
+      body,
+      explained: 'I use the term this way in the fieldnotes.',
+      by: 'A. Researcher',
+    },
+  ]);
+  const { ok, markdown: md } = protocolOf({ decisionsText: text, canvasText, key: KEY });
+  assert.equal(ok, true);
+  assert.match(md, /^# Session protocol — Glossary round$/m);
+  assert.match(md, /- \*\*glossary quiet-window\*\* \(#2\) — accepted payload \{"id":"quiet-window","term":"Quiet window","definition":"A signal was expected and did not arrive\."\}/);
+  assert.match(md, /Explained: I use the term this way in the fieldnotes\.[\s\S]*By: A\. Researcher/);
+  assert.match(md, /Seal: verified/);
+});

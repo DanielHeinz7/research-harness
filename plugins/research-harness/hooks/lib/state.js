@@ -22,7 +22,11 @@ function loadState(root, { pluginRoot, variant } = {}) {
   if (variant !== undefined && !project.isVariantName(variant)) {
     return { root, error: `--variant takes a name of lowercase letters, digits and hyphens, not ${JSON.stringify(variant)}.`, code: 'invalid' };
   }
-  const paths = { canvas: project.canvasPath(root, variant), decisions: project.decisionsPath(root, variant) };
+  const paths = {
+    canvas: project.canvasPath(root, variant),
+    decisions: project.decisionsPath(root, variant),
+    glossary: project.glossaryPath(root, variant),
+  };
   const canvasText = project.readIfExists(paths.canvas);
   if (canvasText === null) {
     if (variant !== undefined) {

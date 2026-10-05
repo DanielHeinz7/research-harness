@@ -1772,6 +1772,12 @@ const CLI_SUB_WHY = 'the CLI is being run with a subcommand that is not status, 
 // either reads, and any other `--flag` would take the next word as its value
 // (cliSubAt), which moves the word the CLI reads as the action:
 // `session --x start protocol` starts a session.
+function glossaryPrintsOnly(invocation) {
+  const [action, id, ...more] = invocation.rest;
+  return !!action && !action.opaque && action.text === 'show'
+    && !!id && !id.opaque && glossary.ID_RE.test(id.text) && !more.length;
+}
+
 function printsOnly(invocation) {
   if (invocation.rest.some((w) => w.opaque || w.text.startsWith('-'))) return false;
   if (invocation.sub.text === 'agenda') return true;
@@ -2045,6 +2051,7 @@ function readOnlyRefusal(sc, args, base, stateParts, stateNames, hasState, split
     if (invocation.sub.text === 'log') {
       return logKindOf(invocation) === 'open' ? null : 'the CLI\'s log command takes DISCOVERY or CONSTRAINT as a literal word';
     }
+    if (invocation.sub.text === 'glossary') return glossaryPrintsOnly(invocation) ? null : CLI_SUB_WHY;
     if (invocation.sub.text === 'agenda' || invocation.sub.text === 'session') return printsOnly(invocation) ? null : CLI_SUB_WHY;
     return CLI_READ_SUBS.has(invocation.sub.text) ? null : CLI_SUB_WHY;
   }
@@ -2373,7 +2380,7 @@ function bashVerdict(command, projectRoot) {
       if (invocation.harness) touches = true;
       if (invocation.harness && verbAt > 0) envAttempt = true;
       if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'accept') acceptAttempt = true;
-      else if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'glossary') glossaryAttempt = true;
+      else if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'glossary' && !glossaryPrintsOnly(invocation)) glossaryAttempt = true;
       else if (invocation.sub && !invocation.sub.opaque && invocation.sub.text === 'choose') chooseAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.opaque) opaqueSubAttempt = true;
       else if (invocation.harness && invocation.sub && invocation.sub.text === 'log' && logKindOf(invocation) === 'decision') decisionAttempt = true;

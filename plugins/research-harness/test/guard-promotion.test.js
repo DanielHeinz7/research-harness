@@ -2657,6 +2657,20 @@ test('SQ-203: a variant glossary and a symlinked name for the main one are the s
   assert.equal(viaLink && viaLink.permissionDecision, 'deny');
 });
 
+test('SQ-210: literal glossary show is read-only, without admitting acceptance or opaque subcommands', () => {
+  const root = makeGlossaryProject();
+  for (const command of [
+    'node "/x/bin/research-harness.js" glossary show speaking-turn',
+    'research-harness glossary show speaking-turn',
+    'npx research-harness glossary show speaking-turn',
+  ]) assert.equal(run(root, 'Bash', { command }), null, command);
+  for (const command of [
+    'research-harness glossary accept speaking-turn --hash 12345678 --explained "I accept this."',
+    'research-harness glossary "$action" speaking-turn',
+    'research-harness glossary --x accept show speaking-turn',
+  ]) assert.equal(run(root, 'Bash', { command }).permissionDecision, 'deny', command);
+});
+
 test('SQ-203: the acceptance route is refused in the shell under every name it can be spelled', () => {
   const root = makeGlossaryProject();
   const commands = [

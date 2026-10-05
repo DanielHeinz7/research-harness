@@ -165,11 +165,8 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
   if (unmet.length) {
     return refuse('dependency', `Cannot accept ${id}: element 4 depends on ${unmet.map((d) => `element ${d.element} is ${d.status}`).join(', ')}. Accept those first, or change the graph in the profile.`);
   }
-  // An acceptance is logged only by an entry that verifies (§4.4), so a ledger
-  // that cannot take one refuses before the glossary moves. Everything that
-  // can refuse has refused by the time the marker is written: a failed write
-  // leaves the entry as it was, and the sealed entry below is what turns the
-  // marker into an acceptance.
+  // A verified ledger and writable rollback handles are needed before either
+  // file moves; the coupled write below restores both on an I/O failure.
   const refusal = ledgerRefusal(state);
   if (refusal) return refuse(refusal.code, `Cannot accept ${id}: ${refusal.error}`);
 
@@ -182,9 +179,7 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
     return refuse('stale', `The glossary entry ${id} no longer holds the text you saw (it now hashes ${hash}); reload and look again. Nothing is accepted.`);
   }
 
-  fs.writeFileSync(state.paths.glossary, glossary.withEntryMarker(text, entry, 'accepted'));
-
-  const logged = seal.sealedAppend(state.paths.decisions, {
+  const logged = writeGlossaryDecision(state, text, glossary.withEntryMarker(text, entry, 'accepted'), {
     date: today(),
     kind: 'DECISION',
     ref: `glossary ${id} accepted`,
@@ -194,8 +189,35 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
     why: reason,
     explained: explanation,
     rejected: rejectedText,
-  }, state.key, { decision: true });
+  });
   return { ok: true, seq: logged.seq, seal: logged.seal, hash, id, term: entry.term, payload, was: entry.marker };
+}
+
+// Open non-truncating rollback handles before writing. Their offsets remain at
+// zero, so recovery restores the original glossary even after a partial write;
+// truncating the ledger removes any bytes a failed append managed to write.
+// This is synchronous I/O recovery, not a cross-process or crash transaction.
+function writeGlossaryDecision(state, before, after, fields) {
+  const ledgerFd = fs.openSync(state.paths.decisions, 'r+');
+  try {
+    const length = fs.fstatSync(ledgerFd).size;
+    const glossaryFd = fs.openSync(state.paths.glossary, 'r+');
+    try {
+      try {
+        fs.writeFileSync(state.paths.glossary, after);
+        return seal.sealedAppend(state.paths.decisions, fields, state.key, { decision: true });
+      } catch (err) {
+        fs.writeFileSync(glossaryFd, before);
+        fs.ftruncateSync(glossaryFd, Buffer.byteLength(before));
+        fs.ftruncateSync(ledgerFd, length);
+        throw err;
+      }
+    } finally {
+      fs.closeSync(glossaryFd);
+    }
+  } finally {
+    fs.closeSync(ledgerFd);
+  }
 }
 
 // The open check questions on a question: every DISCOVERY with ref

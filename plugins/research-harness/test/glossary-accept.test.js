@@ -165,7 +165,7 @@ test('the CLI and the library write the same glossary and decisions.md bytes', (
   const root = keyedProject();
   const before = { glossary: read(root, 'glossary.md'), decisions: read(root, 'decisions.md') };
 
-  const out = run(root, ['glossary', 'accept', 'quiet-window', '--explained', EXPLAINED], PROFILE_ROOT);
+  const out = run(root, ['glossary', 'accept', 'quiet-window', '--hash', hashOf(before.glossary, 'quiet-window'), '--explained', EXPLAINED], PROFILE_ROOT);
   assert.equal(out.status, 0, out.stdout + out.stderr);
   assert.match(out.stdout, /Accepted glossary entry quiet-window \(was \[proposed\]\): Quiet window/);
   assert.match(out.stdout, /Logged as #4 with payload [0-9a-f]{8}/);
@@ -177,6 +177,78 @@ test('the CLI and the library write the same glossary and decisions.md bytes', (
   assert.equal(result.ok, true, result.error);
   assert.equal(read(root, 'glossary.md'), viaCli.glossary);
   assert.equal(read(root, 'decisions.md'), viaCli.decisions);
+});
+
+test('SQ-210: public show binds acceptance to the displayed payload, refusing a rewritten proposal', () => {
+  const root = keyedProject();
+  const before = { glossary: read(root, 'glossary.md'), decisions: read(root, 'decisions.md') };
+  const shown = run(root, ['glossary', 'show', 'quiet-window'], PROFILE_ROOT);
+  assert.equal(shown.status, 0, shown.stdout + shown.stderr);
+  const [payloadText, hashLine] = shown.stdout.trim().split('\n');
+  assert.deepEqual(JSON.parse(payloadText), ['quiet-window', 'Quiet window', null,
+    "An observer's report that a signal was expected and did not arrive.", 'own-definition',
+    'Unlike [handoff lag](#handoff-lag), this is an expectation rather than a measured delay.']);
+  const oldHash = /^Payload hash: ([0-9a-f]{8})$/.exec(hashLine)[1];
+  assert.equal(read(root, 'glossary.md'), before.glossary, 'show is read-only');
+  assert.equal(read(root, 'decisions.md'), before.decisions, 'show does not log');
+
+  fs.writeFileSync(file(root, 'glossary.md'), before.glossary.replace("An observer's report", "An observer's expectation"));
+  const rewritten = read(root, 'glossary.md');
+  const stale = run(root, ['glossary', 'accept', 'quiet-window', '--hash', oldHash, '--explained', EXPLAINED], PROFILE_ROOT);
+  assert.equal(stale.status, 1, stale.stdout + stale.stderr);
+  assert.match(stale.stdout, /no longer holds the text you saw/);
+  assert.equal(read(root, 'glossary.md'), rewritten, 'stale acceptance leaves glossary byte-identical');
+  assert.equal(read(root, 'decisions.md'), before.decisions, 'stale acceptance leaves ledger byte-identical');
+
+  const current = run(root, ['glossary', 'show', 'quiet-window'], PROFILE_ROOT);
+  assert.equal(current.status, 0, current.stdout);
+  const currentHash = /Payload hash: ([0-9a-f]{8})/.exec(current.stdout)[1];
+  assert.notEqual(currentHash, oldHash);
+  const accepted = run(root, ['glossary', 'accept', 'quiet-window', '--hash', currentHash, '--explained', EXPLAINED], PROFILE_ROOT);
+  assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
+  assert.match(read(root, 'glossary.md'), /\[accepted\]/);
+  assert.match(read(root, 'decisions.md'), new RegExp(`glossary quiet-window accepted · text ${currentHash}`));
+  assert.ok(seal.verifyChain(read(root, 'decisions.md'), seal.readKey(root)).verified.has(4));
+});
+
+test('SQ-210: public acceptance requires an eight-hex displayed hash', () => {
+  const root = keyedProject();
+  const before = { glossary: read(root, 'glossary.md'), decisions: read(root, 'decisions.md') };
+  for (const hashArgs of [[], ['--hash'], ['--hash', 'wrong'], ['--hash', '123456789']]) {
+    const out = run(root, ['glossary', 'accept', 'quiet-window', ...hashArgs, '--explained', EXPLAINED], PROFILE_ROOT);
+    assert.equal(out.status, 2, out.stdout + out.stderr);
+    assert.match(out.stdout, /--hash/);
+    assert.equal(read(root, 'glossary.md'), before.glossary);
+    assert.equal(read(root, 'decisions.md'), before.decisions);
+  }
+});
+
+test('SQ-210: an append I/O failure rolls back the marker and any partial ledger append', (t) => {
+  const root = keyedProject();
+  const before = { glossary: read(root, 'glossary.md'), decisions: read(root, 'decisions.md') };
+  const append = fs.appendFileSync;
+  t.mock.method(fs, 'appendFileSync', (target, ...args) => {
+    if (target !== file(root, 'decisions.md')) return append(target, ...args);
+    append(target, '\npartial DECISION');
+    throw Object.assign(new Error('injected disk failure'), { code: 'EIO' });
+  });
+  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }), { code: 'EIO' });
+  assert.equal(read(root, 'glossary.md'), before.glossary, 'append failure leaves glossary byte-identical');
+  assert.equal(read(root, 'decisions.md'), before.decisions, 'append failure leaves no new DECISION');
+});
+
+test('SQ-210: a partial glossary write failure restores the text without appending a DECISION', (t) => {
+  const root = keyedProject();
+  const before = { glossary: read(root, 'glossary.md'), decisions: read(root, 'decisions.md') };
+  const write = fs.writeFileSync;
+  t.mock.method(fs, 'writeFileSync', (target, ...args) => {
+    if (target !== file(root, 'glossary.md')) return write(target, ...args);
+    write(target, 'partial glossary');
+    throw Object.assign(new Error('injected glossary write failure'), { code: 'EIO' });
+  });
+  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }), { code: 'EIO' });
+  assert.equal(read(root, 'glossary.md'), before.glossary, 'partial marker write is rolled back');
+  assert.equal(read(root, 'decisions.md'), before.decisions, 'marker write failure leaves no new DECISION');
 });
 
 test('an accept without the researcher\'s sentence, or without a known complete entry, writes nothing', () => {

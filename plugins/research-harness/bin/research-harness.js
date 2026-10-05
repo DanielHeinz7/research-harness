@@ -8,6 +8,7 @@ const childProcess = require('node:child_process');
 
 const project = require('../hooks/lib/project');
 const canvasLib = require('../hooks/lib/canvas');
+const glossaryLib = require('../hooks/lib/glossary');
 const decisions = require('../hooks/lib/decisions');
 const identity = require('../hooks/lib/identity');
 const profileLib = require('../hooks/lib/profile');
@@ -31,7 +32,8 @@ const USAGE = [
   'research-harness review [--variant <name>] [--key <file>]',
   'research-harness agenda [--out <file>]',
   'research-harness accept <n.m> --explained <text> [--match <substring>] [--why <text>] [--rejected <text>]',
-  'research-harness glossary accept <id> --explained <text> [--why <text>] [--rejected <text>]',
+  'research-harness glossary show <id>',
+  'research-harness glossary accept <id> --hash <8hex> --explained <text> [--why <text>] [--rejected <text>]',
   'research-harness choose <name> --why <text> [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>] [--variant <name>]',
   'research-harness title [<text>]',
@@ -78,7 +80,7 @@ function parseArgs(argv) {
 // main refuses a bare flag of this set before the command runs, so no state is
 // read or written on the way to the refusal; --project, --mode, --dir and
 // --supersedes keep the bare-flag refusal their own command already has.
-const VALUE_FLAGS = new Set(['match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'key-file', 'name', 'out', 'variant', 'lens', 'skip-decision']);
+const VALUE_FLAGS = new Set(['hash', 'match', 'profile', 'title', 'outlet', 'explained', 'why', 'rejected', 'body', 'key', 'key-file', 'name', 'out', 'variant', 'lens', 'skip-decision']);
 
 // Every message goes to stdout: the skills embed this command through a `!`
 // line, and that line carries stdout only (§5.4). A refusal the researcher
@@ -384,14 +386,30 @@ function accept(positional, flags) {
 // act, named the same way on the command line, and refused to the model by the
 // same guard. A variant glossary is not accepted here: the framing is chosen
 // first, exactly as for a canvas acceptance.
+// Read the selected glossary without loading the key or changing either file.
+function glossaryShow(id) {
+  if (typeof id !== 'string' || !glossaryLib.ID_RE.test(id)) return fail(`glossary show needs an entry id.\n${USAGE}`, 2);
+  const loaded = glossaryLib.loadGlossary(project.projectDir({}));
+  if (loaded.parsed === null) return fail(`There is no ${loaded.path}.`);
+  if (!loaded.parsed.judgeable) return fail('The glossary does not parse cleanly; fix it before displaying a payload for acceptance.');
+  const entry = glossaryLib.entryById(loaded.parsed, id);
+  if (!entry) return fail(`There is no glossary entry ${id}.`);
+  say(JSON.stringify(glossaryLib.entryPayload(entry)));
+  say(`Payload hash: ${glossaryLib.payloadHash(entry)}`);
+  return 0;
+}
+
 function glossaryCommand(positional, flags) {
   const sub = positional[0];
-  if (sub !== 'accept') return fail(`glossary has one subcommand: accept.\n${USAGE}`, 2);
-  if (flags.variant !== undefined) return fail(`glossary accept works on the main glossary only; choose a framing with research-harness choose <name> first.\n${USAGE}`, 2);
+  if (sub !== 'accept' && sub !== 'show') return fail(`glossary has two subcommands: show and accept.\n${USAGE}`, 2);
+  if (flags.variant !== undefined) return fail(`glossary ${sub} works on the main glossary only; choose a framing with research-harness choose <name> first.\n${USAGE}`, 2);
   const id = positional[1];
+  if (sub === 'show') return glossaryShow(id);
+  if (typeof flags.hash !== 'string' || !/^[0-9a-f]{8}$/.test(flags.hash)) return fail(`glossary accept requires --hash <8hex> from glossary show <id>.\n${USAGE}`, 2);
   const result = acceptGlossaryEntry({
     root: project.projectDir({}),
     id,
+    expectedHash: flags.hash,
     why: flags.why,
     explained: flags.explained,
     rejected: flags.rejected,

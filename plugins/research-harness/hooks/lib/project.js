@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const CANVAS_FILE = 'canvas.md';
 const DECISIONS_FILE = 'decisions.md';
+const GLOSSARY_FILE = 'glossary.md';
 
 // The plugin knows no root. Claude Code sets CLAUDE_PROJECT_DIR; hook stdin
 // carries cwd; process.cwd() is the last resort for the CLI.
@@ -53,6 +54,13 @@ function decisionsPath(projectRoot, variant) {
   return path.join(stateDirOf(projectRoot, variant), DECISIONS_FILE);
 }
 
+// The glossary belongs to the state directory it sits beside, so a variant
+// framing reads its own definitions instead of the main file's (glossary
+// design, § Entry format and references).
+function glossaryPath(projectRoot, variant) {
+  return path.join(stateDirOf(projectRoot, variant), GLOSSARY_FILE);
+}
+
 // The variants that exist: a directory under variants/ with a valid name and a
 // canvas.md in it, sorted so every caller lists them in one order.
 function variantNames(projectRoot) {
@@ -87,6 +95,7 @@ function readIfExists(file) {
 module.exports = {
   CANVAS_FILE,
   DECISIONS_FILE,
+  GLOSSARY_FILE,
   VARIANTS_DIR,
   projectDir,
   stateDir,
@@ -96,5 +105,6 @@ module.exports = {
   variantNames,
   canvasPath,
   decisionsPath,
+  glossaryPath,
   readIfExists,
 };

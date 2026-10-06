@@ -212,13 +212,13 @@ async function mount({ state, query = '', mode = 'fixture', hash = mode === 'fix
     writes: () => calls.filter((c) => c.opts && c.opts.method === 'POST' && c.url !== '/api/session'),
     click(attrs) {
       const btn = { getAttribute: (name) => (name in attrs ? attrs[name] : null) };
-      app.listeners.click[0]({ target: { closest: (selector) => {
+      app.listeners.click[0]({ preventDefault() {}, target: { closest: (selector) => {
         const attr = /\[(data-[\w-]+)\]/.exec(selector);
         return attr && attr[1] in attrs ? btn : null;
       } } });
     },
     async submit(values) {
-      const elements = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, { value: v }]));
+      const elements = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, { value: v, setAttribute() {}, getAttribute() { return 'dlg-error'; }, focus() {} }]));
       dlg.listeners.submit[0]({ preventDefault() {}, target: { elements } });
       await settle();
     },
@@ -266,7 +266,7 @@ test('Framings: one column per variant, headed by name and lens, with differing 
   assert.match(markup, /data-view-target="compare"[^>]*>Framings</, 'the tab exists while the project holds variants');
   assert.match(markup, /--k:3/);
   for (const v of variantsState.variants) {
-    assert.match(markup, new RegExp(`<h3 class="cmp-name">${v.name}</h3><p class="cmp-lens">Lens: ${v.lens.replace(/"/g, '&quot;')}</p>`));
+    assert.match(markup, new RegExp(`<h2 class="cmp-name">${v.name}</h2><p class="cmp-lens">Lens: ${v.lens.replace(/"/g, '&quot;')}</p>`));
   }
   // The fixture's variants share fields 1, 5, 8 and 9 and word 2, 3, 4, 6 and 7
   // differently (7 is filled in one variant only): 4 rows faded, 5 marked.
@@ -714,3 +714,149 @@ test('Names: unknown and All filter without browser storage and an absent name l
   assert.deepEqual(filterButtons(absent).filter((b) => b.pressed === 'true').map((b) => b.label), ['All']);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
 });
+
+// Browser checks use live session routes: fixture mode suppresses statement actions.
+let keyboardChromium;
+try { ({ chromium: keyboardChromium } = require('playwright')); } catch (err) {
+  if (err.code !== 'MODULE_NOT_FOUND') throw err;
+}
+for (const colorScheme of ['light', 'dark']) {
+  test('live keyboard navigation, dialog errors and return focus in ' + colorScheme, { skip: !keyboardChromium, timeout: 120000 }, async (t) => {
+    let browser;
+    try { browser = await keyboardChromium.launch(); } catch (err) {
+      if (!/Executable doesn't exist/.test(err.message)) throw err;
+      browser = await keyboardChromium.launch({ channel: 'chromium' });
+    }
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width: 320, height: 720 }, colorScheme });
+    const writes = [];
+    page.on('pageerror', (err) => t.diagnostic('pageerror: ' + err.message));
+    let refuse = true;
+    await page.route('http://session.test/**', (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      let body = html;
+      let status = 200;
+      if (pathname === '/api/state') body = variantsState;
+      else if (pathname === '/api/session') body = { ok: true, token: 'T' };
+      else if (pathname.startsWith('/api/')) {
+        writes.push({ pathname, payload: route.request().postDataJSON() });
+        status = refuse ? 400 : 200;
+        body = refuse ? { error: 'Please explain this decision without a status marker.' } : { ok: true };
+      }
+      return route.fulfill({ status, contentType: typeof body === 'string' ? 'text/html' : 'application/json', body: typeof body === 'string' ? body : JSON.stringify(body) });
+    });
+    await page.goto('http://session.test/#c=abc123');
+    await page.waitForSelector('#poster.active');
+    const posterLink = page.locator('#view-tabs [data-view-target="poster"]');
+    assert.equal(await posterLink.getAttribute('aria-current'), 'page', 'active view is identified as the current page, not a toggle');
+    assert.equal(await posterLink.evaluate((node) => node.tagName), 'A', 'view navigation uses links');
+    await page.locator('#poster [data-view-target="element-1"]').first().focus();
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#element-1.active');
+    assert.equal(await page.locator('#element-1 h1').evaluate((node) => node === document.activeElement), true, 'poster to element places focus on the field heading');
+    for (const view of ['poster', 'agenda', 'log', 'compare']) {
+      const link = page.locator('#view-tabs [data-view-target="' + view + '"]');
+      await link.focus();
+      await page.keyboard.press('Enter');
+      assert.equal(await link.getAttribute('aria-current'), 'page');
+      assert.equal(await page.locator('#' + view + '.active h1').count(), 1, 'each reading view has one top-level heading');
+      const hierarchy = await page.locator('#' + view + '.active').evaluate((section) => [...section.querySelectorAll('h1,h2,h3,h4')].map((node) => Number(node.tagName.slice(1))));
+      for (let i = 1; i < hierarchy.length; i++) assert.ok(hierarchy[i] <= hierarchy[i - 1] + 1, 'reading headings do not skip a level');
+      if (process.env.SESSION_A11Y_CAPTURE_DIR) {
+        fs.mkdirSync(process.env.SESSION_A11Y_CAPTURE_DIR, { recursive: true });
+        await page.screenshot({ path: path.join(process.env.SESSION_A11Y_CAPTURE_DIR, colorScheme + '-' + view + '-320.png') });
+      }
+    }
+    await page.locator('.skip-link').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#stage').evaluate((node) => node === document.activeElement), true, 'skip link reaches the current reading landmark even when poster is hidden');
+    const choose = page.locator('#compare button[data-action="choose"]').first();
+    await choose.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#dlg textarea[name="why"]').evaluate((node) => node === document.activeElement), true, 'choose opens on the required labelled field');
+    await page.keyboard.press('Escape');
+    assert.equal(await choose.evaluate((node) => node === document.activeElement), true, 'Escape returns to the framing invoker');
+    await page.keyboard.press('Enter');
+    await page.locator('#dlg button[type="submit"]').click();
+    assert.equal(await page.locator('#dlg [name="why"]').getAttribute('aria-invalid'), 'true', 'choose validation identifies its required field');
+    assert.equal(await page.locator('#dlg [name="why"]').getAttribute('aria-describedby'), 'dlg-error');
+    await page.keyboard.press('Escape');
+    await page.locator('#view-tabs [data-view-target="poster"]').click();
+    await page.locator('#poster [data-view-target="element-1"]').first().click();
+    const accept = page.locator('#element-1 button[data-action="accept"]').first();
+    await accept.focus();
+    await page.keyboard.press('Enter');
+    const input = page.locator('#dlg [name="explained"]');
+    assert.equal(await input.evaluate((node) => node === document.activeElement), true, 'accept opens on its required field');
+    assert.ok(await input.evaluate((node) => node.labels.length > 0), 'accept field has an accessible label');
+    await page.locator('#dlg button[type="submit"]').click();
+    assert.equal(await input.getAttribute('aria-invalid'), 'true', 'required-sentence validation identifies its field');
+    assert.equal(await input.getAttribute('aria-describedby'), 'dlg-error', 'validation error is associated with the field');
+    assert.equal(await input.evaluate((node) => node === document.activeElement), true, 'error puts focus on the field that needs correction');
+    assert.equal(writes.length, 0, 'empty required fields do not write');
+    if (process.env.SESSION_A11Y_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.SESSION_A11Y_CAPTURE_DIR, colorScheme + '-accept-error-320.png') });
+    const bounds = await input.evaluate((node) => { const r = node.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: innerHeight }; });
+    assert.ok(bounds.top >= 0 && bounds.bottom <= bounds.height, 'required field is fully visible in a narrow modal');
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press('Tab');
+      assert.ok(await page.evaluate(() => document.activeElement === document.body || document.querySelector('#dlg').contains(document.activeElement)), 'Tab never reaches the inert app');
+    }
+    await page.keyboard.press('Escape');
+    assert.equal(await accept.evaluate((node) => node === document.activeElement), true, 'Escape returns to the statement invoker');
+    await page.keyboard.press('Enter');
+    await input.fill('The evidence supports our claim.');
+    await page.locator('#dlg button[type="submit"]').click();
+    await page.waitForFunction(() => document.querySelector('.dlg-error').textContent.includes('status marker'));
+    assert.equal(await input.getAttribute('aria-invalid'), 'true', 'server refusal remains associated with the required sentence');
+    assert.equal(await input.inputValue(), 'The evidence supports our claim.', 'server refusal preserves the researcher text');
+    refuse = false;
+    await page.locator('#dlg button[type="submit"]').click();
+    await page.waitForFunction(() => !document.querySelector('#dlg').open && document.activeElement === document.querySelector('#element-1 h1'));
+    const note = page.locator('#element-1 textarea[data-comment-body-for]');
+    await page.locator('#element-1 button[data-action="comment"]').click();
+    assert.equal(await note.getAttribute('aria-invalid'), 'true', 'inline note errors identify the required textarea');
+    const errorId = await note.getAttribute('aria-describedby');
+    assert.ok(await page.locator('#' + errorId).textContent(), 'inline note error is associated and visible');
+    await note.fill('Discuss scope at the meeting.');
+    await page.locator('#element-1 button[data-action="comment"]').click();
+    await page.waitForFunction(() => document.activeElement === document.querySelector('#element-1 h1'));
+    await page.locator('#element-1 button[data-action="stated"]').first().focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement === document.querySelector('#element-1 h1'));
+    assert.ok(writes.some((write) => write.pathname === '/api/stated'), 'direct mark-as-said remains keyboard operable');
+    assert.ok(writes.some((write) => write.pathname === '/api/comment' && write.payload.body === 'Discuss scope at the meeting.'), 'inline note saves through its existing endpoint');
+    const focus = await page.locator('#element-1 h1').evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const stage = document.querySelector('#stage').getBoundingClientRect();
+      const css = getComputedStyle(node);
+      return { top: rect.top, bottom: rect.bottom, stageTop: stage.top, stageBottom: stage.bottom, outline: css.outlineWidth };
+    });
+    assert.ok(focus.top >= focus.stageTop && focus.bottom <= focus.stageBottom, 'returned focus is not obscured by rail or scroll boundaries');
+    assert.equal(focus.outline, '3px', 'returned heading has a visible focus indicator');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.locator('#element-1 button[data-action="accept"]').first().focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#dlg [name="explained"]').focus();
+    if (process.env.SESSION_A11Y_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.SESSION_A11Y_CAPTURE_DIR, colorScheme + '-accept-1440.png') });
+    await page.locator('#dlg button[data-dlg="cancel"]').click();
+    assert.equal(await page.locator('#element-1 button[data-action="accept"]').first().evaluate((node) => node === document.activeElement), true, 'Cancel returns focus to the original accept control');
+    // The focus ring surrounds each control on its containing surface, not its fill.
+    await page.evaluate(() => { document.querySelector('#notice').hidden = false; });
+    await page.keyboard.press('Tab');
+    const ratios = await page.evaluate(() => {
+      const luminance = (rgb) => rgb.map((c) => c / 255).map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).reduce((n, c, i) => n + c * [0.2126, 0.7152, 0.0722][i], 0);
+      const rgb = (color) => color.match(/[\d.]+/g).slice(0, 3).map(Number);
+      return [...document.querySelectorAll('a,button,summary,input,textarea,[tabindex]')].filter((node) => node.getClientRects().length && !node.disabled).map((node) => {
+        node.focus();
+        let parent = node.parentElement;
+        while (parent && getComputedStyle(parent).backgroundColor === 'rgba(0, 0, 0, 0)') parent = parent.parentElement;
+        const css = getComputedStyle(node);
+        const foreground = luminance(rgb(css.outlineColor));
+        const background = luminance(rgb(getComputedStyle(parent).backgroundColor));
+        return { label: node.textContent.trim().slice(0, 40), ratio: (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05) };
+      });
+    });
+    for (const item of ratios) assert.ok(item.ratio >= 3, item.label + ': focus contrast >= 3:1 (' + item.ratio.toFixed(2) + ')');
+    t.diagnostic('lowest visible-control focus contrast ' + Math.min(...ratios.map((item) => item.ratio)).toFixed(2) + ':1');
+  });
+}

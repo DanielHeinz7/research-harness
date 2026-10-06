@@ -197,12 +197,17 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
 
 // Publish a complete glossary in one rename, keeping the original file's mode.
 // The temporary file is beside it so rename stays on the same filesystem.
-function atomicGlossaryWrite(file, text) {
+// Recheck the expected bytes at publication, including for rollback. This is
+// a lost-update check, not a lock across the comparison and rename.
+function atomicGlossaryWrite(file, text, before) {
   const temp = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}`);
   try {
     const mode = fs.statSync(file).mode;
     fs.writeFileSync(temp, text, { flag: 'wx', mode });
     fs.chmodSync(temp, mode);
+    if (!fs.readFileSync(file).equals(Buffer.from(before))) {
+      throw new Error('The glossary changed during acceptance; reload and look again. Nothing is accepted.');
+    }
     fs.renameSync(temp, file);
   } finally {
     fs.rmSync(temp, { force: true });
@@ -236,7 +241,7 @@ function writeGlossaryDecision(state, before, after, fields) {
     const expected = Buffer.concat([original, Buffer.from(decisions.separatorAfter(current) + prepared.text)]);
     let published = false;
     try {
-      atomicGlossaryWrite(state.paths.glossary, after);
+      atomicGlossaryWrite(state.paths.glossary, after, before);
       published = true;
       return seal.sealedAppend(state.paths.decisions, fields, state.key, { decision: true });
     } catch (err) {
@@ -244,7 +249,7 @@ function writeGlossaryDecision(state, before, after, fields) {
         rollbackGlossaryLedger(state.paths.decisions, ledgerFd, original, expected);
       } finally {
         if (published && fs.readFileSync(state.paths.glossary).equals(Buffer.from(after))) {
-          atomicGlossaryWrite(state.paths.glossary, before);
+          atomicGlossaryWrite(state.paths.glossary, before, after);
         }
       }
       throw err;

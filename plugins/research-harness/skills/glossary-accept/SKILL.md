@@ -32,13 +32,20 @@ id, unresolved origin, unmet element-4 dependency, missing sealing key or
 broken decision log refuses by name. The glossary is published by an atomic
 rename, then the decision is appended; a crash between these writes can leave
 an [accepted] marker without a decision. Review labels that entry unlogged,
-not a glossary acceptance. The ledger keeps its eight-hex payload identifier;
-that identifier is not the binding digest required by --hash.
+not a glossary acceptance. To recover that marker-only entry, reset its marker
+in glossary.md to `[proposed]`, then run `glossary show <id>` again, read the
+payload, and accept again with the newly displayed binding digest and your own
+explanation. Do not repair or invent a DECISION in the ledger.
+The ledger keeps its eight-hex payload identifier; that identifier is not the
+binding digest required by --hash.
 
 On an I/O failure, recovery removes this call's partial ledger append first,
 then restores the glossary, only while each file still matches this call's
-written bytes. Concurrent changes are preserved, and recovery can itself fail.
-This is not a cross-file transaction or a guarantee against crashes.
+written bytes. Before publication, acceptance re-reads glossary.md and refuses
+if any bytes changed since it was loaded, preserving the concurrent edit.
+These comparisons are not a cross-process lock: a writer can still race the
+check and rename. Recovery can itself fail. This is not a cross-file transaction
+or a guarantee against crashes.
 
 Every accept needs an explanation: one sentence, in the researcher's own
 words, of what they accept and why it holds, passed as

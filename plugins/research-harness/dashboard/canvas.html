@@ -23,7 +23,7 @@
      The session view (story-first presentation, decided 2026-09-30): a Poster that
      shows the whole paper on one screen, "To talk about", "History", and a field
      view per element. Read like the paper's argument, not a form: statements as
-     prose, status as a soft cue, no counters, no seal status, no "DISCOVERY", no
+     prose, status as a visible word and ownership label, no counters, no seal status, no "DISCOVERY", no
      visible `src:` text; gaps invite rather than accuse. The write paths
      (accept/stated/comment, expectedHash, the single-use code exchange) are the
      data model's and unchanged. The poster fits 1440x900 without scrolling; the
@@ -228,7 +228,7 @@
     cursor: pointer;
   }
   .rail-card.active { border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
-  .rail-card-accent { box-shadow: inset 2px 0 0 var(--action); }
+  .rail-card-accent { border-color: var(--action); }
   .rail-top { display: flex; align-items: center; gap: 8px; }
   .rail-question { font-size: 13px; font-weight: 600; color: var(--ink); }
   .rail-term { font-size: 11px; color: var(--ink-soft); padding-left: 30px; }
@@ -318,7 +318,6 @@
     box-shadow: var(--shadow-card);
     padding: 14px 16px 12px;
   }
-  .field-card-accent { box-shadow: var(--shadow-card), inset 3px 0 0 var(--action); }
 
   .field-eyebrow { display: flex; align-items: center; gap: 8px; }
   .field-term { font-size: 11px; color: var(--ink-soft); }
@@ -385,53 +384,29 @@
     padding-left: 10px;
   }
 
-  .stmt-tentative { color: var(--ink-soft); }
-  /* Point 5: a quiet idea note — a label plus a soft left border — instead of
-     a highlighter band across the line. Each statement is its own paragraph
-     (below), so a suggestion never glues onto an authors' sentence. */
-  .stmt-proposed { font-style: normal; }
-  .field-para-idea {
-    border-left: 2px solid var(--suggestion-ink);
-    padding-left: 10px;
-  }
-  .idea-tag {
-    display: inline-block;
-    font-weight: 700;
-    font-size: 0.72em;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: var(--suggestion-ink);
-    margin-right: 6px;
-  }
-
-  .status-cue {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    margin-left: 3px;
-    font-size: 11px;
-    color: var(--ink-soft);
+  /* Ownership is explicit in words and in the edge treatment: solid for
+     authors, dashed for model proposals. The word stays visible in print and
+     on a projector; no hover, colour or extra tab stop is needed. */
+  .status-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    width: fit-content;
+    max-width: 100%;
+    margin-bottom: 4px;
+    padding: 2px 8px;
+    border: 1px solid var(--ink);
     border-radius: 4px;
-    cursor: default;
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.4;
+    font-style: normal;
   }
-  .status-cue-accepted { color: #246044; }
-  .status-glyph { font-size: 12px; }
-  .status-tip {
-    position: absolute;
-    left: 50%;
-    bottom: 100%;
-    transform: translate(-50%, -4px);
-    background: var(--ink);
-    color: #fff;
-    padding: 3px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.12s ease;
-  }
-  .status-cue:hover .status-tip, .status-cue:focus-visible .status-tip { opacity: 1; }
+  .status-label-model { border-style: dashed; }
+  .status-word { font-weight: 700; }
+  .status-owner { border-left: 1px solid currentColor; padding-left: 8px; }
 
   .src-ref { font-size: 0.72em; color: var(--ink-soft); }
   .src-ref a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
@@ -631,7 +606,7 @@
   }
   .cmp-row-caption { font-weight: 400; color: var(--ink-soft); }
   .cmp-card { padding: 12px 14px 10px; gap: 6px; }
-  .cmp-diff { box-shadow: var(--shadow-card), inset 3px 0 0 var(--action); }
+  .cmp-diff { border-color: var(--action); }
   .cmp-same { background: transparent; box-shadow: none; }
   .cmp-same .field-lead { color: var(--ink-soft); }
   .diff-tag {
@@ -739,7 +714,7 @@
 
   @media print {
     #notice, #topbar, #rail, .action-btn, .comment-form, .stmt-actions,
-    .element-nav, .field-foot, .status-tip, .skip-link {
+    .element-nav, .field-foot, .skip-link {
       display: none !important;
     }
     .print-only { display: block !important; }
@@ -796,10 +771,7 @@
     { from: 7, to: 9, label: 'Contribution' }
   ];
 
-  // Point 3: status as a soft cue. `stated` is the baseline — plain prose,
-  // its word only ever reaches a screen reader. The other three markers get
-  // a small, focusable cue: a glyph (never colour alone) plus a word that
-  // shows on hover or on keyboard focus.
+  // One vocabulary for visible status labels in every reading view.
   var STATUS_WORD = { accepted: 'Decided', stated: 'Said by the authors', tentative: 'Draft', proposed: 'Suggestion' };
 
   var qs = new URLSearchParams(location.search);
@@ -928,7 +900,7 @@
   // `**Explained:** …`, `**Rejected:** …`, `**Open at acceptance:** #a, #b` and
   // `**Supersedes:** #n`. Split those off first, so the main text ends at its
   // own trailing "[marker, src: …]" annotation (the same free-text convention
-  // canvas.md uses for statements). That annotation is dropped and only the
+  // canvas.md uses for statements). That annotation becomes a visible status label and the
   // page reference is kept, quietly, the way a statement's source appears. Text
   // on the lines after a labelled line belongs to that label. The label
   // pattern is the library's (FIELD_RE in hooks/lib/decisions.js), and like the
@@ -948,7 +920,7 @@
     var m = /\s*\[([^\]]*)\]\s*$/.exec(text);
     if (!m) return { text: text, pageRef: null, notes: notes };
     var pageMatch = /p\.\s*\S.*$/.exec(m[1]);
-    return { text: text.slice(0, m.index).trim(), pageRef: pageMatch ? pageMatch[0].trim() : null, notes: notes };
+    return { text: text.slice(0, m.index).trim(), marker: m[1].split(',')[0].trim(), pageRef: pageMatch ? pageMatch[0].trim() : null, notes: notes };
   }
 
   // One rendering of a log entry body for every reading view: the main text
@@ -956,7 +928,7 @@
   // line ("Why: …") in the muted colour. No raw markers, no asterisks.
   function renderEntryBody(raw) {
     var parsed = parseFindingBody(raw);
-    return esc(parsed.text)
+    return renderStatus(parsed.marker) + esc(parsed.text)
       + (parsed.pageRef ? ' <sup class="src-ref">' + esc(parsed.pageRef) + '</sup>' : '')
       + parsed.notes.filter(function (n) { return n.label !== 'By'; }).map(function (n) {
         return '<span class="entry-note">' + esc(n.label) + ': '
@@ -1027,10 +999,10 @@
       for (var si = 0; si < q.statements.length; si += 1) {
         var st = q.statements[si];
         if (!fallback) fallback = { statement: st, question: q };
-        if (st.marker !== 'proposed') return { statement: st, question: q, isIdea: false };
+        if (st.marker !== 'proposed') return { statement: st, question: q };
       }
     }
-    return fallback ? { statement: fallback.statement, question: fallback.question, isIdea: true } : null;
+    return fallback ? { statement: fallback.statement, question: fallback.question } : null;
   }
 
   // Point 3: a DISCOVERY/History entry's `ref` is "5 Research Setting" (the
@@ -1042,31 +1014,22 @@
     return (n && HUMAN_QUESTIONS[n]) || ref;
   }
 
-  // Renders one statement as a prose span. `full` (field view) adds a
-  // focusable status cue whose word appears on hover or keyboard focus, plus
-  // the accept/mark-as-said actions. Point 5: a suggestion carries one
-  // visible "Idea" label and nothing else names it, so it is announced once,
-  // not twice (point 8).
+  // Every reading view uses the same visible word and ownership treatment.
+  // Unknown or unmarked prose carries no inferred author/model attribution.
+  function renderStatus(marker) {
+    var word = Object.hasOwn(STATUS_WORD, marker) ? STATUS_WORD[marker] : null;
+    if (!word) return '';
+    var authors = marker === 'accepted' || marker === 'stated';
+    return '<span class="status-label status-label-' + (authors ? 'authors' : 'model') + '">'
+      + '<span class="status-word">' + esc(word) + '</span>'
+      + '<span class="status-owner">' + (authors ? 'Authors' : 'Model proposal') + '</span></span>';
+  }
+
+  // `full` adds accept/mark-as-said actions, never changes status visibility.
   function renderStatement(s, opts) {
-    var text = esc(s.text);
     var cls = ['stmt'];
     if (s.marker) cls.push('stmt-' + s.marker);
-    var inner;
-    var word = STATUS_WORD[s.marker];
-    if (s.marker === 'proposed') {
-      inner = '<span class="idea-tag">Idea</span>' + text;
-    } else if (s.marker === 'accepted' || s.marker === 'tentative') {
-      var glyph = s.marker === 'accepted' ? '&#10003;' : '&#9675;';
-      inner = '<span class="sr-only">' + esc(word) + '. </span>' + text
-        + (opts.full
-          ? '<span class="status-cue status-cue-' + s.marker + '" tabindex="0" aria-label="' + esc(word) + '">'
-            + '<span class="status-glyph" aria-hidden="true">' + glyph + '</span>'
-            + '<span class="status-tip" aria-hidden="true">' + esc(word) + '</span></span>'
-          : '<span class="status-glyph" aria-hidden="true">' + glyph + '</span>');
-    } else {
-      // stated, or a statement with no marker at all: plain prose.
-      inner = (word ? '<span class="sr-only">' + esc(word) + '. </span>' : '') + text;
-    }
+    var inner = renderStatus(s.marker) + esc(s.text);
 
     var refHtml = '';
     if (opts.footnotes) {
@@ -1118,9 +1081,7 @@
           elementNumber: e.number,
           questionId: q.id
         });
-        var paraClasses = ['field-para'];
-        if (s.marker === 'proposed') paraClasses.push('field-para-idea');
-        return '<p class="' + paraClasses.join(' ') + '" id="q-' + esc(q.id) + (i ? '-' + i : '') + '" data-qid="' + esc(q.id) + '">' + body + '</p>';
+        return '<p class="field-para" id="q-' + esc(q.id) + (i ? '-' + i : '') + '" data-qid="' + esc(q.id) + '">' + body + '</p>';
       }).join('');
     }).join('');
     return { html: paras, footnotes: footnotes || [] };
@@ -1179,17 +1140,13 @@
   // the whole card. The row label is now its own grid item (see the CSS
   // comment), so it genuinely spans the row instead of only sitting inside
   // the first card.
-  function renderPosterCard(e, accent, totalkCount) {
+  function renderPosterCard(e, totalkCount) {
     var question = HUMAN_QUESTIONS[e.number] || e.title;
     var lead = leadStatementFor(e);
     var classes = ['field-card'];
-    if (accent === e.number) classes.push('field-card-accent');
     var leadHtml;
     if (lead) {
-      var leadClasses = ['field-lead'];
-      if (lead.isIdea) leadClasses.push('field-para-idea');
-      var leadTag = lead.isIdea ? '<span class="idea-tag">Idea</span>' : '';
-      leadHtml = '<p class="' + leadClasses.join(' ') + '">' + leadTag + esc(lead.statement.text) + '</p>';
+      leadHtml = '<p class="field-lead">' + renderStatus(lead.statement.marker) + esc(lead.statement.text) + '</p>';
     } else {
       leadHtml = '<p class="field-lead field-gap-note">Not answered yet.</p>';
     }
@@ -1212,15 +1169,13 @@
   // footer, no side rail (both hidden by CSS while this view is active).
   function renderPoster(s) {
     var elements = s.elements;
-    var graph = s.graph || null;
-    var accent = s.profileError ? null : computeAccent(elements, graph);
     var outlet = s.frontmatter && s.frontmatter.outlet;
 
     var cells = [];
     elements.forEach(function (e) {
       var rowLabel = ROW_LABELS.filter(function (r) { return r.from === e.number; })[0];
       if (rowLabel) cells.push('<li class="poster-row-label" aria-hidden="true">' + esc(rowLabel.label) + '</li>');
-      cells.push(renderPosterCard(e, accent, (s.agenda.fields.filter(function (f) { return f.number === e.number; })[0] || { findings: [] }).findings.length));
+      cells.push(renderPosterCard(e, (s.agenda.fields.filter(function (f) { return f.number === e.number; })[0] || { findings: [] }).findings.length));
     });
 
     return '<section id="poster" data-view="poster" class="view page-section" tabindex="-1">'
@@ -1307,15 +1262,14 @@
     if (differs) classes.push('cmp-diff');
     else if (several) classes.push('cmp-same');
     var leadHtml = lead
-      ? '<p class="field-lead' + (lead.isIdea ? ' field-para-idea' : '') + '">' + (lead.isIdea ? '<span class="idea-tag">Idea</span>' : '') + esc(lead.statement.text) + '</p>'
+      ? '<p class="field-lead">' + renderStatus(lead.statement.marker) + esc(lead.statement.text) + '</p>'
       : '<p class="field-lead field-gap-note">Not answered yet.</p>';
     // The card leads with one sentence, like the poster; a difference can sit
     // in a statement below it, so every statement of the field is one click away.
     var more = all.length > 1
       ? '<details class="cmp-more"><summary>All ' + all.length + ' statements<span class="sr-only"> of ' + esc(v.name) + ' on ' + esc(question) + '</span></summary>'
         + all.map(function (st) {
-          return '<p class="field-para' + (st.marker === 'proposed' ? ' field-para-idea' : '') + '">'
-            + (st.marker === 'proposed' ? '<span class="idea-tag">Idea</span>' : '') + esc(st.text) + '</p>';
+          return '<p class="field-para">' + renderStatus(st.marker) + esc(st.text) + '</p>';
         }).join('') + '</details>'
       : '';
     return '<article class="' + classes.join(' ') + '">'
@@ -1355,7 +1309,7 @@
   }
 
   function renderField(e, total) {
-    // Sources and the status-cue words read the same way in fixture mode;
+    // Sources and visible status words read the same way in fixture mode;
     // only the write actions (accept/mark-as-said) depend on `fixtureMode`,
     // gated separately inside renderStatement.
     var body = renderFieldBody(e, { linked: true });

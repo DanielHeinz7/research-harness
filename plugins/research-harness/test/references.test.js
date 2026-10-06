@@ -29,6 +29,41 @@ test('the template carries its source in the frontmatter, not in the body', () =
   assert.match(template.frontmatter.source, /doi\.org/);
 });
 
+const read = (name) => fs.readFileSync(path.join(refDir, name), 'utf8').replace(/\s+/g, ' ');
+
+// SQ-205: the profiles describe the enforcement `accept` performs, and the
+// glossary's format rules cross genres while its timing stays with the profile.
+test('both profiles describe acceptance-order enforcement as the executable rule', () => {
+  for (const name of ['profiles/is-qualitative.md', 'profiles/is-quantitative.md']) {
+    const text = read(name);
+    assert.doesNotMatch(text, /never enforced/, `${name} still reports the graph as unenforced`);
+    assert.match(text, /`accept` refuses the acceptance/, name);
+    assert.match(text, /construct-glossary\.md/, name);
+    assert.match(text, /across genres/, name);
+  }
+});
+
+test('the qualitative profile lets a definition arrive late and keeps it visible', () => {
+  const text = read('profiles/is-qualitative.md');
+  assert.match(text, /sensitizing terms/);
+  assert.match(text, /Definition: pending/);
+  assert.match(text, /element 4's edges, `4 <- 2, 7`/);
+});
+
+test('the quantitative profile keeps glossary acceptance out of preregistration and 4.1', () => {
+  const text = read('profiles/is-quantitative.md');
+  assert.match(text, /not registry preregistration/);
+  assert.match(text, /accepting one accepts no 4\.1 hypothesis/);
+  assert.match(text, /element 4's `4 <- 2, 3` edges/);
+});
+
+test('amj-map places the glossary in element 4 work, not in a Sparrowe and Mayer prescription', () => {
+  const text = read('amj-map.md');
+  assert.match(text, /relations and mechanisms of 4\.2 and 4\.3/);
+  assert.match(text, /does not itself ground a hypothesis/);
+  assert.match(text, /neither the file format nor its mechanical checks are a prescription from Sparrowe and Mayer \(2011\)/);
+});
+
 test('every reference cites its source and none quotes it', () => {
   for (const name of ['canvas-elements.md', 'amj-map.md', 'problematization.md']) {
     const text = fs.readFileSync(path.join(refDir, name), 'utf8');

@@ -1,6 +1,6 @@
 ---
 name: canvas
-description: Use when starting or continuing the research canvas of a paper project — framing elements 1 to 9 in brainstorming, seed, or import mode. Writes proposals; never accepts.
+description: Use when starting or continuing the research canvas of a paper project — framing elements 1 to 9 in brainstorming, seed, or import mode, and the construct glossary those elements cite. Writes proposals; never accepts.
 ---
 
 # The research canvas
@@ -78,6 +78,47 @@ with `src:`. The canvas travels; the material does not.
 
 When you finish a session, run `status` again and report what is empty, what
 is open, and what is ready for acceptance.
+
+## The construct glossary
+
+Element 4's definitions live beside the canvas in `research/glossary.md`, one
+entry per construct. Read
+`${CLAUDE_PLUGIN_ROOT}/references/construct-glossary.md` for the format before
+you write one. You propose entries — `[proposed]` or `[tentative]`, an honest
+`Origin:`, a `Distinctions:` line that resolves — and you never accept them:
+acceptance is the researcher's
+`/research-harness:glossary-accept <id> --hash <8hex> --explained "<their sentence>"`,
+and the guard denies `glossary accept` to you. You may create the file with its
+`glossary-schema: 1` header and your first entry; after that the header and the
+`manuscripts:` list are the researcher's, so propose an entry instead of
+editing theirs. A variant has its own glossary in its variant directory, and an
+entry copied across framings needs that variant's own acceptance.
+
+Cite an entry from a canvas statement as another evidence tag, resolved against
+the selected state directory:
+
+    Felt safety and speaking frequency are distinct in this study. [proposed, src: glossary.md#felt-safety, src: glossary.md#speaking-frequency]
+
+Elements 3, 4, 7 and 8 declare each construct they use this way, proposals and
+tentative statements included; 4.1 links the core entries, and 4.2 and 4.3
+cite the definitions they rest on. A resolved link says an entry exists — not
+that it is accepted, that its definition is right, or that the statement holds.
+A glossary entry never stands in for evidence behind a finding or a
+relationship.
+
+In a manuscript, link the entry at the definition and at the first substantive
+use in each section — `[felt safety](research/glossary.md#felt-safety)`, with
+the right relative path for a nested file — and declare the constructs a
+paragraph uses without visible links as
+`<!-- constructs: felt-safety, speaking-frequency -->`.
+
+Where the profile says element 4 emerges from the material, a definition may
+arrive late: propose the sensitizing term now with `Definition: pending`, keep
+it visible, and let the findings move it later. Never manufacture a source or a
+definition to make a review green. An acceptance also follows element 4's
+dependencies in the profile, so an entry whose dependencies are unmet is
+refused; the check on the definitions themselves — whether they distinguish
+different things and fit this study — is the researcher's, not yours.
 
 ## Multiverse mode — several framings side by side
 

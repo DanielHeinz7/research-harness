@@ -101,6 +101,31 @@ test('canvas multiverse mode uses the variant flags and never chooses', () => {
   assert.match(body, /`\[stated\]` or `\[accepted\]`/);
 });
 
+// SQ-205: the writing skills say who accepts a glossary entry, how a canvas
+// statement and a manuscript cite one, and that the mechanical group is not a
+// judgment about the construct.
+test('canvas proposes glossary entries and cites them without accepting', () => {
+  const { body } = readSkill('canvas');
+  assert.match(body, /references\/construct-glossary\.md/);
+  assert.match(body, /src: glossary\.md#felt-safety/);
+  assert.match(body, /\(research\/glossary\.md#felt-safety\)/);
+  assert.match(body, /<!-- constructs: felt-safety, speaking-frequency -->/);
+  assert.match(body, /never accept them/);
+  assert.match(body, /glossary-accept <id> --hash <8hex> --explained/);
+  assert.match(body, /Definition: pending/);
+  assert.match(body, /element 4 emerges from the material/);
+});
+
+test('canvas-review keeps the mechanical glossary group and the construct judgment apart', () => {
+  const { body } = readSkill('canvas-review');
+  assert.match(body, /Glossary\s+mechanics/);
+  assert.match(body, /Declared construct coverage checked;\s+undeclared constructs require human inspection\./);
+  assert.match(body, /Human construct judgment:\s+not performed by this check/);
+  assert.match(body, /definition changed since\s+acceptance/);
+  assert.match(body, /measure or observe the construct/);
+  assert.match(body, /you never accept one/);
+});
+
 test('no model-facing skill runs accept or choose', () => {
   for (const n of names) {
     if (n === 'accept') continue; // researcher-only: disable-model-invocation, runs the accept it is named for

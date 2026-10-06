@@ -32,6 +32,7 @@ body{font-family:'Hanken Grotesk',sans-serif;color:var(--ink)}
 .bad{background:var(--bad-bg);color:var(--bad)}
 .warn{background:var(--warn-bg);color:var(--warn)}
 .src{left:120px;bottom:54px;font-size:22px;color:var(--soft);max-width:1380px}
+.shot{position:absolute;inset:0;width:1920px;height:1080px;object-fit:cover}
 .foot{right:120px;bottom:54px;font-size:22px;color:var(--soft);letter-spacing:.08em;font-weight:600}
 </style></head><body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="113.08" data-width="1920" data-height="1080">
@@ -44,19 +45,20 @@ body{font-family:'Hanken Grotesk',sans-serif;color:var(--ink)}
 <div class="abs foot">research-harness</div>
 </div>
 <div id="scene2" class="clip scene" data-start="12.8" data-duration="19.16" data-track-index="1">
-<div id="s2-e0" class="abs card" style="left:160px;top:170px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">1</span>&nbsp; Puzzle</div><div id="s2-e1" class="abs card" style="left:700px;top:170px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">2</span>&nbsp; Audience & prior research</div><div id="s2-e2" class="abs card" style="left:1240px;top:170px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">3</span>&nbsp; Research question</div><div id="s2-e3" class="abs card" style="left:160px;top:290px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">4</span>&nbsp; Constructs</div><div id="s2-e4" class="abs card" style="left:700px;top:290px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">5</span>&nbsp; Setting</div><div id="s2-e5" class="abs card" style="left:1240px;top:290px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">6</span>&nbsp; Design & analysis</div><div id="s2-e6" class="abs card" style="left:160px;top:410px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">7</span>&nbsp; Findings</div><div id="s2-e7" class="abs card" style="left:700px;top:410px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">8</span>&nbsp; Contributions</div><div id="s2-e8" class="abs card" style="left:1240px;top:410px;width:500px;padding:18px 28px;font-size:30px;font-weight:600"><span style="color:var(--soft);font-weight:400">9</span>&nbsp; Boundary conditions</div><div id="s2-m" class="abs card mono" style="left:160px;top:560px;width:1600px">
-<div id="s2-m1"><span class="pill prop">proposed</span>Developers treat assistant output as a draft to verify.</div>
-<div id="s2-m2"><span class="pill stat">stated</span>"We only interviewed people with five or more years of experience."</div>
-<div id="s2-m3"><span class="pill acc">accepted</span>The study asks how senior developers decide when to trust an assistant.</div></div>
-<div id="s2-src" class="abs src">Dorobantu, Gruber, Ravasi &amp; Wellman (2024). The AMJ Management Research Canvas. <i>Academy of Management Journal</i>, 67(5), 1163–1174. doi:10.5465/amj.2024.4005</div>
+<img id="s2-poster" class="shot" src="img/poster.png">
+<div id="s2-m" class="abs card mono" style="left:160px;top:400px;width:1600px">
+<div id="s2-m1"><span class="pill prop">proposed</span>The interviews hold accounts of validation, not observations of it.</div>
+<div id="s2-m2"><span class="pill stat">stated</span>How do senior developers decide whether to rely on what an AI assistant produced?</div>
+<div id="s2-m3"><span class="pill acc">accepted</span>Developers who use an AI assistant every day say they still do not take its output on trust.</div></div>
+<div id="s2-src" class="abs src" style="background:rgba(235,242,235,.92);padding:8px 14px;border-radius:8px">Dorobantu, Gruber, Ravasi &amp; Wellman (2024). The AMJ Management Research Canvas. <i>Academy of Management Journal</i>, 67(5), 1163–1174. doi:10.5465/amj.2024.4005</div>
 <div class="abs foot">research-harness</div>
 </div>
 <div id="scene3" class="clip scene" data-start="31.96" data-duration="15.58" data-track-index="1">
 <div id="s3-h" class="abs h2" style="left:160px;top:150px">Agents propose. <span style="color:var(--action)">Only you accept.</span></div>
-<div id="s3-t" class="abs term" style="left:160px;top:300px;width:1600px"><span class="p">$</span> research-harness accept 3.1 --explained <span id="s3-x">"The interviews show trust is negotiated case by case."</span></div>
+<div id="s3-t" class="abs term" style="left:160px;top:300px;width:1600px"><span class="p">$</span> research-harness accept 1.1 --explained <span id="s3-x">"I accept that these developers say they do not take the assistant's output on trust; what they do instead is the puzzle."</span></div>
 <div id="s3-log" class="abs card mono" style="left:160px;top:520px;width:1600px">research/decisions.md
-<div id="s3-l1" style="margin-top:12px">#14 ACCEPT 3.1 · By: researcher <span class="tag ok" style="margin-left:20px">seal verifies</span></div>
-<div id="s3-l2">#15 ACCEPT 4.2 · typed in by hand <span class="tag bad" style="margin-left:20px">does not verify</span></div></div>
+<div id="s3-l1" style="margin-top:12px">#3 Decision 1.1 · By: A. Author <span class="tag ok" style="margin-left:20px">seal verifies</span></div>
+<div id="s3-l2">#4 Decision 3.1 · typed in by hand <span class="tag bad" style="margin-left:20px">does not verify</span></div></div>
 <div class="abs foot">research-harness</div>
 </div>
 <div id="scene4" class="clip scene" data-start="47.54" data-duration="11.4" data-track-index="1">
@@ -65,7 +67,8 @@ body{font-family:'Hanken Grotesk',sans-serif;color:var(--ink)}
 <div class="abs foot">research-harness</div>
 </div>
 <div id="scene5" class="clip scene" data-start="58.94" data-duration="9.64" data-track-index="1">
-<div id="s5-f0" class="abs card" style="left:160px;top:250px;width:505px;height:360px"><div class="kicker">Framing A</div><div class="h2" style="font-size:44px;margin-top:20px">Sensemaking</div><div id="s5-r0" class="body" style="font-size:28px;margin-top:40px">set aside: <i>reason recorded</i></div></div><div id="s5-f1" class="abs card" style="left:705px;top:250px;width:505px;height:360px"><div class="kicker">Framing B</div><div class="h2" style="font-size:44px;margin-top:20px">Trust calibration</div><div id="s5-r1" class="body" style="font-size:28px;margin-top:40px"><span class="tag ok">chosen</span></div></div><div id="s5-f2" class="abs card" style="left:1250px;top:250px;width:505px;height:360px"><div class="kicker">Framing C</div><div class="h2" style="font-size:44px;margin-top:20px">Boundary work</div><div id="s5-r2" class="body" style="font-size:28px;margin-top:40px">set aside: <i>reason recorded</i></div></div>
+<img id="s5-cmp" class="shot" src="img/compare.png">
+<img id="s5-log" class="shot" src="img/log.png">
 <div class="abs foot">research-harness</div>
 </div>
 <div id="scene6" class="clip scene" data-start="68.58" data-duration="11.5" data-track-index="1">
@@ -87,12 +90,12 @@ body{font-family:'Hanken Grotesk',sans-serif;color:var(--ink)}
 <div class="abs foot">research-harness</div>
 </div>
 <div id="scene8" class="clip scene" data-start="91.48" data-duration="11.96" data-track-index="1">
-<div id="s8-r" class="abs card mono" style="left:160px;top:180px;width:820px;font-size:26px"><div class="kicker" style="font-family:'Hanken Grotesk'">review</div>
-<div id="s8-1" style="margin-top:16px">open: 6 Findings, 8 Contributions</div>
-<div id="s8-2">stale: 3.1 text changed after acceptance</div>
-<div id="s8-3">no source: 5.2</div></div>
-<div id="s8-v" class="abs card" style="left:1060px;top:180px;width:700px;font-size:28px"><div class="kicker">Session view · History</div>
-<div id="s8-h1" style="margin-top:16px">accepted 3.1 · <b>Researcher</b></div><div id="s8-h2">commented 4.1 · <b>Co-author</b></div><div id="s8-h3">accepted 4.1 · <b>Co-author</b></div></div>
+<div id="s8-r" class="abs card mono" style="left:160px;top:220px;width:1100px;font-size:30px"><div class="kicker" style="font-family:'Hanken Grotesk'">review</div>
+<div id="s8-1" style="margin-top:16px">open: 7 Findings, 9 Boundary conditions · empty: 2, 4, 5, 6, 8</div>
+<div id="s8-2">stale: none</div>
+<div id="s8-3">no source or unverified tag: 3.1</div></div>
+<img id="s8-ag" class="shot" src="img/agenda.png">
+<img id="s8-log" class="shot" src="img/log.png">
 <div class="abs foot">research-harness</div>
 </div>
 <div id="scene9" class="clip scene" data-start="103.44" data-duration="9.64" data-track-index="1">
@@ -119,7 +122,8 @@ tl.from("#s1-b",{opacity:0,y:40,duration:.6},4.04)
 tl.from("#s1-c",{opacity:0,y:40,duration:.6},4.93)
 tl.from("#s1-q",{opacity:0,y:30,duration:.8},9.28)
 tl.to("#scene1",{opacity:0,duration:.3},12.5)
-tl.from(["#s2-e0","#s2-e1","#s2-e2","#s2-e3","#s2-e4","#s2-e5","#s2-e6","#s2-e7","#s2-e8"],{opacity:0,y:20,duration:.4,stagger:.18},17.520000000000003)
+tl.from("#s2-poster",{opacity:0,scale:1.04,duration:.8},13.0)
+tl.to("#s2-poster",{opacity:.25,duration:.5},24.13)
 tl.from("#s2-src",{opacity:0,duration:.6},18.81)
 tl.to("#s2-src",{opacity:0,duration:.6},23.41)
 tl.from("#s2-m",{opacity:0,y:30,duration:.6},24.43)
@@ -138,10 +142,8 @@ tl.from("#s4-t",{opacity:0,y:20,duration:.6},47.74)
 tl.from("#s4-r",{opacity:0,duration:.4},48.91)
 tl.from("#s4-c",{opacity:0,y:20,duration:.6},52.94)
 tl.to("#scene4",{opacity:0,duration:.3},58.64)
-tl.from(["#s5-f0","#s5-f1","#s5-f2"],{opacity:0,y:40,duration:.6,stagger:.25},59.239999999999995)
-tl.from(["#s5-r0","#s5-r1","#s5-r2"],{opacity:0,duration:.01},62.94)
-tl.to(["#s5-f0","#s5-f2"],{opacity:.45,duration:.6},64.17)
-tl.to("#s5-f1",{borderColor:"#154b38",duration:.4},62.94)
+tl.from("#s5-cmp",{opacity:0,duration:.6},59.04)
+tl.from("#s5-log",{opacity:0,duration:.6},64.17)
 tl.to("#scene5",{opacity:0,duration:.3},68.28)
 tl.from("#s6-g",{opacity:0,y:30,duration:.6},68.78)
 tl.set("#s6-d2",{opacity:0},68.58)
@@ -161,8 +163,8 @@ tl.from("#s8-r",{opacity:0,y:30,duration:.6},91.68)
 tl.from("#s8-1",{opacity:0,duration:.3},93.66)
 tl.from("#s8-2",{opacity:0,duration:.3},94.42)
 tl.from("#s8-3",{opacity:0,duration:.3},96.08)
-tl.from("#s8-v",{opacity:0,x:30,duration:.6},96.59)
-tl.from(["#s8-h1","#s8-h2","#s8-h3"],{opacity:0,duration:.3,stagger:.3},101.37)
+tl.from("#s8-ag",{opacity:0,duration:.6},96.59)
+tl.from("#s8-log",{opacity:0,duration:.6},101.07000000000001)
 tl.to("#scene8",{opacity:0,duration:.3},103.14)
 tl.from("#s9-a",{opacity:0,duration:.6},103.64)
 tl.from("#s9-b",{opacity:0,y:30,duration:.7},106.08)

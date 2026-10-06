@@ -1,8 +1,10 @@
 """Builds index.html from scenes.json. The voice sets each scene's length; reveals are pinned to the
 word timestamps in audio/s<n>.json, so a re-voiced scene keeps its picture in sync.
 
-Rough cut: every scene is typeset. UI scenes (2, 5, 8) will take frames from
-scripts/capture-session-view.js once the accessible-UI lane reports "UI steht"."""
+UI frames in img/ come from scripts/capture-session-view.js on docs/media/showcase-state.json:
+  for v in poster compare agenda log; do node scripts/capture-session-view.js --view $v \
+    --width 1920 --height 1080 --out videos/research-harness-tour/hf/img/$v.png; done
+Rerun that after a UI change, then build and render."""
 import json
 
 sc = json.load(open('scenes.json'))
@@ -56,6 +58,7 @@ body{font-family:'Hanken Grotesk',sans-serif;color:var(--ink)}
 .bad{background:var(--bad-bg);color:var(--bad)}
 .warn{background:var(--warn-bg);color:var(--warn)}
 .src{left:120px;bottom:54px;font-size:22px;color:var(--soft);max-width:1380px}
+.shot{position:absolute;inset:0;width:1920px;height:1080px;object-fit:cover}
 .foot{right:120px;bottom:54px;font-size:22px;color:var(--soft);letter-spacing:.08em;font-weight:600}
 '''
 
@@ -79,13 +82,15 @@ els = ['Puzzle', 'Audience & prior research', 'Research question', 'Constructs',
        'Design & analysis', 'Findings', 'Contributions', 'Boundary conditions']
 grid = ''.join(f'<div id="s2-e{n}" class="abs card" style="left:{160+(n%3)*540}px;top:{170+(n//3)*120}px;width:500px;padding:18px 28px;font-size:30px;font-weight:600">'
                f'<span style="color:var(--soft);font-weight:400">{n+1}</span>&nbsp; {e}</div>' for n, e in enumerate(els))
-body[2] = grid + '''<div id="s2-m" class="abs card mono" style="left:160px;top:560px;width:1600px">
-<div id="s2-m1"><span class="pill prop">proposed</span>Developers treat assistant output as a draft to verify.</div>
-<div id="s2-m2"><span class="pill stat">stated</span>"We only interviewed people with five or more years of experience."</div>
-<div id="s2-m3"><span class="pill acc">accepted</span>The study asks how senior developers decide when to trust an assistant.</div></div>
-<div id="s2-src" class="abs src">Dorobantu, Gruber, Ravasi &amp; Wellman (2024). The AMJ Management Research Canvas. <i>Academy of Management Journal</i>, 67(5), 1163–1174. doi:10.5465/amj.2024.4005</div>'''
+body[2] = '''<img id="s2-poster" class="shot" src="img/poster.png">
+<div id="s2-m" class="abs card mono" style="left:160px;top:400px;width:1600px">
+<div id="s2-m1"><span class="pill prop">proposed</span>The interviews hold accounts of validation, not observations of it.</div>
+<div id="s2-m2"><span class="pill stat">stated</span>How do senior developers decide whether to rely on what an AI assistant produced?</div>
+<div id="s2-m3"><span class="pill acc">accepted</span>Developers who use an AI assistant every day say they still do not take its output on trust.</div></div>
+<div id="s2-src" class="abs src" style="background:rgba(235,242,235,.92);padding:8px 14px;border-radius:8px">Dorobantu, Gruber, Ravasi &amp; Wellman (2024). The AMJ Management Research Canvas. <i>Academy of Management Journal</i>, 67(5), 1163–1174. doi:10.5465/amj.2024.4005</div>'''
 anim[2] = lambda s, L: [
-    f'tl.from([{",".join(chr(34)+"#s2-e"+str(n)+chr(34) for n in range(9))}],{{opacity:0,y:20,duration:.4,stagger:.18}},{at(2,"nine",fallback=3)-0.4})',
+    f'tl.from("#s2-poster",{{opacity:0,scale:1.04,duration:.8}},{s+0.2})',
+    f'tl.to("#s2-poster",{{opacity:.25,duration:.5}},{at(2,"marker",fallback=10)-0.3})',
     f'tl.from("#s2-src",{{opacity:0,duration:.6}},{at(2,"AMJ",fallback=4)})',
     f'tl.to("#s2-src",{{opacity:0,duration:.6}},{at(2,"every",fallback=10)})',
     f'tl.from("#s2-m",{{opacity:0,y:30,duration:.6}},{at(2,"marker",fallback=10)})',
@@ -95,10 +100,10 @@ anim[2] = lambda s, L: [
 
 # 3 Accept
 body[3] = '''<div id="s3-h" class="abs h2" style="left:160px;top:150px">Agents propose. <span style="color:var(--action)">Only you accept.</span></div>
-<div id="s3-t" class="abs term" style="left:160px;top:300px;width:1600px"><span class="p">$</span> research-harness accept 3.1 --explained <span id="s3-x">"The interviews show trust is negotiated case by case."</span></div>
+<div id="s3-t" class="abs term" style="left:160px;top:300px;width:1600px"><span class="p">$</span> research-harness accept 1.1 --explained <span id="s3-x">"I accept that these developers say they do not take the assistant\'s output on trust; what they do instead is the puzzle."</span></div>
 <div id="s3-log" class="abs card mono" style="left:160px;top:520px;width:1600px">research/decisions.md
-<div id="s3-l1" style="margin-top:12px">#14 ACCEPT 3.1 · By: researcher <span class="tag ok" style="margin-left:20px">seal verifies</span></div>
-<div id="s3-l2">#15 ACCEPT 4.2 · typed in by hand <span class="tag bad" style="margin-left:20px">does not verify</span></div></div>'''
+<div id="s3-l1" style="margin-top:12px">#3 Decision 1.1 · By: A. Author <span class="tag ok" style="margin-left:20px">seal verifies</span></div>
+<div id="s3-l2">#4 Decision 3.1 · typed in by hand <span class="tag bad" style="margin-left:20px">does not verify</span></div></div>'''
 anim[3] = lambda s, L: [
     f'tl.from("#s3-h",{{opacity:0,y:20,duration:.6}},{s+0.2})',
     f'tl.from("#s3-t",{{opacity:0,y:20,duration:.5}},{at(3,"sentence",fallback=4)-0.6})',
@@ -115,17 +120,12 @@ anim[4] = lambda s, L: [
     f'tl.from("#s4-r",{{opacity:0,duration:.4}},{at(4,"refuses",fallback=2)})',
     f'tl.from("#s4-c",{{opacity:0,y:20,duration:.6}},{at(4,"guardrail",fallback=5)})']
 
-# 5 Framings
-fr = ['Sensemaking', 'Trust calibration', 'Boundary work']
-body[5] = ''.join(f'<div id="s5-f{n}" class="abs card" style="left:{160+n*545}px;top:250px;width:505px;height:360px"><div class="kicker">Framing {"ABC"[n]}</div>'
-                  f'<div class="h2" style="font-size:44px;margin-top:20px">{f}</div><div id="s5-r{n}" class="body" style="font-size:28px;margin-top:40px">'
-                  f'{"<span class=&quot;tag ok&quot;>chosen</span>" if n==1 else "set aside: <i>reason recorded</i>"}</div></div>' for n, f in enumerate(fr))
-body[5] = body[5].replace('&quot;', '"')
+# 5 Framings (session view: compare, then history with the reasons)
+body[5] = '''<img id="s5-cmp" class="shot" src="img/compare.png">
+<img id="s5-log" class="shot" src="img/log.png">'''
 anim[5] = lambda s, L: [
-    f'tl.from(["#s5-f0","#s5-f1","#s5-f2"],{{opacity:0,y:40,duration:.6,stagger:.25}},{s+0.3})',
-    f'tl.from(["#s5-r0","#s5-r1","#s5-r2"],{{opacity:0,duration:.01}},{at(5,"pick",fallback=4)})',
-    f'tl.to(["#s5-f0","#s5-f2"],{{opacity:.45,duration:.6}},{at(5,"others",fallback=5)})',
-    f'tl.to("#s5-f1",{{borderColor:"#154b38",duration:.4}},{at(5,"pick",fallback=4)})']
+    f'tl.from("#s5-cmp",{{opacity:0,duration:.6}},{s+0.1})',
+    f'tl.from("#s5-log",{{opacity:0,duration:.6}},{at(5,"others",fallback=5)})']
 
 # 6 Glossary
 body[6] = '''<div id="s6-g" class="abs card" style="left:160px;top:200px;width:760px"><div class="kicker">research/glossary.md</div>
@@ -157,20 +157,20 @@ anim[7] = lambda s, L: [
     f'tl.from("#s7-no",{{opacity:0,scale:.8,duration:.3}},{at(7,"word",nth=2,fallback=6)})',
     f'tl.from("#s7-r",{{opacity:0,duration:.4}},{at(7,"word",nth=2,fallback=6)+0.8})']
 
-# 8 Review and co-authors
-body[8] = '''<div id="s8-r" class="abs card mono" style="left:160px;top:180px;width:820px;font-size:26px"><div class="kicker" style="font-family:'Hanken Grotesk'">review</div>
-<div id="s8-1" style="margin-top:16px">open: 6 Findings, 8 Contributions</div>
-<div id="s8-2">stale: 3.1 text changed after acceptance</div>
-<div id="s8-3">no source: 5.2</div></div>
-<div id="s8-v" class="abs card" style="left:1060px;top:180px;width:700px;font-size:28px"><div class="kicker">Session view · History</div>
-<div id="s8-h1" style="margin-top:16px">accepted 3.1 · <b>Researcher</b></div><div id="s8-h2">commented 4.1 · <b>Co-author</b></div><div id="s8-h3">accepted 4.1 · <b>Co-author</b></div></div>'''
+# 8 Review, then the session view for a meeting
+body[8] = '''<div id="s8-r" class="abs card mono" style="left:160px;top:220px;width:1100px;font-size:30px"><div class="kicker" style="font-family:'Hanken Grotesk'">review</div>
+<div id="s8-1" style="margin-top:16px">open: 7 Findings, 9 Boundary conditions · empty: 2, 4, 5, 6, 8</div>
+<div id="s8-2">stale: none</div>
+<div id="s8-3">no source or unverified tag: 3.1</div></div>
+<img id="s8-ag" class="shot" src="img/agenda.png">
+<img id="s8-log" class="shot" src="img/log.png">'''
 anim[8] = lambda s, L: [
     f'tl.from("#s8-r",{{opacity:0,y:30,duration:.6}},{s+0.2})',
     f'tl.from("#s8-1",{{opacity:0,duration:.3}},{at(8,"open",fallback=2)})',
     f'tl.from("#s8-2",{{opacity:0,duration:.3}},{at(8,"stale",fallback=3)})',
     f'tl.from("#s8-3",{{opacity:0,duration:.3}},{at(8,"source",fallback=4)})',
-    f'tl.from("#s8-v",{{opacity:0,x:30,duration:.6}},{at(8,"co-authors",fallback=5)})',
-    f'tl.from(["#s8-h1","#s8-h2","#s8-h3"],{{opacity:0,duration:.3,stagger:.3}},{at(8,"records",fallback=8)})']
+    f'tl.from("#s8-ag",{{opacity:0,duration:.6}},{at(8,"co-authors",fallback=5)})',
+    f'tl.from("#s8-log",{{opacity:0,duration:.6}},{at(8,"records",fallback=8)-0.3})']
 
 # 9 Close
 body[9] = '''<div id="s9-a" class="abs h2" style="left:160px;top:220px;color:var(--soft)">It will not tell you whether your research is good.</div>

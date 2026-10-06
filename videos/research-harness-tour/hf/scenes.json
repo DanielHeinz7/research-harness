@@ -1,0 +1,56 @@
+[
+ {
+  "title": "Opening",
+  "text": "AI agents can now do real work on a paper. They draft framings, write literature notes, and question your argument. The hard part comes later, when a reviewer or a co-author asks which of those parts you actually committed to, and why.",
+  "dur": 11.8,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "The canvas",
+  "text": "research-harness keeps a paper project in one file, the research canvas. It follows the nine elements of the AMJ Management Research Canvas, from the puzzle to the boundary conditions. Every statement carries a marker. Proposed means an agent suggested it. Stated is something you said. Accepted means you read it and committed to it.",
+  "dur": 18.16,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "Only you accept",
+  "text": "Agents propose. Only you accept, and only with one sentence of your own about why the statement holds. That acceptance goes into a decision log that only grows. Each entry is sealed with a key kept outside the repository, so a line someone typed into the log by hand does not verify.",
+  "dur": 14.58,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "An honest guardrail",
+  "text": "A Claude Code hook refuses the agent's own attempts to accept or to rewrite what you said. It is a guardrail against an agent overstepping, not a lock, and the technical appendix shows where it ends.",
+  "dur": 10.4,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "Compare framings",
+  "text": "Parallel agents can write the same study under different lenses. You pick one framing. The others stay in the record, together with your reason for setting them aside.",
+  "dur": 8.64,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "Construct glossary",
+  "text": "Constructs get one definition each, in a glossary. The canvas and the manuscript cite it. When an accepted definition changes, everything that cites it is flagged as stale.",
+  "dur": 10.5,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "Literature notes",
+  "text": "The assistant can draft a literature note from a paper on your disk. The note is refused unless every quotation appears word for word on the page it cites. Paraphrases and numbers are not checked, so you still read the paper.",
+  "dur": 10.4,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "Review, two people, one view",
+  "text": "A read-only review lists what is open, what went stale, and which statements have no source. A researcher and a supervisor can share one canvas and go through it in the browser view during a meeting. The log records who wrote each entry.",
+  "dur": 12.4,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ },
+ {
+  "title": "Limits and start",
+  "text": "It will not tell you whether your research is good. It keeps track of what you decided. To try it, install the plugin in Claude Code and run the canvas on your own paper.",
+  "dur": 8.64,
+  "voice": "ievot1Qdhr2rhgyi2h1Y"
+ }
+]

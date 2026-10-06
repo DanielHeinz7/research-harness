@@ -644,6 +644,7 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, glossaryT
     unverifiedDecisions,
     glossary,
     glossaryStaleAcceptances,
+    glossaryAcceptances: acceptedEntries.filter((a) => a.coveredBy && a.coveredBy.state === 'verified'),
     glossaryUnloggedAcceptances,
     ledger,
     // The `Glossary mechanics` group of the review, present when the caller

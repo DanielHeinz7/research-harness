@@ -214,3 +214,22 @@ test('hypotheses-before-data does not read a session occasion that starts with a
   const merged = logOf([{ kind: 'MERGE', ref: 'from abc1234', body: 'Taken up to #1.' }, { kind: 'DISCOVERY', ref: '2.1 check' }]);
   assert.deepEqual(review.findingsBeforeHypotheses(merged), []);
 });
+
+
+test('SQ-212: glossary acceptances contain only entries with verified DECISION cover', () => {
+  const glossaryText = '---\nglossary-schema: 1\n---\n\n## quiet-window\n\nTerm: Quiet window\nDefinition: An invented observation.\nOrigin: own-definition\nDistinctions: Unlike delay, it is an expectation.\n[accepted]\n';
+  const entry = require('../hooks/lib/glossary').parseGlossary(glossaryText).entries[0];
+  const hash = require('../hooks/lib/glossary').payloadHash(entry);
+  const log = tempLog('');
+  seal.sealedAppend(log, { date: '2026-10-06', kind: 'DECISION', ref: 'glossary quiet-window accepted', hash, body: JSON.stringify(require('../hooks/lib/glossary').entryPayload(entry)), explained: 'An invented reason.' }, KEY, { decision: true });
+  const decision = fs.readFileSync(log, 'utf8');
+  const inspect = (decisionsText, key) => review.mechanicalReview({ parsed: canvas.parseCanvas(canvasText), graph: null, glossaryText, decisionsText, key });
+  for (const [label, text, key] of [['missing decision', '', KEY], ['missing key', decision, null], ['broken seal', decision.replace('An invented reason.', 'Changed reason.'), KEY]]) {
+    const report = inspect(text, key);
+    assert.equal(report.glossaryAcceptances.length, 0, label + ' is excluded from verified glossary acceptances');
+    assert.equal(report.glossaryUnloggedAcceptances[0].id, 'quiet-window', label + ' is unlogged');
+  }
+  const report = inspect(decision, KEY);
+  assert.equal(report.glossaryAcceptances[0].id, 'quiet-window', 'a verified DECISION is included');
+  assert.equal(report.glossaryUnloggedAcceptances.length, 0, 'verified cover is not unlogged');
+});

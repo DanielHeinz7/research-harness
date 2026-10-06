@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 
 const canvas = require('./canvas');
 const decisions = require('./decisions');
@@ -121,7 +122,7 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
   const state = loadState(root, { pluginRoot });
   if (state.error) return refuse(state.code, state.error);
   if (typeof id !== 'string' || !glossary.ID_RE.test(id)) return refuse('invalid', 'glossary accept needs an entry id like felt-safety: lowercase letters, digits and hyphens, the heading of the entry.', true);
-  if (expectedHash !== undefined && typeof expectedHash !== 'string') return refuse('invalid', 'expectedHash must be a payload hash.');
+  if (expectedHash !== undefined && (typeof expectedHash !== 'string' || !/^[0-9a-f]{64}$/.test(expectedHash))) return refuse('invalid', 'expectedHash must be the full SHA-256 binding digest from glossary show.');
   // Every acceptance carries the researcher's own one-sentence explanation of
   // what they accept; without it nothing is accepted.
   if (typeof explained !== 'string' || !explained.trim()) {
@@ -165,8 +166,8 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
   if (unmet.length) {
     return refuse('dependency', `Cannot accept ${id}: element 4 depends on ${unmet.map((d) => `element ${d.element} is ${d.status}`).join(', ')}. Accept those first, or change the graph in the profile.`);
   }
-  // A verified ledger and writable rollback handles are needed before either
-  // file moves; the coupled write below restores both on an I/O failure.
+  // A verified ledger is needed before either file moves. Recovery below is
+  // compare-and-restore, not a transaction across processes or crashes.
   const refusal = ledgerRefusal(state);
   if (refusal) return refuse(refusal.code, `Cannot accept ${id}: ${refusal.error}`);
 
@@ -174,9 +175,10 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
   // if the entry changed while the view was open, the hashes differ and nothing
   // is written.
   const payload = glossary.entryPayload(entry);
+  const digest = glossary.bindingDigest(entry);
   const hash = glossary.payloadHash(entry);
-  if (expectedHash !== undefined && expectedHash !== hash) {
-    return refuse('stale', `The glossary entry ${id} no longer holds the text you saw (it now hashes ${hash}); reload and look again. Nothing is accepted.`);
+  if (expectedHash !== undefined && expectedHash !== digest) {
+    return refuse('stale', `The glossary entry ${id} no longer holds the text you saw (its binding digest is now ${digest}); reload and look again. Nothing is accepted.`);
   }
 
   const logged = writeGlossaryDecision(state, text, glossary.withEntryMarker(text, entry, 'accepted'), {
@@ -193,27 +195,59 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
   return { ok: true, seq: logged.seq, seal: logged.seal, hash, id, term: entry.term, payload, was: entry.marker };
 }
 
-// Open non-truncating rollback handles before writing. Their offsets remain at
-// zero, so recovery restores the original glossary even after a partial write;
-// truncating the ledger removes any bytes a failed append managed to write.
-// This is synchronous I/O recovery, not a cross-process or crash transaction.
+// Publish a complete glossary in one rename, keeping the original file's mode.
+// The temporary file is beside it so rename stays on the same filesystem.
+function atomicGlossaryWrite(file, text) {
+  const temp = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}`);
+  try {
+    const mode = fs.statSync(file).mode;
+    fs.writeFileSync(temp, text, { flag: 'wx', mode });
+    fs.chmodSync(temp, mode);
+    fs.renameSync(temp, file);
+  } finally {
+    fs.rmSync(temp, { force: true });
+  }
+}
+
+// A partial failed append is ours only while the whole file is an exact prefix
+// of the prepared ledger. A changed prefix, extra append or replaced file gives
+// no permission to truncate. This comparison is not a cross-process lock.
+function rollbackGlossaryLedger(file, fd, before, expected) {
+  const current = fs.readFileSync(file);
+  const opened = fs.fstatSync(fd);
+  const named = fs.statSync(file);
+  if (opened.dev !== named.dev || opened.ino !== named.ino) return;
+  if (opened.size !== current.length || named.size !== current.length) return;
+  if (current.length <= before.length || current.length > expected.length) return;
+  if (current.equals(expected.subarray(0, current.length))) fs.ftruncateSync(fd, before.length);
+}
+
+// The ledger is rolled back first, so a failed glossary restore cannot skip an
+// eligible ledger truncate. Both recoveries require the bytes we wrote to
+// still be present. A crash between publication and append leaves an unlogged
+// [accepted] marker; review reports it, rather than treating it as acceptance.
 function writeGlossaryDecision(state, before, after, fields) {
   const ledgerFd = fs.openSync(state.paths.decisions, 'r+');
   try {
-    const length = fs.fstatSync(ledgerFd).size;
-    const glossaryFd = fs.openSync(state.paths.glossary, 'r+');
+    const original = fs.readFileSync(ledgerFd);
+    const current = original.toString('utf8');
+    const seq = decisions.parseDecisions(current).maxSeq + 1;
+    const prepared = seal.sealEntry(seal.lastSealOf(current), { ...fields, seq }, state.key);
+    const expected = Buffer.concat([original, Buffer.from(decisions.separatorAfter(current) + prepared.text)]);
+    let published = false;
     try {
+      atomicGlossaryWrite(state.paths.glossary, after);
+      published = true;
+      return seal.sealedAppend(state.paths.decisions, fields, state.key, { decision: true });
+    } catch (err) {
       try {
-        fs.writeFileSync(state.paths.glossary, after);
-        return seal.sealedAppend(state.paths.decisions, fields, state.key, { decision: true });
-      } catch (err) {
-        fs.writeFileSync(glossaryFd, before);
-        fs.ftruncateSync(glossaryFd, Buffer.byteLength(before));
-        fs.ftruncateSync(ledgerFd, length);
-        throw err;
+        rollbackGlossaryLedger(state.paths.decisions, ledgerFd, original, expected);
+      } finally {
+        if (published && fs.readFileSync(state.paths.glossary).equals(Buffer.from(after))) {
+          atomicGlossaryWrite(state.paths.glossary, before);
+        }
       }
-    } finally {
-      fs.closeSync(glossaryFd);
+      throw err;
     }
   } finally {
     fs.closeSync(ledgerFd);

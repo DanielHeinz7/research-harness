@@ -33,7 +33,7 @@ const USAGE = [
   'research-harness agenda [--out <file>]',
   'research-harness accept <n.m> --explained <text> [--match <substring>] [--why <text>] [--rejected <text>]',
   'research-harness glossary show <id>',
-  'research-harness glossary accept <id> --hash <8hex> --explained <text> [--why <text>] [--rejected <text>]',
+  'research-harness glossary accept <id> --hash <64hex> --explained <text> [--why <text>] [--rejected <text>]',
   'research-harness choose <name> --why <text> [--rejected <text>]',
   'research-harness log DISCOVERY|CONSTRAINT <ref> --body <text> [--why <text>] [--supersedes <n>] [--variant <name>]',
   'research-harness title [<text>]',
@@ -383,6 +383,8 @@ function review(flags) {
   lines.push('## Stale acceptances', ...(report.staleAcceptances.length ? report.staleAcceptances.map((s) => `#${s.seq} ${s.ref} — text ${s.hash} no longer matches any accepted statement`) : ['none']), '');
   lines.push('## Unlogged acceptances', '(no verified DECISION entry accounts for these)', ...(report.unloggedAcceptances.length ? report.unloggedAcceptances.map((s) => `${s.question} (line ${s.line}): ${s.text}${coverNote(s.coveredBy)}`) : ['none']), '');
   lines.push('## Unverified decisions', '(DECISION entries that give no cover)', ...(report.unverifiedDecisions.length ? report.unverifiedDecisions.map((d) => `#${d.seq} ${d.ref} — ${COVER_STATE[d.state]}`) : ['none']), '');
+  lines.push('## Glossary acceptances', ...(report.glossaryAcceptances.length ? report.glossaryAcceptances.map((a) => `${a.id} (line ${a.line}): ${a.term} — verified DECISION #${a.coveredBy.seq}, payload ${a.hash}`) : ['none']), '');
+  lines.push('## Unlogged glossary acceptances', '(no verified DECISION entry accounts for these)', ...(report.glossaryUnloggedAcceptances.length ? report.glossaryUnloggedAcceptances.map((a) => `${a.id} (line ${a.line}): ${a.term} — unlogged${coverNote(a.coveredBy)}`) : ['none']), '');
   // Glossary mechanics (SQ-204): declared construct coverage and drift. The two
   // boundary sentences print on every run, and a check that could not run says
   // `not checked` — an absent manuscript list or a failed read is never zero
@@ -478,7 +480,7 @@ function glossaryShow(id) {
   const entry = glossaryLib.entryById(loaded.parsed, id);
   if (!entry) return fail(`There is no glossary entry ${id}.`);
   say(JSON.stringify(glossaryLib.entryPayload(entry)));
-  say(`Payload hash: ${glossaryLib.payloadHash(entry)}`);
+  say(`Binding digest: ${glossaryLib.bindingDigest(entry)}`);
   return 0;
 }
 
@@ -488,7 +490,7 @@ function glossaryCommand(positional, flags) {
   if (flags.variant !== undefined) return fail(`glossary ${sub} works on the main glossary only; choose a framing with research-harness choose <name> first.\n${USAGE}`, 2);
   const id = positional[1];
   if (sub === 'show') return glossaryShow(id);
-  if (typeof flags.hash !== 'string' || !/^[0-9a-f]{8}$/.test(flags.hash)) return fail(`glossary accept requires --hash <8hex> from glossary show <id>.\n${USAGE}`, 2);
+  if (typeof flags.hash !== 'string' || !/^[0-9a-f]{64}$/.test(flags.hash)) return fail(`glossary accept requires --hash <64hex> from glossary show <id>.\n${USAGE}`, 2);
   const result = acceptGlossaryEntry({
     root: project.projectDir({}),
     id,

@@ -32,6 +32,7 @@
 // the only thing the payload hash excludes.
 
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 
 const canvas = require('./canvas');
@@ -381,6 +382,12 @@ function entryPayload(entry) {
   ];
 }
 
+// The human-facing binding uses the full digest, not the ledger's legacy
+// eight-hex identifier. Match textHash's normalization over canonical JSON.
+function bindingDigest(entry) {
+  return crypto.createHash('sha256').update(canvas.normalizeText(JSON.stringify(entryPayload(entry))), 'utf8').digest('hex');
+}
+
 function payloadHash(entry) {
   return textHash(JSON.stringify(entryPayload(entry)));
 }
@@ -474,6 +481,7 @@ module.exports = {
   referenceId,
   entryPayload,
   payloadHash,
+  bindingDigest,
   withEntryMarker,
   resolveLocal,
   resolveOrigin,

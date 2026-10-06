@@ -111,7 +111,7 @@ test('canvas proposes glossary entries and cites them without accepting', () => 
   assert.match(body, /\(research\/glossary\.md#felt-safety\)/);
   assert.match(body, /<!-- constructs: felt-safety, speaking-frequency -->/);
   assert.match(body, /never accept them/);
-  assert.match(body, /glossary-accept <id> --hash <8hex> --explained/);
+  assert.match(body, /glossary-accept <id> --hash <64hex> --explained/);
   assert.match(body, /Definition: pending/);
   assert.match(body, /element 4 emerges from the material/);
 });
@@ -212,4 +212,13 @@ test('the README and the technical appendix describe record-review citing words,
     const text = fs.readFileSync(file, 'utf8').replace(/\s+/g, ' ');
     assert.doesNotMatch(text, /`n\.m` with the text hash|statement number plus hash/, file);
   }
+});
+
+
+test('SQ-212: glossary acceptance skill states the crash window without an all-or-nothing promise', () => {
+  const { body } = readSkill('glossary-accept');
+  assert.match(body, /SHA-256/);
+  assert.match(body, /crash.*between.*writes/);
+  assert.match(body, /unlogged/);
+  assert.doesNotMatch(body, /neither file is left half-done/);
 });

@@ -4,9 +4,9 @@ This file documents the local stages of the literature-note design
 (`docs/superpowers/specs/literature-note-design.md`). It covers that design's
 package 1, turning one local PDF into a full text, a reduced request view and a
 page map that says which printed page each physical page is, and package 2, the
-fail-closed check of a note's quotations against that paper. The drafting
-adapter, the review loop and the skill are later packages; nothing here
-establishes a reviewed note or an accepted research claim.
+fail-closed check of a note's quotations against that paper. Package 3 adds the
+configured direct drafting adapter below. The skill and human review workflow
+are separate; nothing here establishes a reviewed note or an accepted claim.
 
 ## Why the printed page is the anchor
 
@@ -196,9 +196,152 @@ successful check cannot be quoted without its boundary.
 
 ## What these stages do not do
 
-They do not draft a note, do not accept a research claim, and do not touch the
-canvas or the decisions log. The drafting adapter, the review loop, the
-acceptance contract and the skill belong to later packages of the design: a
+They do not accept a research claim or touch the canvas or the decisions log.
+The adapter drafts proposals; the review workflow and skill are separate. A
 checked quotation is one input to a note, never a reviewed note, and neither a
 successful extraction nor a verified quotation follows from, or replaces, a
 human reading.
+
+
+## Configured direct draft adapter
+
+Run from the plugin directory after extraction and printed-page mapping:
+
+```sh
+python3 scripts/draft-literature-note.py --project /path/to/paper-project --inputs /path/to/inputs.json --gateway-config /path/to/local-gateway.json
+```
+
+Add `--variant alternate` for a selected variant. The adapter calls the existing
+`stateDirOf` in `hooks/lib/project.js`, including `RESEARCH_HARNESS_DIR`.
+It reads only the explicit paper, extraction/map and listed context files.
+It does not scan a library, discover sibling projects, read the canvas implicitly
+or write a canvas, glossary or decisions log. Python 3.11+, Node and the existing
+local extraction/checking tools are required. Exit 0 means a new proposal and
+its quote report were saved; every refusal exits 1. No agent exemption, tools,
+provider fallback or automatic acceptance is involved.
+
+The input JSON has these fields (all values below are invented):
+
+```json
+{
+  "pdf": "sources/meeting-paper.pdf",
+  "pageMap": "local-cache/meeting-paper.page-map.json",
+  "output": "notes/meeting-paper.proposed.md",
+  "bibliography": "Invented meeting paper",
+  "version": "fixture-v1",
+  "drafter": "selected-model",
+  "reader": "unknown",
+  "readCoverage": "unknown",
+  "context": ["research/canvas.md", "notes/selected-sibling.md"]
+}
+```
+
+Paths are explicit and project-relative, with symlink/traversal escapes refused.
+For an explicitly selected library paper, replace `pdf` with `libraryPointer`,
+relative to `RESEARCH_HARNESS_LIBRARY`; that one PDF may be outside the project.
+Supply exactly one of them. The page map must name those same PDF bytes.
+`context` is mandatory, even when empty. A canvas, glossary or decisions file
+in that list must belong to the selected main/variant state. Other local sibling
+notes must be individually named; missing files stop the request. Every metadata
+field is supplied by the caller; use `unknown` rather than inventing a reader or
+read coverage. The adapter renders quoted YAML scalar frontmatter itself and
+creates ordinary relative Markdown links to checked source/context targets.
+Model-generated frontmatter and links are rejected.
+
+The gateway JSON names an already approved local route. It has exactly:
+
+```json
+{
+  "protocol": "chat-completions",
+  "endpoint": "http://127.0.0.1:PORT/v1/chat/completions",
+  "model": "selected-model",
+  "contextBytes": 100000,
+  "maxOutputTokens": 2048,
+  "maxResponseBytes": 20000,
+  "timeoutSeconds": 60
+}
+```
+
+Replace `PORT` and the model with the existing approved route's configured
+values; this is a schema example, not a runnable service configuration.
+There are no public endpoint, model or context defaults. Only explicit HTTP
+loopback IP literals (`127.0.0.1`, `::1`) with a port and path are admitted.
+Userinfo, query strings, fragments, credentials and extra config fields are
+refused. The local gateway owns any upstream authentication. This adapter does
+not read keys, call an authenticated provider directly, honor proxy environment
+variables, follow redirects or retry. A loopback gateway does not mean inference
+happens on the user's computer. A config file is not evidence that a gateway's
+owner or upstream egress is approved; establish that separately before use.
+
+The wire request is non-streaming chat-completions JSON with `model`,
+`max_tokens`, `stream: false` and two `messages` (system instructions and user
+data). No tools are supplied. Paper data and selected judgment context are
+separate JSON string-valued data blocks; embedded instructions grant no authority.
+The configured `contextBytes` bounds the complete UTF-8 request payload, not a
+claimed tokenizer count. Configure it conservatively for the approved service's
+context window. Oversized input is refused, never shortened; HTTP context errors
+also refuse without retries. The complete response must be bounded JSON, name
+the requested model, have one assistant text choice and `finish_reason: stop`.
+An error, tool call, refusal, different model or truncation cannot become a note.
+A single subprocess owns the HTTP request; the parent kills and waits for it
+at the configured total deadline (at most 600 seconds), including slow replies.
+Gateway error bodies and configuration values are not copied to diagnostics.
+
+The required body headings, in order, are:
+
+```markdown
+# Literature note [proposed]
+## Factual account [proposed]
+## Quotations
+## Project relevance [proposed]
+## Transfer limits [proposed]
+## Open questions [proposed]
+```
+
+Every section must contain text. Non-quotation paragraphs start `[proposed]`;
+quotations use the strict blockquote grammar above. No generated frontmatter,
+links, HTML, code fences, `[stated]`, `[accepted]`, `fact-checked` or `human-read`
+labels are allowed. The final quote check uses the full extraction, not the
+lossy request view. Source, map, config and selected-context edits during the
+request refuse publication. All source hashes are rechecked before publication.
+
+Use a local, untracked extraction/cache directory. Failed responses stay beside
+the selected page map as `<output-stem>.draft.md` and a static
+`<output-stem>.diagnostic.json`; a failed quote check also keeps its local report.
+A failure before receiving text has only the diagnostic, not an invented draft.
+An existing diagnostic/draft/report refuses a new run: choose a separate proposal
+stem or deliberately move the old diagnostic before correction. The adapter does
+not manage `.gitignore`; exclude caches, raw responses and proposed excerpts
+from publication yourself. Publishing excerpts requires a separate human decision.
+
+On success, only the new proposed note and `<output-stem>.quote-check.json`
+are published at the selected output location. Publication refuses existing
+notes/reports, including concurrent winners; it never silently overwrites them.
+Staging files are removed on success, so editing a later diagnostic cannot alter
+the saved note. The report binds the exact final note, PDF, full extraction and
+map hashes. Re-run `verify-quotes.py` after any manual edit. The printed result
+shows the quotation inventory, supplied version and PDF hash and always carries
+the wording-only disclaimer. Paraphrase, numbers, attribution, relevance and
+transfer limits still need human inspection.
+
+### Manual live KIT smoke gate (not run by this package)
+
+With Daniel present, inspect the process, user-settings, project-settings and
+local-settings configuration levels without printing credentials. Confirm the
+existing gateway's owner, protocol, selected model, upstream destination and
+context/output limits before passing its configuration to the adapter. This is
+a new egress route and requires Daniel's approval; a refused route is a stop,
+not permission to substitute another provider or change hooks or permissions.
+The design's backlog-reported subagent refusal was not reproduced by these
+local tests and does not justify an exemption.
+
+Then run the documented extractor -> adapter -> quotation check sequence on
+one invented paper and invented project context using that approved route.
+Record only the configured model, status, elapsed time and final quotation count
+in private verification evidence; keep keys, paper contents and raw responses out
+of public logs. Verify the saved report with `verify-quotes.py --verify` and
+inspect the proposal metadata and relative links. If the service is unavailable,
+record its live behavior as UNVERIFIED. The package's tests exercise a local fake
+HTTP server only: no KIT request or four-level live-wiring validation was run.
+Independent candidate review of egress selection and final-output publication
+is required before integration; mocked HTTP cannot establish endpoint ownership.

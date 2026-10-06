@@ -167,3 +167,53 @@ test('the poster carries the paper title and the History both names', async () =
   assert.match(log.app.innerHTML, /A\. Author/);
   assert.match(log.app.innerHTML, /B\. Supervisor/);
 });
+
+// Expanding the unanswered group must preserve every prompt and its navigation;
+// first-load guidance must not turn the read-only example into a writable view.
+test('agenda disclosure keeps the discussion first and every unanswered prompt reachable', { skip: !chromium, timeout: 120000 }, async (t) => {
+  let browser;
+  try { browser = await chromium.launch(); } catch (err) {
+    if (!/Executable doesn't exist/.test(err.message)) throw err;
+    browser = await chromium.launch({ channel: 'chromium' });
+  }
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const writes = [];
+  await page.route('http://session.test/**', (route) => {
+    if (route.request().method() !== 'GET') writes.push(route.request().url());
+    return route.fulfill({
+      contentType: new URL(route.request().url()).pathname === '/fixture.json' ? 'application/json' : 'text/html',
+      body: new URL(route.request().url()).pathname === '/fixture.json' ? JSON.stringify(state) : html,
+    });
+  });
+  for (const [width, height] of [[1440, 900], [320, 720]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('http://session.test/?fixture=/fixture.json');
+    await page.waitForSelector('#poster.active');
+    assert.equal(await page.locator('.poster-orientation').isVisible(), true, 'guidance appears on first load');
+    await page.locator('#view-tabs [data-view-target="agenda"]').click();
+    assert.equal(await page.locator('#agenda .agenda-item-open').count(), 1, 'the real discussion remains prominent');
+    const gaps = page.locator('#agenda .agenda-gaps');
+    assert.equal(await gaps.getAttribute('open'), null, 'unanswered group starts compact');
+    assert.match(await gaps.locator(':scope > summary').textContent(), /23 questions in 9 fields/);
+    assert.equal(await page.locator('#agenda .agenda-gap-field').count(), 9, 'one group per field');
+    assert.equal(await page.locator('#agenda .agenda-gap-item').count(), 23, 'all prompts retained');
+    await gaps.locator(':scope > summary').focus();
+    await page.keyboard.press('Enter');
+    assert.notEqual(await gaps.getAttribute('open'), null, 'keyboard opens the group');
+    const field = page.locator('#agenda .agenda-gap-field').first();
+    await field.locator(':scope > summary').focus();
+    await page.keyboard.press('Enter');
+    const target = field.locator('.agenda-gap-item').first();
+    assert.equal(await target.isVisible(), true, 'the unanswered prompt is available');
+    const view = await target.getAttribute('data-view-target');
+    await target.click();
+    assert.equal(await page.locator('section[data-view="' + view + '"].active').count(), 1, 'prompt opens its field');
+    assert.match(await page.locator('section.active .empty-note').textContent(), /Read-only example.*cannot be saved/);
+    assert.equal(await page.locator('section.active [data-action], section.active textarea').count(), 0, 'fixture has no writable controls');
+    await page.locator('#view-tabs [data-view-target="log"]').click();
+    assert.doesNotMatch(await page.locator('#log').innerText(), /verified|seal|unverifiable/i, 'intact history has no integrity jargon');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width, 'expanded navigation and history still reflow');
+  }
+  assert.deepEqual(writes, [], 'exploring the read-only example saves nothing');
+});

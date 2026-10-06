@@ -483,19 +483,26 @@
   .agenda-findings { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: var(--type-body); }
   .agenda-findings li { margin-bottom: 4px; }
 
+  .agenda-gaps { margin-top: var(--space-group); color: var(--ink); }
+  .agenda-gaps > summary { font-weight: 700; }
+  .agenda-gaps summary { cursor: pointer; padding: 10px 0; }
+  .agenda-gap-count { font-size: var(--type-label); font-weight: 400; color: var(--ink-soft); }
+  .agenda-gap-fields { list-style: none; margin: 8px 0 0; padding: 0; }
+  .agenda-gap-field { border-top: 1px solid var(--border); }
+  .agenda-gap-field .num-badge { margin: 0 8px; }
   .agenda-gap-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .agenda-gap-item {
     width: 100%;
     text-align: left;
     cursor: pointer;
     background: transparent;
-    border: 1px dashed var(--line);
-    border-radius: var(--r-card);
+    border: 0;
+    border-radius: var(--r-input);
     padding: 10px 14px;
     font-size: var(--type-body);
     color: var(--ink-soft);
   }
-  .agenda-gap-item strong { color: var(--ink); font-weight: 700; }
+  .agenda-gap-item:hover { background: var(--surface); }
 
   /* -- Field (single) ------------------------------------------------- */
   .element-nav { display: flex; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
@@ -786,7 +793,7 @@
 
   @media print {
     #notice, #topbar, #rail, .action-btn, .comment-form, .stmt-actions,
-    .element-nav, .field-foot, .skip-link {
+    .element-nav, .field-foot, .skip-link, .poster-orientation {
       display: none !important;
     }
     .print-only { display: block !important; }
@@ -1266,6 +1273,7 @@
       + '<div class="poster-head">'
       + (outlet ? '<p class="poster-eyebrow">' + esc(outlet) + '</p>' : '')
       + '<h1 class="poster-title">' + esc(paperTitle(s)) + '</h1>'
+      + '<p class="view-sub poster-orientation">The paper&rsquo;s argument in nine fields. Open a field to comment, mark a statement as said, or accept it with your own sentence. Agents propose; you decide.</p>'
       + '</div>'
       + '<ol class="poster-grid">' + cells.join('') + '</ol>'
       + '</section>';
@@ -1412,7 +1420,7 @@
       : '';
 
     var commentForm = fixtureMode
-      ? '<p class="empty-note">Actions are disabled in fixture mode.</p>'
+      ? '<p class="empty-note">Read-only example. Explore the fields; notes and decisions cannot be saved here.</p>'
       : '<div class="comment-form">'
         + '<label>Something to talk about? Add a note for the meeting.<textarea data-comment-body-for="' + e.number + '"></textarea></label>'
         + '<label>Why (optional) <input type="text" data-comment-why-for="' + e.number + '"></label>'
@@ -1450,24 +1458,38 @@
         + '</button></li>';
     }).join('');
 
-    var gapItems = s.agenda.gaps.map(function (g) {
-      return '<li><button type="button" class="agenda-gap-item" data-view-target="element-' + g.number + '">'
-        + 'Not answered yet: <strong>' + esc(g.question) + '</strong> &mdash; ' + esc(g.text)
-        + '</button></li>';
-    }).join('');
-
-    var sections = '';
-    if (items) sections += '<ul class="agenda-list">' + items + '</ul>';
-    if (gapItems) {
-      sections += '<h3 class="view-sub" style="color:var(--ink);font-weight:700;margin-top:20px;">Not answered yet</h3>'
-        + '<ul class="agenda-gap-list">' + gapItems + '</ul>';
-    }
+    var sections = items ? '<ul class="agenda-list">' + items + '</ul>' : '';
+    sections += renderAgendaGaps(s.agenda.gaps);
     if (!sections) sections = '<p class="empty-note">Nothing to talk about right now.</p>';
 
     return '<section id="agenda" data-view="agenda" class="view page-section">'
-      + '<div class="view-head"><h2>To talk about</h2><p class="view-sub">Where the meeting starts.</p></div>'
+      + '<div class="view-head"><h2>To talk about</h2><p class="view-sub">Open questions and notes for the meeting. Open a field to add a comment.</p></div>'
       + sections
       + '</section>';
+  }
+
+  function renderGapField(group) {
+    return '<li><details class="agenda-gap-field"><summary><span class="num-badge">' + group.number + '</span>'
+      + '<strong>' + esc(group.question) + '</strong> <span class="agenda-gap-count">'
+      + group.gaps.length + (group.gaps.length === 1 ? ' question' : ' questions') + '</span></summary>'
+      + '<ul class="agenda-gap-list">' + group.gaps.map(function (g) {
+        return '<li><button type="button" class="agenda-gap-item" data-view-target="element-' + g.number + '">'
+          + esc(g.text) + '</button></li>';
+      }).join('') + '</ul></details></li>';
+  }
+
+  // Keep every unanswered prompt reachable, but let the discussion lead.
+  function renderAgendaGaps(gaps) {
+    if (!gaps.length) return '';
+    var groups = new Map();
+    gaps.forEach(function (g) {
+      if (!groups.has(g.number)) groups.set(g.number, { number: g.number, question: g.question, gaps: [] });
+      groups.get(g.number).gaps.push(g);
+    });
+    return '<details class="agenda-gaps"><summary>Not answered yet <span class="agenda-gap-count">'
+      + gaps.length + (gaps.length === 1 ? ' question in ' : ' questions in ')
+      + groups.size + (groups.size === 1 ? ' field' : ' fields') + '</span></summary>'
+      + '<ul class="agenda-gap-fields">' + Array.from(groups.values()).map(renderGapField).join('') + '</ul></details>';
   }
 
   function historyLabel(kind) {
@@ -1484,13 +1506,13 @@
   // Each entry carries its `#seq`: "Open at acceptance" names entries by it,
   // and its links land on the card with that id.
   // What the server's seal check says about one entry (sealStatus, the verdicts
-  // of hooks/lib/review.js), in the words `review` uses. Every card names it.
-  var SEAL_STATE = { verified: 'verified', broken: 'broken', legacy: 'legacy (no seal)', unverifiable: 'unverifiable here' };
+  // of hooks/lib/review.js). Intact entries need no integrity label.
+  var SEAL_STATE = { broken: 'Record changed', legacy: 'Older record; cannot check for changes', unverifiable: 'Cannot check for changes on this device' };
   var BREAK_WHY = {
-    unsealed: 'an unsealed entry follows a sealed one',
-    anchor: 'its own content or the unsealed block before it changed',
-    chain: 'entries before it are missing or were removed',
-    content: 'its own heading or body changed'
+    unsealed: 'an entry without a change record was added',
+    anchor: 'this entry or earlier unchecked entries changed',
+    chain: 'earlier entries are missing or were removed',
+    content: 'this entry\'s heading or text changed'
   };
 
   function brokenAt(s) {
@@ -1503,10 +1525,10 @@
   function sealFlag(d, s) {
     if (d.kind !== 'DECISION' || !d.sealStatus || d.sealStatus === 'verified') return '';
     var at = brokenAt(s);
-    var why = d.sealStatus === 'legacy' ? 'it was written before entries were sealed'
-      : d.sealStatus === 'broken' ? (at && at.seq === d.seq ? 'the log breaks here: ' + (BREAK_WHY[at.why] || 'its seal fails') : 'it comes after the break' + (at ? ' at #' + at.seq : ''))
-      : 'it cannot be checked on this machine';
-    return '<p class="seal-flag" role="note"><span aria-hidden="true">&#9888;</span> Does not verify: ' + esc(why) + '.</p>';
+    var why = d.sealStatus === 'legacy' ? 'it predates checks for changes'
+      : d.sealStatus === 'broken' ? (at && at.seq === d.seq ? 'the saved history changed here: ' + (BREAK_WHY[at.why] || 'the saved record no longer matches') : 'it follows a changed entry' + (at ? ' at #' + at.seq : ''))
+      : 'changes cannot be checked on this device';
+    return '<p class="seal-flag" role="note"><span aria-hidden="true">&#9888;</span> Decision record cannot be confirmed: ' + esc(why) + '.</p>';
   }
 
   function renderHistory(s) {
@@ -1567,11 +1589,11 @@
   function renderNotices(s) {
     var notices = [];
     if (s.profileError) notices.push('<p>Profile: ' + esc(s.profileError) + '</p>');
-    if (s.keyError) notices.push('<p>Sealing key: ' + esc(s.keyError) + '</p>');
+    if (s.keyError) notices.push('<p>Decision history check: ' + esc(s.keyError) + '</p>');
     var broken = brokenAt(s);
     if (broken) {
-      notices.push('<p>Decision log: does not verify. It breaks at <button type="button" class="seq-link" data-view-target="log" data-scroll-to="entry-' + esc(broken.seq) + '">#' + esc(broken.seq) + '</button> ('
-        + esc(BREAK_WHY[broken.why] || 'its seal fails') + '). Every entry from there on is marked in History. The harness never repairs a log.</p>');
+      notices.push('<p>Decision history has changed. The first affected entry is <button type="button" class="seq-link" data-view-target="log" data-scroll-to="entry-' + esc(broken.seq) + '">#' + esc(broken.seq) + '</button> ('
+        + esc(BREAK_WHY[broken.why] || 'the saved record no longer matches') + '). Every entry from there on is marked in History. The original record is not restored automatically.</p>');
     }
     if (!notices.length) return '';
     return '<div class="notices-banner" role="alert">' + notices.join('') + '</div>';

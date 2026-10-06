@@ -25,6 +25,13 @@ HERE = Path(__file__).resolve().parent
 sys.dont_write_bytecode = True
 HEADINGS = ["# Literature note [proposed]", "## Factual account [proposed]", "## Quotations",
             "## Project relevance [proposed]", "## Transfer limits [proposed]", "## Open questions [proposed]"]
+STATE_FILES = ('canvas.md', 'decisions.md', 'glossary.md')
+# A bare URL, an inline or reference link and a link definition are all links,
+# so the "links are refused" rule has to name each form to hold.
+MARKUP = re.compile(
+    r'(?mi)^---\s*$|```|~~~|<|\[[^\]]*\]\(|\[[^\]]*\]\[|^[ \t]*\[[^\]]+\]:|!\[|'
+    r'\[(?:accepted|stated)\]|fact-checked|human-read|[a-z][a-z0-9+.\-]*://'
+)
 
 
 class Failure(Exception):
@@ -68,13 +75,26 @@ def text_value(value):
     return isinstance(value, str) and bool(value.strip()) and not any(ord(c) < 32 for c in value)
 
 
-def selected_state(root, variant):
-    # Reuse the same stateDirOf authority as the CLI; no Python path replica.
-    code = "const p=require(process.argv[1]); console.log(p.stateDirOf(process.argv[2], JSON.parse(process.argv[3])));"
+def file_identity(path):
+    """The (device, inode) pair of an existing path, else None."""
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    return (info.st_dev, info.st_ino)
+
+
+def state_directories(root, variant):
+    # Reuse the same stateDirOf/variantNames authority as the CLI; no Python path replica.
+    code = ("const p=require(process.argv[1]), root=process.argv[2];"
+            "const selected=p.stateDirOf(root, JSON.parse(process.argv[3]));"
+            "const all=[p.stateDirOf(root)].concat(p.variantNames(root).map(n=>p.stateDirOf(root,n)));"
+            "console.log(JSON.stringify({selected, all}));")
     result = subprocess.run(['node', '-e', code, str(HERE.parent / 'hooks/lib/project.js'), str(root),
                              json.dumps(variant)], capture_output=True, timeout=10, check=False)
     require(result.returncode == 0, 'invalid-selected-state')
-    return Path(result.stdout.decode('utf-8').strip()).resolve()
+    answer = json.loads(result.stdout.decode('utf-8'))
+    return Path(answer['selected']).resolve(), [Path(value).resolve() for value in answer['all']]
 
 
 def load_inputs(options):
@@ -88,22 +108,31 @@ def load_inputs(options):
     paper_root = root if 'pdf' in data else Path(os.environ['RESEARCH_HARNESS_LIBRARY']).resolve(strict=True)
     pdf = local_path(paper_root, data.get('pdf', data.get('libraryPointer')))
     require(pdf.is_file(), 'missing-paper')
-    state = selected_state(root, options.variant)
+    state, states = state_directories(root, options.variant)
     contexts = data.get('context')
     require(isinstance(contexts, list), 'explicit-context-list-required')
     paths = [local_path(root, value) for value in contexts]
     # Explicit sibling notes are allowed, but a canvas/ledger/glossary must
     # belong to the selected main/variant state, not another state's authority.
+    # Names are matched case-insensitively and existing files by inode, so a
+    # case variant or a hard link of that authority is refused as well.
+    foreign = set()
+    for directory in states:
+        if directory != state:
+            for name in STATE_FILES:
+                identity = file_identity(directory / name)
+                if identity is not None:
+                    foreign.add(identity)
     for path in paths:
         require(path.is_file(), 'missing-selected-context')
-        if path.name in {'canvas.md', 'decisions.md', 'glossary.md'}:
-            require(path.parent == state, 'unselected-state-context')
+        named = path.name.lower() in STATE_FILES
+        require((not named or path.parent == state) and file_identity(path) not in foreign, 'unselected-state-context')
     require(isinstance(data.get('output'), str), 'missing-output-path')
     candidate = root / data['output']
     require(not os.path.lexists(candidate) and not os.path.lexists(candidate.with_suffix('.quote-check.json')), 'output-already-exists')
     output = local_path(root, data['output'])
     require(output.suffix == '.md' and output.parent.is_dir(), 'invalid-output-path')
-    require(not output.is_relative_to(state) and output.name not in {'canvas.md', 'decisions.md', 'glossary.md'}, 'output-is-state')
+    require(not output.is_relative_to(state) and output.name not in STATE_FILES, 'output-is-state')
     report = output.with_suffix('.quote-check.json')
     return data, pdf, paths, output, report
 
@@ -230,18 +259,33 @@ def gateway_request(config, payload):
     return text
 
 
-def validate_body(text):
-    require(not re.search(r'(?mi)^---\s*$|```|~~~|<|\[[^\]]*\]\(|!\[|\[(?:accepted|stated)\]|fact-checked|human-read', text), 'unsupported-response-markup')
+def proposal_paragraphs(section):
+    """Every paragraph of prose starts with the required proposal marker."""
+    for paragraph in re.split(r'\n\s*\n', section):
+        require(paragraph.startswith('[proposed] '), 'proposal-marker-required')
+
+
+def validate_body(text, blockquote):
+    require(not MARKUP.search(text), 'unsupported-response-markup')
     headings = re.findall(r'(?m)^#+[^\n]*', text)
     require(headings == HEADINGS, 'invalid-note-template')
     require(text.lstrip().startswith(HEADINGS[0] + '\n'), 'generated-frontmatter-refused')
+    starts = [text.index(heading) for heading in HEADINGS]
+    # The H1 owns no section of its own, but prose may follow it before the
+    # first H2; that is a paragraph like any other and carries the marker too.
+    preamble = text[starts[0] + len(HEADINGS[0]):starts[1]].strip()
+    if preamble:
+        proposal_paragraphs(preamble)
     for index, heading in enumerate(HEADINGS[1:], 1):
-        end = text.index(HEADINGS[index + 1]) if index + 1 < len(HEADINGS) else len(text)
-        section = text[text.index(heading) + len(heading):end].strip()
+        end = starts[index + 1] if index + 1 < len(HEADINGS) else len(text)
+        section = text[starts[index] + len(heading):end].strip()
         require(bool(section), 'incomplete-note-template')
-        if heading != '## Quotations':
-            for paragraph in re.split(r'\n\s*\n', section):
-                require(paragraph.startswith('[proposed] '), 'proposal-marker-required')
+        if heading == '## Quotations':
+            # A prose line here would dodge both the marker rule and the checker.
+            for line in section.splitlines():
+                require(not line.strip() or blockquote.match(line), 'quotation-blockquote-required')
+        else:
+            proposal_paragraphs(section)
 
 
 def relative_link(output, target):
@@ -301,7 +345,7 @@ def execute(options):
         require(hashes(snapshot.keys()) == snapshot, 'selected-inputs-changed')
         text = gateway_request(config, payload)
         exclusive_write(draft, text)  # Raw failures remain local, never final.
-        validate_body(text)
+        validate_body(text, checker.BLOCK_MARKER)
         require(hashes(snapshot.keys()) == snapshot, 'selected-inputs-changed')
         note = render_note(data, config, sidecar, output, pdf, contexts, text, checker.DISCLAIMER)
         draft.write_text(note, encoding='utf-8', newline='')

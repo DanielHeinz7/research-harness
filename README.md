@@ -19,7 +19,8 @@ paper.
 ## What you work on: the canvas
 
 A paper project gets one file, `research/canvas.md`. It follows the nine
-elements of the AMJ Management Research Canvas: the puzzle, the audience and
+elements of the AMJ Management Research Canvas (Dorobantu, Gruber, Ravasi &
+Wellman, 2024; full reference below): the puzzle, the audience and
 prior research, the research question, the theoretical constructs, the setting,
 the design and analysis, the findings, the contributions, and the boundary
 conditions. Each element holds short statements, and each statement carries a
@@ -117,6 +118,16 @@ runs the whole sequence on 13 openly licensed interviews about AI assistants in
 software engineering (Zenodo, CC BY 4.0): several framings, a choice between
 them, an acceptance with an open question, a review, and a check of the log on
 another machine. A test runs its commands and holds them to the output shown.
+
+## Reference
+
+Dorobantu, S., Gruber, M., Ravasi, D., & Wellman, N. (2024). The AMJ Management
+Research Canvas: A tool for conducting and reporting empirical research.
+*Academy of Management Journal, 67*(5), 1163–1174.
+<https://doi.org/10.5465/amj.2024.4005>
+
+The plugin does not ship the canvas article. It encodes its own questions,
+modelled on the canvas and citing it.
 
 ## Further reading
 

@@ -1,7 +1,9 @@
 # research-harness
 
 A research harness for paper projects. It keeps the framing of a study — the
-nine elements of the AMJ Management Research Canvas — as version-controlled
+nine elements of the AMJ Management Research Canvas (Dorobantu, Gruber,
+Ravasi & Wellman, 2024, *Academy of Management Journal* 67(5), 1163–1174,
+<https://doi.org/10.5465/amj.2024.4005>) — as version-controlled
 state inside the paper's own repository, and it enforces one line: **an agent
 may propose, but only the researcher accepts.**
 

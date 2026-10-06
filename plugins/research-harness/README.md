@@ -219,6 +219,12 @@ empty: no entries yet
 
 ### 3. Compare and choose (yours)
 
+The view opens on the poster; this capture shows a later state of the example,
+with the trust framing chosen, the puzzle accepted, and the research question
+recorded as said.
+
+![The poster shows the paper's nine fields with author statements and model proposals.](../../docs/media/poster.png)
+
 Run `research-harness serve` in your own terminal. A **Framings** tab appears
 while the project holds variants: one column per framing, headed by its name and
 lens, one row per field. A field whose statements differ between framings is
@@ -438,13 +444,24 @@ The view opens on the poster and reads like the paper's argument, not a form:
   written the way the authors would say it. Where a field has findings, a
   quiet line at the foot of its card ("2 things to talk about") opens the
   "To talk about" tab at that field;
+
+  ![The poster shows the paper's nine fields with author statements and model proposals.](../../docs/media/poster.png)
+
 - "To talk about" is where a meeting starts: the fields with something to
   discuss, and the questions nobody has answered yet;
+
+  ![To talk about shows the open question about the study's participants above the unanswered canvas questions.](../../docs/media/to-talk-about.png)
+
 - "History" lists what has been said and decided, in order;
+
+  ![History shows the chosen framing, an open question, and the puzzle acceptance with its explanation and author.](../../docs/media/history.png)
+
 - the element view, reached with "More" on a card, shows one field with all its
   statements as prose. A suggestion made by the model appears as an "Idea"
   note, sources appear as page numbers, and an open question says "Not
   answered yet".
+
+  ![Field 3 shows the research question recorded as said, unanswered prompts, and an open discussion note.](../../docs/media/element.png)
 
 The poster's large heading is the paper's title, from the `title:` line in the
 canvas frontmatter, which `research-harness title "<text>"` sets; without one

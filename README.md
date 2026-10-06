@@ -42,6 +42,10 @@ findings and constructs it rests on, and the tool tells you which pieces are sti
 missing. Treat it as a puzzle whose pieces have to fit, not as stages to get
 through in order.
 
+The session view shows the canvas as a nine-field poster:
+
+![The poster shows the paper's nine fields with author statements and model proposals.](docs/media/poster.png)
+
 ## Who decides: you
 
 You accept a statement with one sentence of your own about why it holds:
@@ -89,6 +93,8 @@ shows a measured case.
 - **Look at it in a browser.** `research-harness serve` opens a session view
   for meetings: the whole paper on one poster, what is still to discuss, and
   the history of decisions. You can comment and accept from there.
+
+![To talk about shows the open question about the study's participants above the unanswered canvas questions.](docs/media/to-talk-about.png)
 
 ## What it does not do
 

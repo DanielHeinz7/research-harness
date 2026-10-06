@@ -180,15 +180,17 @@
 
   #view-tabs {
     display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
     gap: 4px;
     padding: 4px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 15px;
     box-shadow: inset 0 1px 2px rgba(25, 60, 49, 0.06);
-    overflow-x: auto;
   }
   .segment {
+    min-height: 44px;
     border: 0;
     background: transparent;
     color: var(--ink-soft);
@@ -206,7 +208,7 @@
     box-shadow: var(--shadow-raised);
   }
 
-  #body-shell { flex: 1 1 auto; min-height: 0; display: flex; }
+  #body-shell { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; }
   /* Point 1: the side rail repeats the poster's own nine cards, so it is
      wasted width there; #stage naturally reflows to the freed space. Other
      views (element, agenda, history) keep it — it is how a reader gets from
@@ -297,7 +299,7 @@
     flex: 0 0 auto;
   }
 
-  #stage { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--space-stage); }
+  #stage { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-stage); }
   /* Keep the poster's own bottom padding small so the whole paper sits on one
      1440x900 screen without a scroll bar. */
   #body-shell.poster-active #stage { display: flex; flex-direction: column; padding-bottom: 8px; }
@@ -462,6 +464,7 @@
   .source-key { font-size: var(--type-label); color: var(--ink-soft); border-top: 1px solid var(--border); padding-top: 10px; margin: 0; }
   .source-key li { margin-bottom: 3px; }
   .source-key a { color: var(--ink-soft); }
+  #stage a { display: inline-block; min-width: 24px; min-height: 24px; }
 
   /* -- To talk about (was: Agenda) ------------------------------------ */
   .agenda-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -590,6 +593,8 @@
   .seal-flag { font-size: var(--type-label); color: var(--suggestion-ink); margin: 0 0 6px; }
   .notices-banner .seq-link { color: inherit; }
   .seq-link {
+    min-width: 24px;
+    min-height: 24px;
     padding: 0;
     background: none;
     border: 0;
@@ -657,7 +662,7 @@
     text-transform: uppercase;
   }
   .cmp-more { font-size: var(--type-label); }
-  .cmp-more summary { cursor: pointer; font-size: var(--type-label); font-weight: 700; color: var(--action); }
+  .cmp-more summary { min-height: 44px; cursor: pointer; font-size: var(--type-label); font-weight: 700; color: var(--action); }
   .cmp-more .field-para { margin: 6px 0 0; }
   .choose-note {
     margin: 0 0 12px;
@@ -746,8 +751,13 @@
     }
     #body-shell.poster-active #rail,
     #body-shell.compare-active #rail { display: none; }
-    .rail-list { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
-    .rail-card { min-width: 190px; flex: 0 0 auto; }
+    /* Each field remains a whole target; extra fields scroll vertically. */
+    .rail-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+    .rail-card { height: 100%; }
+    .rail-question { min-width: 0; overflow-wrap: anywhere; }
+    .rail-totalk-badge { flex-shrink: 0; }
+    .cmp-grid { grid-template-columns: repeat(var(--k, 3), minmax(0, 1fr)); }
+    .cmp-row-label, .element-nav { flex-wrap: wrap; }
     #stage { padding: 16px; }
     #topbar { padding: 10px 14px; }
     #poster.active { min-height: 0; }
@@ -755,6 +765,23 @@
     .poster-title { font-size: var(--type-title); }
     .field-body-full { padding: 16px 18px; max-width: none; }
     .comment-form { max-width: none; }
+  }
+
+  @media (max-width: 600px) {
+    .cmp-grid { grid-template-columns: minmax(0, 1fr); }
+    .cmp-head { position: static; }
+    /* When comparison columns stack, the framing name travels with its text. */
+    .cmp-context {
+      position: static;
+      width: auto;
+      height: auto;
+      margin: 0;
+      overflow: visible;
+      clip: auto;
+      white-space: normal;
+      font-size: var(--type-label);
+      font-weight: 700;
+    }
   }
 
   @media print {
@@ -1330,7 +1357,7 @@
         }).join('') + '</details>'
       : '';
     return '<article class="' + classes.join(' ') + '">'
-      + '<span class="sr-only">' + esc(v.name) + ', ' + esc(question) + (differs ? ', differs from the other framings' : '') + '. </span>'
+      + '<span class="cmp-context sr-only">' + esc(v.name) + ', ' + esc(question) + (differs ? ', differs from the other framings' : '') + '. </span>'
       + (differs ? '<span class="diff-tag" aria-hidden="true">Differs</span>' : '')
       + leadHtml + more
       + '</article>';

@@ -98,7 +98,7 @@ function keyedProject({ profile = 'glossary-deps', glossaryText = doc(entryText(
 const file = (root, name) => path.join(root, 'research', name);
 const read = (root, name) => fs.readFileSync(file(root, name), 'utf8');
 const EXPLAINED = 'I accept this because both fieldnotes use the term this way.';
-const hashOf = (text, id) => glossary.payloadHash(glossary.entryById(glossary.parseGlossary(text), id));
+const hashOf = (text, id) => glossary.bindingDigest(glossary.entryById(glossary.parseGlossary(text), id));
 
 function reviewOf(root) {
   const state = stateLib.loadState(root, { pluginRoot: PROFILE_ROOT });
@@ -188,7 +188,8 @@ test('SQ-210: public show binds acceptance to the displayed payload, refusing a 
   assert.deepEqual(JSON.parse(payloadText), ['quiet-window', 'Quiet window', null,
     "An observer's report that a signal was expected and did not arrive.", 'own-definition',
     'Unlike [handoff lag](#handoff-lag), this is an expectation rather than a measured delay.']);
-  const oldHash = /^Payload hash: ([0-9a-f]{8})$/.exec(hashLine)[1];
+  const oldHash = /^Binding digest: ([0-9a-f]{64})$/.exec(hashLine)?.[1];
+  assert.ok(oldHash, 'show prints a full SHA-256 binding digest');
   assert.equal(read(root, 'glossary.md'), before.glossary, 'show is read-only');
   assert.equal(read(root, 'decisions.md'), before.decisions, 'show does not log');
 
@@ -202,19 +203,19 @@ test('SQ-210: public show binds acceptance to the displayed payload, refusing a 
 
   const current = run(root, ['glossary', 'show', 'quiet-window'], PROFILE_ROOT);
   assert.equal(current.status, 0, current.stdout);
-  const currentHash = /Payload hash: ([0-9a-f]{8})/.exec(current.stdout)[1];
+  const currentHash = /Binding digest: ([0-9a-f]{64})/.exec(current.stdout)[1];
   assert.notEqual(currentHash, oldHash);
   const accepted = run(root, ['glossary', 'accept', 'quiet-window', '--hash', currentHash, '--explained', EXPLAINED], PROFILE_ROOT);
   assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
   assert.match(read(root, 'glossary.md'), /\[accepted\]/);
-  assert.match(read(root, 'decisions.md'), new RegExp(`glossary quiet-window accepted · text ${currentHash}`));
+  assert.match(read(root, 'decisions.md'), new RegExp(`glossary quiet-window accepted · text ${currentHash.slice(0, 8)}`));
   assert.ok(seal.verifyChain(read(root, 'decisions.md'), seal.readKey(root)).verified.has(4));
 });
 
-test('SQ-210: public acceptance requires an eight-hex displayed hash', () => {
+test('SQ-212: public acceptance requires the full displayed binding digest', () => {
   const root = keyedProject();
   const before = { glossary: read(root, 'glossary.md'), decisions: read(root, 'decisions.md') };
-  for (const hashArgs of [[], ['--hash'], ['--hash', 'wrong'], ['--hash', '123456789']]) {
+  for (const hashArgs of [[], ['--hash'], ['--hash', 'wrong'], ['--hash', '12345678'], ['--hash', 'a'.repeat(32)], ['--hash', 'a'.repeat(65)]]) {
     const out = run(root, ['glossary', 'accept', 'quiet-window', ...hashArgs, '--explained', EXPLAINED], PROFILE_ROOT);
     assert.equal(out.status, 2, out.stdout + out.stderr);
     assert.match(out.stdout, /--hash/);
@@ -229,7 +230,7 @@ test('SQ-210: an append I/O failure rolls back the marker and any partial ledger
   const append = fs.appendFileSync;
   t.mock.method(fs, 'appendFileSync', (target, ...args) => {
     if (target !== file(root, 'decisions.md')) return append(target, ...args);
-    append(target, '\npartial DECISION');
+    append(target, args[0].slice(0, 30));
     throw Object.assign(new Error('injected disk failure'), { code: 'EIO' });
   });
   assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }), { code: 'EIO' });
@@ -237,18 +238,20 @@ test('SQ-210: an append I/O failure rolls back the marker and any partial ledger
   assert.equal(read(root, 'decisions.md'), before.decisions, 'append failure leaves no new DECISION');
 });
 
-test('SQ-210: a partial glossary write failure restores the text without appending a DECISION', (t) => {
+test('SQ-212: a partial temporary write never exposes a partial glossary', (t) => {
   const root = keyedProject();
   const before = { glossary: read(root, 'glossary.md'), decisions: read(root, 'decisions.md') };
   const write = fs.writeFileSync;
   t.mock.method(fs, 'writeFileSync', (target, ...args) => {
-    if (target !== file(root, 'glossary.md')) return write(target, ...args);
+    if (typeof target !== 'string' || !path.basename(target).startsWith('.glossary.md.')) return write(target, ...args);
     write(target, 'partial glossary');
+    assert.equal(read(root, 'glossary.md'), before.glossary, 'partial temp bytes never replace the glossary');
     throw Object.assign(new Error('injected glossary write failure'), { code: 'EIO' });
   });
   assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }), { code: 'EIO' });
-  assert.equal(read(root, 'glossary.md'), before.glossary, 'partial marker write is rolled back');
+  assert.equal(read(root, 'glossary.md'), before.glossary, 'a failed temp write leaves the glossary unchanged');
   assert.equal(read(root, 'decisions.md'), before.decisions, 'marker write failure leaves no new DECISION');
+  assert.deepEqual(fs.readdirSync(path.dirname(file(root, 'glossary.md'))).filter(n => n.startsWith('.glossary.md.')), [], 'failed atomic writes clean up temporary files');
 });
 
 test('an accept without the researcher\'s sentence, or without a known complete entry, writes nothing', () => {
@@ -355,7 +358,7 @@ test('review covers an accepted entry only by a verified decision naming its pay
 
   // A DECISION that claims the payload but does not verify gives no cover.
   const forged = keyedProject();
-  const hash = hashOf(read(forged, 'glossary.md'), 'quiet-window');
+  const hash = glossary.payloadHash(glossary.parseGlossary(read(forged, 'glossary.md')).entries[0]);
   fs.appendFileSync(file(forged, 'decisions.md'), `\n## [#4] 2026-10-05 · DECISION · glossary quiet-window accepted · text ${hash}\nA quiet placeholder. [accepted]\n**Explained:** forged\n**By:** A. Researcher\n`);
   fs.writeFileSync(file(forged, 'glossary.md'), doc(entryText('quiet-window', { marker: '[accepted]' }), LAG));
   report = reviewOf(forged);
@@ -377,4 +380,148 @@ test('review covers an accepted entry only by a verified decision naming its pay
   assert.deepEqual(report.glossaryStaleAcceptances[0], { seq: 4, ref: 'glossary quiet-window accepted', hash: accepted.hash });
   assert.equal(report.glossaryUnloggedAcceptances.length, 1, 'the edited entry answers to no decision');
   assert.equal(report.glossaryUnloggedAcceptances[0].coveredBy, null);
+});
+
+
+test('SQ-212: a short-hash collision cannot accept swapped text with the displayed digest', () => {
+  const original = doc(entryText('quiet-window', { definition: 'Invented definition 22373.' }), LAG);
+  const swapped = doc(entryText('quiet-window', { definition: 'Invented definition 37527.' }), LAG);
+  const a = glossary.parseGlossary(original).entries[0];
+  const b = glossary.parseGlossary(swapped).entries[0];
+  assert.equal(glossary.payloadHash(a), '13575256', 'the first fixture has the known short hash');
+  assert.equal(glossary.payloadHash(b), '13575256', 'the swapped fixture collides in the ledger hash');
+  const root = keyedProject({ glossaryText: original });
+  const ledger = read(root, 'decisions.md');
+  const shown = run(root, ['glossary', 'show', 'quiet-window'], PROFILE_ROOT);
+  const digest = /^Binding digest: ([0-9a-f]{64})$/m.exec(shown.stdout)?.[1];
+  assert.ok(digest, 'show exposes a full binding digest');
+  fs.writeFileSync(file(root, 'glossary.md'), swapped);
+  const out = run(root, ['glossary', 'accept', 'quiet-window', '--hash', digest, '--explained', EXPLAINED], PROFILE_ROOT);
+  assert.equal(out.status, 1, 'swapped colliding payload is refused as stale');
+  assert.equal(read(root, 'glossary.md'), swapped, 'collision refusal preserves the swapped proposal');
+  assert.equal(read(root, 'decisions.md'), ledger, 'collision refusal does not append a decision');
+});
+
+test('SQ-212: glossary publication replaces the file atomically by rename', (t) => {
+  const root = keyedProject();
+  fs.chmodSync(file(root, 'glossary.md'), 0o660);
+  const before = read(root, 'glossary.md');
+  const fd = fs.openSync(file(root, 'glossary.md'), 'r');
+  t.after(() => fs.closeSync(fd));
+  const rename = fs.renameSync;
+  let published = false;
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (to === file(root, 'glossary.md')) {
+      assert.equal(read(root, 'glossary.md'), before, 'the original stays complete until rename');
+      assert.match(fs.readFileSync(from, 'utf8'), /\[accepted\]/, 'rename publishes a complete accepted document');
+      published = true;
+    }
+    return rename(from, to);
+  });
+  assert.equal(acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }).ok, true);
+  assert.equal(published, true, 'publication uses rename');
+  assert.equal(fs.statSync(file(root, 'glossary.md')).mode & 0o777, 0o660, 'atomic publication preserves original permission bits');
+  assert.equal(fs.readFileSync(fd, 'utf8'), before, 'the old inode was never overwritten in place');
+});
+
+test('SQ-212: ledger rollback precedes a failing glossary restore', (t) => {
+  const root = keyedProject();
+  const before = read(root, 'decisions.md');
+  const append = fs.appendFileSync;
+  t.mock.method(fs, 'appendFileSync', (target, bytes, ...args) => {
+    if (target !== file(root, 'decisions.md')) return append(target, bytes, ...args);
+    append(target, bytes.slice(0, 40));
+    throw new Error('injected append failure');
+  });
+  const rename = fs.renameSync;
+  let publications = 0;
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (to === file(root, 'glossary.md') && ++publications === 2) {
+      assert.equal(read(root, 'decisions.md'), before, 'ledger is truncated before attempting glossary restore');
+      throw new Error('injected restore failure');
+    }
+    return rename(from, to);
+  });
+  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }));
+  assert.equal(publications, 2, 'rollback attempted the atomic glossary restore');
+  assert.equal(read(root, 'decisions.md'), before, 'a restore failure cannot skip ledger rollback');
+});
+
+for (const interference of ['extra append', 'same-size rewrite']) {
+  test('SQ-212: ledger rollback preserves a concurrent ' + interference, (t) => {
+    const root = keyedProject();
+    const append = fs.appendFileSync;
+    let concurrent;
+    t.mock.method(fs, 'appendFileSync', (target, bytes, ...args) => {
+      if (target !== file(root, 'decisions.md')) return append(target, bytes, ...args);
+      append(target, bytes);
+      if (interference === 'extra append') append(target, 'foreign writer');
+      else fs.writeFileSync(target, read(root, 'decisions.md').slice(0, -1) + '!');
+      concurrent = read(root, 'decisions.md');
+      throw new Error('injected append failure after concurrent change');
+    });
+    assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }));
+    assert.equal(read(root, 'decisions.md'), concurrent, 'rollback does not truncate foreign ledger bytes');
+  });
+}
+
+test('SQ-212: glossary rollback preserves a concurrent same-size rewrite', (t) => {
+  const root = keyedProject();
+  const ledger = read(root, 'decisions.md');
+  const append = fs.appendFileSync;
+  let concurrent;
+  t.mock.method(fs, 'appendFileSync', (target, bytes, ...args) => {
+    if (target !== file(root, 'decisions.md')) return append(target, bytes, ...args);
+    append(target, bytes.slice(0, 40));
+    concurrent = read(root, 'glossary.md').replace('Quiet window', 'Other window');
+    fs.writeFileSync(file(root, 'glossary.md'), concurrent);
+    throw new Error('injected append failure after glossary changed');
+  });
+  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }));
+  assert.equal(read(root, 'glossary.md'), concurrent, 'rollback does not restore over foreign glossary bytes');
+  assert.equal(read(root, 'decisions.md'), ledger, 'owned partial ledger bytes are still removed');
+});
+
+test('SQ-212: review labels the marker-only crash window unlogged, not a glossary acceptance', () => {
+  const root = keyedProject({ glossaryText: doc(entryText('quiet-window', { marker: '[accepted]' }), LAG) });
+  const out = run(root, ['review'], PROFILE_ROOT);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  const logged = /## Glossary acceptances\n([\s\S]*?)(?=\n## |$)/.exec(out.stdout)?.[1];
+  const unlogged = /## Unlogged glossary acceptances\n([\s\S]*?)(?=\n## |$)/.exec(out.stdout)?.[1];
+  assert.equal(logged?.trim(), 'none', 'marker-only entry is excluded from Glossary acceptances');
+  assert.match(unlogged || '', /quiet-window.*unlogged/, 'marker-only entry is explicitly labeled unlogged');
+});
+
+
+test('SQ-212: rollback rechecks ledger size after reading its bytes', (t) => {
+  const root = keyedProject();
+  const append = fs.appendFileSync;
+  const stat = fs.statSync;
+  let rollingBack = false;
+  let concurrent;
+  t.mock.method(fs, 'appendFileSync', (target, bytes, ...args) => {
+    if (target !== file(root, 'decisions.md')) return append(target, bytes, ...args);
+    append(target, bytes.slice(0, 40));
+    rollingBack = true;
+    throw new Error('injected append failure');
+  });
+  t.mock.method(fs, 'statSync', (target, ...args) => {
+    if (rollingBack && target === file(root, 'decisions.md')) {
+      append(target, 'foreign bytes after rollback read');
+      concurrent = read(root, 'decisions.md');
+    }
+    return stat(target, ...args);
+  });
+  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }));
+  assert.equal(read(root, 'decisions.md'), concurrent, 'a changed ledger size refuses truncation');
+});
+
+test('SQ-212: a failed publication rename leaves both files unchanged', (t) => {
+  const root = keyedProject();
+  const before = { glossary: read(root, 'glossary.md'), ledger: read(root, 'decisions.md') };
+  t.mock.method(fs, 'renameSync', () => { throw Object.assign(new Error('injected rename failure'), { code: 'EIO' }); });
+  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }), { code: 'EIO' });
+  assert.equal(read(root, 'glossary.md'), before.glossary, 'failed rename keeps the original complete document');
+  assert.equal(read(root, 'decisions.md'), before.ledger, 'failed publication does not append a DECISION');
+  assert.deepEqual(fs.readdirSync(path.dirname(file(root, 'glossary.md'))).filter(n => n.startsWith('.glossary.md.')), [], 'rename failure cleans up its temporary file');
 });

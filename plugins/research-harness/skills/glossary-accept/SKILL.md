@@ -1,10 +1,11 @@
 ---
 name: glossary-accept
-description: Accept one glossary entry as a settled commitment of the project (researcher only). Usage — /research-harness:glossary-accept <id> --hash <8hex> --explained "<one sentence>" [--why <text>] [--rejected <text>]
+description: Accept one glossary entry as a settled commitment of the project (researcher only). Usage — /research-harness:glossary-accept <id> --hash <64hex> --explained "<one sentence>" [--why <text>] [--rejected <text>]
 disable-model-invocation: true
 ---
 
-Before accepting, display the entry's canonical payload and its eight-hex hash:
+Before accepting, display the entry's canonical payload and its full SHA-256
+binding digest (64 hex digits):
 
     ! node "<plugin root>/bin/research-harness.js" glossary show <id>
 
@@ -28,8 +29,16 @@ with a new hash on the researcher's behalf.
 
 A missing or malformed hash, missing explanation, incomplete entry, unknown
 id, unresolved origin, unmet element-4 dependency, missing sealing key or
-broken decision log refuses by name. An I/O failure restores the glossary
-and removes any partial decision append; neither file is left half-done.
+broken decision log refuses by name. The glossary is published by an atomic
+rename, then the decision is appended; a crash between these writes can leave
+an [accepted] marker without a decision. Review labels that entry unlogged,
+not a glossary acceptance. The ledger keeps its eight-hex payload identifier;
+that identifier is not the binding digest required by --hash.
+
+On an I/O failure, recovery removes this call's partial ledger append first,
+then restores the glossary, only while each file still matches this call's
+written bytes. Concurrent changes are preserved, and recovery can itself fail.
+This is not a cross-file transaction or a guarantee against crashes.
 
 Every accept needs an explanation: one sentence, in the researcher's own
 words, of what they accept and why it holds, passed as

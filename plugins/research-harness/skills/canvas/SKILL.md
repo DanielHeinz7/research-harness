@@ -87,7 +87,7 @@ entry per construct. Read
 you write one. You propose entries — `[proposed]` or `[tentative]`, an honest
 `Origin:`, a `Distinctions:` line that resolves — and you never accept them:
 acceptance is the researcher's
-`/research-harness:glossary-accept <id> --hash <8hex> --explained "<their sentence>"`,
+`/research-harness:glossary-accept <id> --hash <64hex> --explained "<their sentence>"`,
 and the guard denies `glossary accept` to you. You may create the file with its
 `glossary-schema: 1` header and your first entry; after that the header and the
 `manuscripts:` list are the researcher's, so propose an entry instead of

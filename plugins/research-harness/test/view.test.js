@@ -79,11 +79,11 @@ function lift(names) {
     assert.notEqual(from, -1, `${name} is in canvas.html`);
     return html.slice(from, html.indexOf('\n  }\n', from) + 4);
   }).join('\n');
-  const labelDecl = html.match(/  var ENTRY_LABEL = .*;\n/)[0];
+  const labelDecl = html.match(/  var ENTRY_LABEL = .*;\n/)[0] + html.match(/  var STATUS_WORD = .*;\n/)[0];
   return new Function(`${labelDecl}${src}\nreturn { ${names.join(', ')} };`)();
 }
 
-const { renderEntryBody } = lift(['esc', 'parseFindingBody', 'renderEntryBody', 'seqLinks']);
+const { renderEntryBody } = lift(['esc', 'renderStatus', 'parseFindingBody', 'renderEntryBody', 'seqLinks']);
 const viewState = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'view-state.json'), 'utf8'));
 
 function visibleText(markup) {
@@ -100,7 +100,7 @@ test('a DECISION with a why renders its text, a superscript page and a quiet Why
   assert.doesNotMatch(text, /src:/);
   assert.match(markup, /<sup class="src-ref">p\. 1706<\/sup>/);
   assert.match(markup, /<span class="entry-note">Why: The study starts from the phenomenon, not from a gap\.<\/span>/);
-  assert.ok(text.startsWith('How can we understand how members'));
+  assert.ok(text.startsWith('Decided Authors How can we understand how members'));
 });
 
 test('a DISCOVERY with a why renders its text and a quiet Why line, no asterisks', () => {
@@ -122,7 +122,7 @@ test('no fixture entry renders a raw label or an accepted marker, and Rejected a
   assert.match(markup, /Why: because it is so<\/span>/);
   assert.match(markup, /Rejected: other<\/span>/);
   assert.match(markup, /Supersedes: #2<\/span>/);
-  assert.equal(visibleText(markup).split(' Why:')[0], 'Text.');
+  assert.equal(visibleText(markup).split(' Why:')[0], 'Decided Authors Text.');
 });
 
 test('History, To talk about and the element view all render an entry body through renderEntryBody', () => {
@@ -226,6 +226,39 @@ async function mount({ state, query = '', mode = 'fixture', hash = mode === 'fix
 }
 
 const statementIn = (state, id, marker) => state.elements.flatMap((e) => e.questions).find((q) => q.id === id).statements.find((s) => s.marker === marker);
+
+// Removing a status, hiding its word, or losing authors/model ownership in
+// any consumer must fail, even when that consumer still renders the prose.
+for (const [marker, word, owner] of [
+  ['accepted', 'Decided', 'Authors'],
+  ['stated', 'Said by the authors', 'Authors'],
+  ['tentative', 'Draft', 'Model proposal'],
+  ['proposed', 'Suggestion', 'Model proposal'],
+]) {
+  test(`${word} is visibly labelled with ownership and a non-colour cue in every reading view`, async () => {
+    const state = structuredClone(viewState);
+    const element = state.elements[0];
+    element.questions.forEach((q) => { q.statements = []; });
+    element.questions[0].statements = [{ text: 'Status example.', marker, tags: [], hash: 'status-example' }];
+    const finding = { seq: 99, kind: 'DISCOVERY', ref: '1', date: '2026-10-06', body: `Status example. [${marker}]`, by: 'A. Author' };
+    state.decisions = [finding];
+    state.agenda.fields = [{ number: 1, question: 'What puzzles us?', findings: [finding] }];
+    const page = await mount({ state });
+    const ownership = owner === 'Authors' ? 'authors' : 'model';
+    const label = `<span class="status-label status-label-${ownership}"><span class="status-word">${word}</span><span class="status-owner">${owner}</span></span>`;
+    for (const id of ['poster', 'element-1', 'agenda', 'log']) {
+      const section = page.app.innerHTML.match(new RegExp(`<section id="${id}"[\\s\\S]*?</section>`))[0];
+      assert.ok(section.includes(label), `${id} exposes ${word} and ${owner} as visible markup`);
+      assert.doesNotMatch(section, /\[(accepted|stated|tentative|proposed)\]|src:/, 'internal markers stay out of the view');
+    }
+    assert.ok(page.app.innerHTML.includes('Status example.'), 'the statement still renders');
+  });
+}
+
+test('unmarked prose is not attributed to authors or models by guessing', () => {
+  assert.doesNotMatch(renderEntryBody('Plain prose. [src: example p. 3]'), /status-label/);
+  assert.doesNotMatch(renderEntryBody('Plain prose. [unknown]'), /status-label/);
+});
 
 test('Framings: one column per variant, headed by name and lens, with differing fields marked and identical ones faded', async () => {
   const page = await mount({ state: variantsState, query: '&view=compare' });

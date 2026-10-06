@@ -55,7 +55,7 @@ body{font-family:'Hanken Grotesk',sans-serif;color:var(--ink)}
 .ok{background:var(--accent);color:var(--action)}
 .bad{background:var(--bad-bg);color:var(--bad)}
 .warn{background:var(--warn-bg);color:var(--warn)}
-.src{left:120px;bottom:54px;font-size:22px;color:var(--soft);max-width:1680px}
+.src{left:120px;bottom:54px;font-size:22px;color:var(--soft);max-width:1380px}
 .foot{right:120px;bottom:54px;font-size:22px;color:var(--soft);letter-spacing:.08em;font-weight:600}
 '''
 
@@ -130,8 +130,8 @@ anim[5] = lambda s, L: [
 # 6 Glossary
 body[6] = '''<div id="s6-g" class="abs card" style="left:160px;top:200px;width:760px"><div class="kicker">research/glossary.md</div>
 <div class="h2" style="font-size:44px;margin-top:16px">Trust calibration</div>
-<div id="s6-d1" class="body" style="font-size:30px;margin-top:12px">Adjusting reliance on a tool to how reliable it is.</div>
-<div id="s6-d2" class="body" style="font-size:30px;margin-top:-82px;color:var(--ink)">Matching reliance on output to evidence about that output.</div></div>
+<div style="position:relative;height:90px;margin-top:12px"><div id="s6-d1" class="body" style="position:absolute;inset:0;font-size:30px">Adjusting reliance on a tool to how reliable it is.</div>
+<div id="s6-d2" class="body" style="position:absolute;inset:0;font-size:30px;color:var(--ink)">Matching reliance on output to evidence about that output.</div></div></div>
 <div id="s6-c" class="abs card" style="left:1000px;top:200px;width:760px;font-size:30px">Canvas 4.1 cites <b>Trust calibration</b><br><span id="s6-c2" class="tag warn" style="margin-top:14px">stale</span></div>
 <div id="s6-m" class="abs card" style="left:1000px;top:440px;width:760px;font-size:30px">Manuscript §2 cites <b>Trust calibration</b><br><span id="s6-m2" class="tag warn" style="margin-top:14px">stale</span></div>'''
 anim[6] = lambda s, L: [

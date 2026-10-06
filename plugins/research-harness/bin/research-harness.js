@@ -306,10 +306,51 @@ function review(flags) {
   // With `--key`, the key this machine happens to hold is not what this run
   // judges with, so a complaint about reading that one is not its business.
   const key = given.key === undefined ? state.key : given.key;
-  const glossaryText = project.readIfExists(state.paths.glossary);
-  const report = mechanicalReview({ parsed: state.parsed, graph: state.graph, checks: state.checks, decisionsText: state.decisionsText, glossaryText, key });
+  // A glossary that exists but cannot be read is a failed read, and a failed
+  // read is `not checked`, never an empty glossary (§ Mechanical review and its
+  // limits). Only absence is safe to read as "no glossary".
+  let glossaryText = null;
+  let glossaryReadError = null;
+  try {
+    glossaryText = project.readIfExists(state.paths.glossary);
+  } catch (err) {
+    glossaryReadError = (err && err.code) || 'unknown error';
+  }
+  const report = mechanicalReview({
+    parsed: state.parsed,
+    graph: state.graph,
+    checks: state.checks,
+    decisionsText: state.decisionsText,
+    glossaryText,
+    key,
+    root: state.root,
+    stateDir: path.dirname(state.paths.canvas),
+    canvasFile: state.paths.canvas,
+    glossaryFile: state.paths.glossary,
+    glossaryReadError,
+  });
   const list = (arr) => (arr.length ? arr.join(', ') : 'none');
   const stmt = (s) => `${s.question} [${s.marker === null ? 'unmarked' : s.marker}] (line ${s.line}): ${s.text}`;
+  // One shape per stability finding: a changed definition names the canvas
+  // statements and manuscript locations that rest on it, and a cover that does
+  // not verify names the decision it is short of. Nothing here invalidates
+  // anything — deciding what a changed definition means is the researcher's.
+  const stabilityLines = (f) => {
+    const dependents = f.locations.map((l) => `  ${l.where} (line ${l.line})${l.text === null ? '' : `: ${l.text}`}`);
+    const withLocations = (head) => (dependents.length ? [head, 'dependent locations:', ...dependents] : [head]);
+    if (f.kind === 'changed') {
+      const noCover = f.state === 'verified' ? '' : ` — #${f.seq} does not verify (${COVER_STATE[f.state]})`;
+      return withLocations(`${f.id}: definition changed since acceptance (#${f.seq} bound ${f.hash})${noCover}`);
+    }
+    if (f.kind === 'deleted') {
+      const bind = f.seq === null ? '' : `; #${f.seq} accepted payload ${f.hash}`;
+      return withLocations(`${f.id}: no single entry carries this id${bind}`);
+    }
+    if (f.kind === 'uncovered') return withLocations(`${f.id} (line ${f.line}): [accepted] with no decision naming it`);
+    if (f.kind === 'superseded') return [`${f.id}: #${f.seq} bound an earlier payload (${f.hash}); #${f.coveredBy} covers the entry now — superseded history, not drift`];
+    if (f.kind === 'withdrawn') return [`${f.id}: #${f.seq} still binds this payload (${f.hash}), and the entry is not [accepted]`];
+    return [`${f.id}: [accepted], covered only by #${f.seq}, ${COVER_STATE[f.state]}`];
+  };
   const lines = [variant === undefined ? '# Mechanical review' : `# Mechanical review — variant ${variant} (lens: ${state.parsed.frontmatter.lens || '?'})`, ''];
   if (state.profileError) lines.push(`> ${state.profileError}; dependencies not checked.`, '');
   if (state.keyError && given.key === undefined) lines.push(`> ${state.keyError}; the ledger is judged as if there were none.`, '');
@@ -342,15 +383,57 @@ function review(flags) {
   lines.push('## Stale acceptances', ...(report.staleAcceptances.length ? report.staleAcceptances.map((s) => `#${s.seq} ${s.ref} — text ${s.hash} no longer matches any accepted statement`) : ['none']), '');
   lines.push('## Unlogged acceptances', '(no verified DECISION entry accounts for these)', ...(report.unloggedAcceptances.length ? report.unloggedAcceptances.map((s) => `${s.question} (line ${s.line}): ${s.text}${coverNote(s.coveredBy)}`) : ['none']), '');
   lines.push('## Unverified decisions', '(DECISION entries that give no cover)', ...(report.unverifiedDecisions.length ? report.unverifiedDecisions.map((d) => `#${d.seq} ${d.ref} — ${COVER_STATE[d.state]}`) : ['none']), '');
-  // The glossary's own cover question (SQ-203), printed only where a glossary
-  // or a glossary decision exists: an [accepted] entry needs a verified
-  // `glossary <id> accepted` entry binding the payload it now has.
-  if (report.glossary !== null || report.glossaryStaleAcceptances.length || report.glossaryUnloggedAcceptances.length) {
-    const glossaryFindings = [
-      ...report.glossaryUnloggedAcceptances.map((e) => `${e.id} (line ${e.line}): ${e.term === null ? 'no term' : e.term} — payload ${e.hash}${coverNote(e.coveredBy)}`),
-      ...report.glossaryStaleAcceptances.map((s) => `#${s.seq} ${s.ref} — payload ${s.hash} no longer matches any accepted entry`),
-    ];
-    lines.push('## Glossary acceptances', '(what the `glossary <id> accepted` decisions cover)', ...(glossaryFindings.length ? glossaryFindings : ['none']), '');
+  // Glossary mechanics (SQ-204): declared construct coverage and drift. The two
+  // boundary sentences print on every run, and a check that could not run says
+  // `not checked` — an absent manuscript list or a failed read is never zero
+  // missing entries (§ Mechanical review and its limits).
+  const g = report.glossaryMechanics;
+  if (g !== null) {
+    lines.push(
+      '## Glossary mechanics',
+      `Inspected: ${g.inspected.map((f) => `${f.path} (${f.status})`).join(', ')}`,
+      ...g.notChecked.map((n) => `not checked: ${n.subject} — ${n.reason}`),
+      'Declared construct coverage checked; undeclared constructs require human inspection.',
+      'Human construct judgment: not performed by this check',
+    );
+  }
+  if (g !== null && g.lexical.checked) {
+    // The problem lines carry their own `line N` prefix from the glossary
+    // parser; only the ones without one get it added here.
+    const problem = (f) => `${f.id === null ? '' : `${f.id}: `}${f.line === null || /^line \d/.test(f.text) ? '' : `line ${f.line}: `}${f.text}`;
+    const ref = (r) => (r.state === null ? `${r.id} — ${r.reason}` : `${r.id} [${r.state}]`);
+    const inventory = `${g.structure.entries.length} ${g.structure.entries.length === 1 ? 'entry' : 'entries'}: ${g.structure.entries.map((e) => (e.id === null ? `(line ${e.line}) no id [${e.state}]` : `${e.id} [${e.state}]`)).join(', ')}`;
+    lines.push(
+      '',
+      '### Entry structure and provenance',
+      "(reported, never repaired; a source's existence does not prove it supports the definition)",
+      ...(g.structure.entries.length ? [inventory] : []),
+      ...(g.structure.findings.length ? g.structure.findings.map((f) => `- ${problem(f)}`) : ['none']),
+      '',
+      '### Declared canvas coverage (elements 3, 4, 7, 8)',
+      '(the restricted resolver reads `src: glossary.md#<id>`; a resolved link proves an entry exists, not that it is accepted or supports the claim)',
+      ...(g.canvas.statements.length
+        ? g.canvas.statements.map((s) => `${s.question} [${s.marker}] (line ${s.line}): ${s.text} — cites ${s.refs.map(ref).join(', ')}`)
+        : ['none']),
+      '',
+      '### Declared manuscript coverage',
+      '(declared in the glossary frontmatter, resolved against the project root; links and `constructs:` declarations alike)',
+      ...(g.manuscripts.declared.length ? [`declared: ${g.manuscripts.declared.join('; ')}`] : []),
+      ...(g.manuscripts.references.length
+        ? g.manuscripts.references.map((r) => `${r.path} (line ${r.line}) ${r.kind}: ${r.id}${r.state === null ? ` — ${r.reason}` : ` [${r.state}]`}`)
+        : ['none']),
+      ...g.manuscripts.notChecked.map((n) => `not checked: ${n.path === null ? 'manuscript coverage' : n.path} — ${n.reason}`),
+      '',
+      '### Lexical cross-check',
+      '(declared terms and aliases in the statements above and in manuscript prose; Unicode word boundaries, no stemming)',
+      ...(g.lexical.occurrences.length
+        ? g.lexical.occurrences.map((o) => `${o.where} (line ${o.line}): "${o.label}" occurs but ${o.ambiguous ? `is ambiguous — ${o.ids.join(' and ')} both claim it` : `nothing here names ${o.ids[0]}`}`)
+        : ['none']),
+      '',
+      '### Accepted text stability and cover',
+      "(entry payload against the recorded decision, under this machine's seal; a changed definition names what depends on it and invalidates nothing)",
+      ...(g.stability.length ? g.stability.flatMap(stabilityLines) : ['none']),
+    );
   }
   say(lines.join('\n'));
   return 0;

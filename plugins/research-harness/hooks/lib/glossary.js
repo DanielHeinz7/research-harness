@@ -305,6 +305,64 @@ function entryById(parsed, id) {
   return parsed.entries.find((e) => e.id === id) || null;
 }
 
+// The entries a reference may resolve to: an id carried by exactly one heading.
+// A duplicated id is not a link target (§ Entry format and references), so
+// nothing resolves to any of its readings.
+function resolvableEntries(parsed) {
+  const byId = new Map();
+  for (const e of parsed.entries) {
+    if (e.id === null) continue;
+    if (!byId.has(e.id)) byId.set(e.id, []);
+    byId.get(e.id).push(e);
+  }
+  return new Map([...byId].filter(([, readings]) => readings.length === 1).map(([id, readings]) => [id, readings[0]]));
+}
+
+// Every label the glossary declares — each entry's term and its aliases —
+// mapped to the entries that claim it. A label two entries claim stays
+// ambiguous: the review names both readings rather than picking one
+// (§ Mechanical review and its limits, lexical cross-check).
+function labelIndex(parsed) {
+  const index = new Map();
+  for (const e of parsed.entries) {
+    if (e.id === null) continue;
+    for (const label of [e.term, ...(e.aliases || [])]) {
+      if (!label) continue;
+      const key = label.toLowerCase();
+      if (!index.has(key)) index.set(key, { label, ids: [] });
+      const seen = index.get(key);
+      if (!seen.ids.includes(e.id)) seen.ids.push(e.id);
+    }
+  }
+  return index;
+}
+
+// The target of a reference is a path and a fragment: `glossary.md#felt-safety`
+// as a canvas evidence tag, `[felt safety](research/glossary.md#felt-safety)` as
+// a manuscript link. A `#` inside the path or a target with no file is not a
+// reference to an entry. A Markdown title (`(path "title")`) is not part of it.
+function referenceParts(target) {
+  const text = String(target === null || target === undefined ? '' : target).trim().replace(/^</, '').replace(/>$/, '');
+  const at = text.indexOf('#');
+  if (at <= 0) return null;
+  const file = text.slice(0, at).trim().replace(/\s+"[^"]*"$/, '');
+  const id = text.slice(at + 1).trim();
+  if (file === '' || id === '') return null;
+  return { file, id };
+}
+
+// The entry id `target` names, or null when the target does not resolve to the
+// selected glossary file from `base`. Resolution is lexical — the file may not
+// exist yet — and relative to the document that carries the reference, so the
+// same reference reads the same from the canvas's state directory and from a
+// manuscript at any depth. Literal comparison, so only the form the design
+// gives (§ Canvas citation form, § Manuscript citation form) is recognized.
+function referenceId(target, base, glossaryFile) {
+  const parts = referenceParts(target);
+  if (!parts || !glossaryFile) return null;
+  return path.resolve(base, parts.file) === path.resolve(glossaryFile) ? parts.id : null;
+}
+
 // The payload a `glossary <id> accepted` decision binds (§ Authorization and
 // text binding): canonical JSON of the id and the fixed-order field values,
 // each normalized first. JSON escaping means no value can cross a field
@@ -411,6 +469,9 @@ module.exports = {
   parseGlossary,
   loadGlossary,
   entryById,
+  resolvableEntries,
+  labelIndex,
+  referenceId,
   entryPayload,
   payloadHash,
   withEntryMarker,

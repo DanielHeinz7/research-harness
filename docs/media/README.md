@@ -52,7 +52,7 @@ wrote:
 | `--view <name>` | `poster` (default), `compare`, `agenda`, `log`, `element-<n>` |
 | `--width`, `--height` | viewport in pixels, default 1440x900 for the README; 1920x1080 for video stills |
 | `--out <file>` | PNG to write, default `session-view.png` in the current directory |
-| `--dark` | ask the browser for a dark colour scheme (the view declares `color-scheme: light`, so nothing changes today) |
+| `--dark` | render the session view in its dark colour scheme |
 
 Playwright is not a dependency of the plugin — only this script needs it. Install
 it where Node can resolve it from the repository, then run the script from

@@ -33,7 +33,7 @@
     --bg: #ebf2eb;
     --surface: #ffffff;
     --ink: #193c31;
-    --ink-soft: #4d655a;
+    --ink-soft: #354f42;
     --action: #154b38;
     --action-ink: #ffffff;
     --action-hover: #0f3a2b;
@@ -42,9 +42,9 @@
     --accent-ink: #193c31;
     --line: #7d9688;
     --border: #cdddca;
-    --icon-grad-start: #2b7254;
+    --icon-grad-start: #20583f;
     --suggestion-tint: rgba(117, 80, 15, 0.1);
-    --suggestion-ink: #6b4c11;
+    --suggestion-ink: #5c400e;
     --shadow-card: 0 8px 24px rgba(25, 60, 49, 0.08);
     --shadow-raised: 0 2px 6px rgba(25, 60, 49, 0.1), inset 0 0 0 1px rgba(25, 60, 49, 0.05);
     --r-card: 22px;
@@ -53,6 +53,36 @@
     --r-icon: 12px;
     --font-ui: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
     --font-num: Arial, Helvetica, sans-serif;
+    /* Stable roles at the desk, growing with the shared screen. */
+    --type-label: clamp(0.875rem, 0.125rem + 0.833333vw, 1.125rem);
+    --type-body: clamp(1rem, 0.25rem + 0.833333vw, 1.25rem);
+    --type-heading: clamp(1.125rem, 0.625rem + 0.65vw, 1.5rem);
+    --type-title: clamp(1.5rem, 0.625rem + 1.5vw, 2.5rem);
+    --space-tight: clamp(0.25rem, 0.2rem + 0.15vw, 0.375rem);
+    --space-group: clamp(0.75rem, 0.4rem + 0.5vw, 1rem);
+    --space-card: clamp(1rem, 0.75rem + 0.2vw, 1.125rem);
+    --space-stage: clamp(1rem, 0.5rem + 1vw, 2rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #12241d;
+      --surface: #1a3027;
+      --ink: #e5f3e9;
+      --ink-soft: #c0d6c8;
+      --action: #b5edcf;
+      --action-ink: #102b21;
+      --action-hover: #c9f6de;
+      --secondary: #294536;
+      --accent-surface: #354a29;
+      --accent-ink: #e5f3e9;
+      --line: #87a594;
+      --border: #4b6858;
+      --icon-grad-start: #a4dbb8;
+      --suggestion-tint: rgba(240, 216, 163, 0.08);
+      --suggestion-ink: #f0d8a3;
+    }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -61,6 +91,7 @@
     flex-direction: column;
     overflow: hidden;
     font-family: var(--font-ui);
+    font-size: var(--type-body);
     color: var(--ink);
     background: var(--bg);
     line-height: 1.55;
@@ -77,7 +108,7 @@
     flex: 0 0 auto;
     z-index: 30;
     background: var(--ink);
-    color: #fff;
+    color: var(--surface);
     padding: 10px 16px;
     justify-content: space-between;
     align-items: center;
@@ -88,13 +119,13 @@
   .notice-icon { font-size: 1rem; }
   #notice button {
     background: transparent;
-    color: #fff;
-    border: 1px solid #fff;
+    color: var(--surface);
+    border: 1px solid var(--surface);
     border-radius: var(--r-pill);
     padding: 4px 12px;
     cursor: pointer;
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--type-label);
   }
 
   #app { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -116,9 +147,9 @@
     border: 1px solid rgba(117, 80, 15, 0.35);
     background: rgba(117, 80, 15, 0.08);
     border-radius: var(--r-input);
-    color: #75500f;
+    color: var(--suggestion-ink);
   }
-  .notices-banner p { margin: 2px 0; font-size: 14px; }
+  .notices-banner p { margin: 2px 0; font-size: var(--type-label); }
 
   #topbar {
     flex: 0 0 auto;
@@ -144,7 +175,7 @@
     background: linear-gradient(145deg, var(--icon-grad-start), var(--action));
     font-style: normal;
   }
-  .brand-text { font-size: 15px; }
+  .brand-text { font-size: var(--type-body); }
   .brand-sep { color: var(--ink-soft); font-weight: 400; }
 
   #view-tabs {
@@ -161,7 +192,7 @@
     border: 0;
     background: transparent;
     color: var(--ink-soft);
-    font-size: 14px;
+    font-size: var(--type-label);
     font-weight: 500;
     padding: 8px 16px;
     border-radius: 11px;
@@ -193,7 +224,7 @@
     padding: 10px 16px;
     border-radius: var(--r-input);
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--type-label);
     text-decoration: none;
     transition: top 0.12s ease;
   }
@@ -208,7 +239,7 @@
   }
   .rail-label {
     margin: 0 4px 10px;
-    font-size: 12px;
+    font-size: var(--type-label);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -230,8 +261,8 @@
   .rail-card.active { border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
   .rail-card-accent { border-color: var(--action); }
   .rail-top { display: flex; align-items: center; gap: 8px; }
-  .rail-question { font-size: 13px; font-weight: 600; color: var(--ink); }
-  .rail-term { font-size: 11px; color: var(--ink-soft); padding-left: 30px; }
+  .rail-question { font-size: var(--type-label); font-weight: 600; color: var(--ink); }
+  .rail-term { font-size: var(--type-label); color: var(--ink-soft); padding-left: 30px; }
   /* Point 8: a colour-only dot fails "not by colour alone"; the badge carries
      its own count as text, so it reads without hover or focus. */
   .rail-totalk-badge {
@@ -244,7 +275,7 @@
     border-radius: var(--r-pill);
     background: var(--suggestion-tint);
     color: var(--suggestion-ink);
-    font-size: 11px;
+    font-size: var(--type-label);
     font-weight: 700;
     margin-left: auto;
   }
@@ -258,29 +289,30 @@
     padding: 0 5px;
     border-radius: var(--r-icon);
     background: linear-gradient(145deg, var(--icon-grad-start), var(--action));
-    color: #fff;
+    color: var(--action-ink);
     font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
     font-weight: 700;
-    font-size: 12px;
+    font-size: var(--type-label);
     flex: 0 0 auto;
   }
 
-  #stage { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 24px; }
+  #stage { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--space-stage); }
   /* Keep the poster's own bottom padding small so the whole paper sits on one
      1440x900 screen without a scroll bar. */
-  #body-shell.poster-active #stage { padding-bottom: 8px; }
+  #body-shell.poster-active #stage { display: flex; flex-direction: column; padding-bottom: 8px; }
 
   .view { display: none; }
   .view.active { display: block; }
   .view-head { margin-bottom: 20px; }
-  .view-head h2 { font-size: 22px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
-  .view-sub { margin: 4px 0 0; font-size: 14px; color: var(--ink-soft); }
+  .view-head h2 { font-size: var(--type-heading); font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+  .view-sub { margin: 4px 0 0; font-size: var(--type-label); color: var(--ink-soft); }
 
   /* -- Poster ------------------------------------------------------ */
-  .poster-head { margin-bottom: 12px; max-width: 80rem; }
-  .poster-eyebrow { margin: 0; font-size: 12px; color: var(--ink-soft); }
-  .poster-title { margin: 1px 0 0; font-size: 26px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+  #poster.active { display: flex; flex-direction: column; flex: 1 0 auto; min-height: 0; margin-bottom: 0; }
+  .poster-head { margin-bottom: var(--space-group); max-width: 80rem; }
+  .poster-eyebrow { margin: 0; font-size: var(--type-label); color: var(--ink-soft); }
+  .poster-title { margin: 1px 0 0; font-size: var(--type-title); font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
 
   /* Point 1: every card is short enough (one heading, one lead sentence, one
      link) that all nine fit above the fold at 1440x900. The row label is its
@@ -292,13 +324,15 @@
     margin: 0;
     padding: 0;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px 12px;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(3, auto auto);
+    gap: var(--space-tight) var(--space-group);
     align-items: stretch;
   }
   .poster-row-label {
     grid-column: 1 / -1;
-    font-size: 11px;
+    font-size: var(--type-label);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -311,34 +345,34 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-tight);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
     box-shadow: var(--shadow-card);
-    padding: 14px 16px 12px;
+    padding: var(--space-card);
   }
 
   .field-eyebrow { display: flex; align-items: center; gap: 8px; }
-  .field-term { font-size: 11px; color: var(--ink-soft); }
+  .field-term { font-size: var(--type-label); color: var(--ink-soft); }
 
   .field-question {
     margin: 0;
-    font-size: 15.5px;
+    font-size: var(--type-heading);
     font-weight: 700;
     color: var(--ink);
     letter-spacing: -0.005em;
     line-height: 1.3;
   }
-  .field-question-lg { font-size: 28px; }
+  .field-question-lg { font-size: var(--type-title); }
 
-  .field-body { font-size: 13.5px; color: var(--ink); }
+  .field-body { font-size: var(--type-body); color: var(--ink); }
   .field-body p, .field-para { margin: 0 0 10px; }
   .field-body p:last-child, .field-para:last-child { margin-bottom: 0; }
 
   /* Point 1: the poster card's one complete sentence — never clamped, never
      faded mid-thought. */
-  .field-lead { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
+  .field-lead { margin: 0; font-size: var(--type-body); line-height: 1.45; color: var(--ink); }
 
   /* Point 8: a heading plus a link, not one giant button around the card. */
   .field-foot {
@@ -350,10 +384,11 @@
     gap: 2px 12px;
   }
   .field-more {
-    padding: 0;
+    min-height: 44px;
+    padding: 4px 0;
     background: none;
     border: 0;
-    font-size: 12px;
+    font-size: var(--type-label);
     font-weight: 700;
     color: var(--action);
     cursor: pointer;
@@ -363,10 +398,11 @@
   /* A quiet line at the card's foot, not a badge: plain words, the arrow is
      decoration. It states a count in text, so it never relies on colour. */
   .field-totalk {
-    padding: 0;
+    min-height: 44px;
+    padding: 4px 0;
     background: none;
     border: 0;
-    font-size: 12px;
+    font-size: var(--type-label);
     font-weight: 500;
     color: var(--ink-soft);
     cursor: pointer;
@@ -400,7 +436,7 @@
     border-radius: 4px;
     background: var(--surface);
     color: var(--ink);
-    font-size: 12px;
+    font-size: var(--type-label);
     line-height: 1.4;
     font-style: normal;
   }
@@ -408,9 +444,9 @@
   .status-word { font-weight: 700; }
   .status-owner { border-left: 1px solid currentColor; padding-left: 8px; }
 
-  .src-ref { font-size: 0.72em; color: var(--ink-soft); }
+  .src-ref { font-size: var(--type-label); color: var(--ink-soft); }
   .src-ref a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
-  .entry-note, .entry-by { display: block; margin-top: 3px; font-size: 0.9em; color: var(--ink-soft); }
+  .entry-note, .entry-by { display: block; margin-top: 3px; font-size: var(--type-label); color: var(--ink-soft); }
 
   .field-totalk-full { margin-top: 20px; }
   .totalk-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -418,12 +454,12 @@
     background: var(--bg);
     border-radius: var(--r-input);
     padding: 10px 14px;
-    font-size: 14px;
+    font-size: var(--type-label);
     color: var(--ink);
   }
 
   .source-key-wrap { margin-top: 18px; }
-  .source-key { font-size: 12.5px; color: var(--ink-soft); border-top: 1px solid var(--border); padding-top: 10px; margin: 0; }
+  .source-key { font-size: var(--type-label); color: var(--ink-soft); border-top: 1px solid var(--border); padding-top: 10px; margin: 0; }
   .source-key li { margin-bottom: 3px; }
   .source-key a { color: var(--ink-soft); }
 
@@ -440,8 +476,8 @@
     padding: 16px 18px;
   }
   .agenda-item-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-  .agenda-item-title { font-size: 15px; font-weight: 700; color: var(--ink); }
-  .agenda-findings { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 13.5px; }
+  .agenda-item-title { font-size: var(--type-body); font-weight: 700; color: var(--ink); }
+  .agenda-findings { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: var(--type-body); }
   .agenda-findings li { margin-bottom: 4px; }
 
   .agenda-gap-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -453,7 +489,7 @@
     border: 1px dashed var(--line);
     border-radius: var(--r-card);
     padding: 10px 14px;
-    font-size: 13.5px;
+    font-size: var(--type-body);
     color: var(--ink-soft);
   }
   .agenda-gap-item strong { color: var(--ink); font-weight: 700; }
@@ -466,7 +502,7 @@
     color: var(--ink-soft);
     border-radius: var(--r-pill);
     padding: 6px 14px;
-    font-size: 13px;
+    font-size: var(--type-label);
     font-weight: 600;
     cursor: pointer;
   }
@@ -478,8 +514,8 @@
     border-radius: var(--r-card);
     box-shadow: var(--shadow-card);
     padding: 22px 26px;
-    font-size: 16px;
-    max-width: 44rem;
+    font-size: var(--type-body);
+    max-width: 70ch;
   }
   .field-body-full .field-para { margin-bottom: 14px; }
 
@@ -487,7 +523,7 @@
   .action-btn {
     border-radius: var(--r-pill);
     padding: 5px 12px;
-    font-size: 12px;
+    font-size: var(--type-label);
     font-weight: 700;
     cursor: pointer;
     border: 1px solid var(--action);
@@ -508,9 +544,9 @@
     border: 1px solid var(--border);
     border-radius: var(--r-card);
     box-shadow: var(--shadow-card);
-    max-width: 44rem;
+    max-width: 70ch;
   }
-  .comment-form label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+  .comment-form label { display: block; margin-bottom: 10px; font-size: var(--type-label); font-weight: 600; color: var(--ink-soft); }
   .comment-form textarea {
     display: block;
     width: 100%;
@@ -520,7 +556,7 @@
     background: var(--bg);
     border-radius: var(--r-input);
     padding: 10px 12px;
-    font-size: 14px;
+    font-size: var(--type-label);
     color: var(--ink);
   }
   .comment-form input[type="text"] {
@@ -529,7 +565,7 @@
     background: var(--bg);
     border-radius: var(--r-input);
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: var(--type-label);
     color: var(--ink);
     width: 100%;
     max-width: 24rem;
@@ -538,9 +574,9 @@
   /* -- History (was: decision log) ------------------------------------ */
   .by-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
   .by-filter button[aria-pressed="true"] { background: var(--surface); border-color: var(--ink-soft); color: var(--ink); }
-  .session-divider { border-top: 1px solid var(--border); padding-top: 12px; color: var(--ink-soft); font-size: 13px; }
-  .merge-line { margin: 0; color: var(--ink-soft); font-size: 13px; }
-  .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 44rem; }
+  .session-divider { border-top: 1px solid var(--border); padding-top: 12px; color: var(--ink-soft); font-size: var(--type-label); }
+  .merge-line { margin: 0; color: var(--ink-soft); font-size: var(--type-label); }
+  .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 70ch; }
   .history-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -548,10 +584,10 @@
     box-shadow: var(--shadow-card);
     padding: 14px 18px;
   }
-  .history-meta { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 6px; }
-  .history-body { margin: 0; color: var(--ink); font-size: 14.5px; }
+  .history-meta { font-size: var(--type-label); color: var(--ink-soft); margin: 0 0 6px; }
+  .history-body { margin: 0; color: var(--ink); font-size: var(--type-body); }
   /* The notice banner's amber, carried to the entry it is about. */
-  .seal-flag { font-size: 12.5px; color: #75500f; margin: 0 0 6px; }
+  .seal-flag { font-size: var(--type-label); color: var(--suggestion-ink); margin: 0 0 6px; }
   .notices-banner .seq-link { color: inherit; }
   .seq-link {
     padding: 0;
@@ -591,8 +627,8 @@
     box-shadow: var(--shadow-card);
     padding: 10px 16px 12px;
   }
-  .cmp-name { font-size: 17px; font-weight: 700; color: var(--ink); }
-  .cmp-lens { margin: 0 0 6px; font-size: 13px; color: var(--ink-soft); }
+  .cmp-name { font-size: var(--type-body); font-weight: 700; color: var(--ink); }
+  .cmp-lens { margin: 0 0 6px; font-size: var(--type-label); color: var(--ink-soft); }
   .cmp-head .action-btn { margin-top: auto; }
   .cmp-row-label {
     grid-column: 1 / -1;
@@ -600,7 +636,7 @@
     align-items: center;
     gap: 8px;
     margin: 6px 0 -2px;
-    font-size: 12px;
+    font-size: var(--type-label);
     font-weight: 700;
     color: var(--ink);
   }
@@ -615,13 +651,13 @@
     border-radius: var(--r-pill);
     background: var(--accent-surface);
     color: var(--accent-ink);
-    font-size: 11px;
+    font-size: var(--type-label);
     font-weight: 700;
     letter-spacing: 0.03em;
     text-transform: uppercase;
   }
-  .cmp-more { font-size: 13px; }
-  .cmp-more summary { cursor: pointer; font-size: 12px; font-weight: 700; color: var(--action); }
+  .cmp-more { font-size: var(--type-label); }
+  .cmp-more summary { cursor: pointer; font-size: var(--type-label); font-weight: 700; color: var(--action); }
   .cmp-more .field-para { margin: 6px 0 0; }
   .choose-note {
     margin: 0 0 12px;
@@ -629,7 +665,7 @@
     border-radius: var(--r-input);
     background: var(--suggestion-tint);
     color: var(--suggestion-ink);
-    font-size: 13px;
+    font-size: var(--type-label);
   }
 
   /* -- Dialogs (accept, choose) ------------------------------------------
@@ -647,17 +683,17 @@
     overflow-y: auto;
   }
   dialog.dlg::backdrop { background: rgba(25, 60, 49, 0.35); }
-  .dlg h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
-  .dlg-sub { margin: 4px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+  .dlg h2 { font-size: var(--type-heading); font-weight: 700; letter-spacing: -0.01em; }
+  .dlg-sub { margin: 4px 0 0; font-size: var(--type-body); color: var(--ink-soft); }
   .dlg-quote {
     margin: 12px 0 0;
     padding: 8px 12px;
     border-left: 2px solid var(--line);
     background: var(--bg);
     border-radius: 0 var(--r-input) var(--r-input) 0;
-    font-size: 14px;
+    font-size: var(--type-label);
   }
-  .dlg label { display: block; margin-top: 14px; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .dlg label { display: block; margin-top: 14px; font-size: var(--type-label); font-weight: 600; color: var(--ink); }
   .dlg-hint { font-weight: 400; color: var(--ink-soft); }
   .dlg textarea, .dlg input[type="text"] {
     display: block;
@@ -667,27 +703,35 @@
     background: var(--bg);
     border-radius: var(--r-input);
     padding: 10px 12px;
-    font-size: 14px;
+    font-size: var(--type-label);
     color: var(--ink);
   }
   .dlg-checks { margin-top: 16px; padding: 10px 14px; border-radius: var(--r-input); background: var(--suggestion-tint); }
-  .dlg-checks h3 { font-size: 13px; font-weight: 700; color: var(--suggestion-ink); }
-  .dlg-checks ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+  .dlg-checks h3 { font-size: var(--type-label); font-weight: 700; color: var(--suggestion-ink); }
+  .dlg-checks ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: var(--type-body); }
   .dlg-checks .seq { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 700; margin-right: 6px; color: var(--suggestion-ink); }
-  .dlg-checks p { margin: 8px 0 0; font-size: 12.5px; color: var(--suggestion-ink); }
-  .dlg-error { margin: 12px 0 0; font-size: 13px; font-weight: 700; color: var(--suggestion-ink); }
+  .dlg-checks p { margin: 8px 0 0; font-size: var(--type-label); color: var(--suggestion-ink); }
+  .dlg-error { margin: 12px 0 0; font-size: var(--type-label); font-weight: 700; color: var(--suggestion-ink); }
   .dlg-error:empty { display: none; }
   .dlg-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
-  .dlg-actions .action-btn, .dlg-actions .ghost-btn { padding: 8px 18px; font-size: 13px; }
+  .dlg-actions .action-btn, .dlg-actions .ghost-btn { padding: 8px 18px; font-size: var(--type-label); }
 
   /* Point 1: the footer (plugin version, "Canvas after Dorobantu et al.
      2024") is print-only now — it cost about 100px of always-visible screen
      for a credit line, which mattered most at 390px (SQ-111's "half
      screen"). */
   .print-only { display: none; }
-  footer { padding: 10px 24px 16px; font-size: 12px; color: var(--ink-soft); }
+  footer { padding: 10px 24px 16px; font-size: var(--type-label); color: var(--ink-soft); }
 
-  .empty-note { color: var(--ink-soft); font-style: italic; font-size: 14px; }
+  .empty-note { color: var(--ink-soft); font-style: italic; font-size: var(--type-label); }
+
+  /* On a shared screen the field number sits beside, not above, its
+     question: preserve room for the complete statement and ownership. */
+  @media screen and (min-width: 901px) {
+    .poster-cell .field-card { position: relative; }
+    .poster-cell .field-eyebrow { position: absolute; top: var(--space-card); right: var(--space-card); }
+    .poster-cell .field-question { padding-right: 36px; }
+  }
 
   @media (max-width: 900px) {
     #body-shell { flex-direction: column; }
@@ -706,8 +750,9 @@
     .rail-card { min-width: 190px; flex: 0 0 auto; }
     #stage { padding: 16px; }
     #topbar { padding: 10px 14px; }
-    .poster-grid { grid-template-columns: 1fr; }
-    .poster-title { font-size: 24px; }
+    #poster.active { min-height: 0; }
+    .poster-grid { grid-template-columns: 1fr; grid-template-rows: none; }
+    .poster-title { font-size: var(--type-title); }
     .field-body-full { padding: 16px 18px; max-width: none; }
     .comment-form { max-width: none; }
   }
@@ -725,7 +770,19 @@
     }
     .view { display: block !important; }
     .field-card, .agenda-item-open { cursor: default; box-shadow: none; }
+    :root {
+      color-scheme: light;
+      --bg: #ebf2eb; --surface: #fff; --ink: #193c31; --ink-soft: #354f42;
+      --action: #154b38; --action-ink: #fff; --icon-grad-start: #20583f;
+      --border: #cdddca; --suggestion-ink: #6b4c11;
+      --type-label: 12px; --type-body: 14px; --type-heading: 18px; --type-title: 22px;
+    }
     body { background: #fff; }
+    #poster.active { display: block; min-height: 0; }
+    #poster .status-label { font-size: 9px; padding: 1px 5px; margin-bottom: 2px; }
+    #poster .num-badge { font-size: 10px; min-width: 20px; height: 20px; }
+    #poster .poster-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: none; }
+    #poster .field-card { break-inside: avoid; }
     /* The poster must land on one A4 landscape page (about 1030x700 CSS px
        after the page margin), so its type and spacing shrink for paper. */
     #poster { padding: 0; }

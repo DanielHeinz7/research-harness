@@ -35,8 +35,7 @@ const USAGE = `Usage: node scripts/capture-session-view.js [options]
   --width <px>     viewport width, default 1440
   --height <px>    viewport height, default 900
   --out <file>     PNG to write, default session-view.png in the current directory
-  --dark           ask the browser for its dark colour scheme
-                   (the view declares color-scheme: light, so this is a no-op today)
+  --dark           render the session view in its dark colour scheme
   -h, --help       this text
 
 The page is the session view in fixture mode, rendered from

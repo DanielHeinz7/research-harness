@@ -3,7 +3,7 @@
 Audience: researchers in IS and management (the paper goes to Organization Science).
 Length target: 2:30 to 2:50. Language: English. Voice: Daniel's clone (ElevenLabs, v2).
 Embedding: MP4 uploaded by Daniel as a GitHub attachment at the top of the README.
-Sources: README.md and plugins/research-harness/README.md at `aceeac4`. Anything beyond them is marked `[check]`.
+Sources: README.md and plugins/research-harness/README.md at `ac84866` (the rewritten README), plus the appendix note of `46c3f1a`. Anything beyond them is marked `[check]`.
 Not claimed: that the guard stops an agent that deliberately goes around it (SQ-209 is open).
 
 Visual material: the session view rendered from fixtures (`dashboard/canvas.html?fixture=…`,

@@ -62,4 +62,32 @@ anywhere in the repository:
 $ npm i --no-save playwright && npx playwright install chromium
 ```
 
-Screenshots are not committed.
+## Committed screenshots
+
+These PNGs are committed at 1440x900. The root and plugin READMEs use the light
+captures; `poster-dark.png` shows the same poster in the dark colour scheme.
+Each file is under 250 KB as captured, so no resizing or lossy conversion was
+needed.
+
+| File | View | Size (bytes) |
+|---|---|---:|
+| [poster.png](poster.png) | Poster | 159164 |
+| [to-talk-about.png](to-talk-about.png) | To talk about | 119957 |
+| [history.png](history.png) | History | 201955 |
+| [element.png](element.png) | Field 3: Research Question | 152417 |
+| [poster-dark.png](poster-dark.png) | Poster, dark | 159932 |
+
+These are the exact capture commands, run from the repository root using an
+existing Playwright installation:
+
+```sh
+NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view poster --width 1440 --height 900 --out docs/media/poster.png
+NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view agenda --width 1440 --height 900 --out docs/media/to-talk-about.png
+NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view log --width 1440 --height 900 --out docs/media/history.png
+NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view element-3 --width 1440 --height 900 --out docs/media/element.png
+NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view poster --dark --width 1440 --height 900 --out docs/media/poster-dark.png
+```
+
+Use your own Playwright installation's path for `NODE_PATH`, or omit it if Node
+can already resolve Playwright. The captures use the committed
+`showcase-state.json`; the people named in them are invented, as described above.

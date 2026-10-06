@@ -30,22 +30,57 @@
      side rail is hidden there; the footer is print-only. */
   :root {
     color-scheme: light;
-    --bg: #ebf2eb;
-    --surface: #ffffff;
-    --ink: #193c31;
-    --ink-soft: #354f42;
-    --action: #154b38;
-    --action-ink: #ffffff;
+    --light-bg: #ebf2eb;
+    --bg: var(--light-bg);
+    --light-surface: #ffffff;
+    --surface: var(--light-surface);
+    --light-ink: #193c31;
+    --ink: var(--light-ink);
+    --light-ink-soft: #354f42;
+    --ink-soft: var(--light-ink-soft);
+    --light-action: #154b38;
+    --action: var(--light-action);
+    --light-action-ink: #ffffff;
+    --action-ink: var(--light-action-ink);
     --action-hover: #0f3a2b;
     --secondary: #dfeadd;
     --accent-surface: #dbedb0;
     --accent-ink: #193c31;
     --line: #7d9688;
-    --border: #cdddca;
-    --icon-grad-start: #20583f;
+    --light-border: #cdddca;
+    --border: var(--light-border);
+    --light-icon-grad-start: #20583f;
+    --icon-grad-start: var(--light-icon-grad-start);
     --suggestion-tint: rgba(117, 80, 15, 0.1);
-    --suggestion-ink: #5c400e;
-    --shadow-card: 0 8px 24px rgba(25, 60, 49, 0.08);
+    --light-suggestion-ink: #5c400e;
+    --suggestion-ink: var(--light-suggestion-ink);
+    --shadow-modal: 0 24px 60px rgba(25, 60, 49, 0.25);
+    --warning-border: rgba(117, 80, 15, 0.35);
+    --warning-bg: rgba(117, 80, 15, 0.08);
+    --shadow-inset: inset 0 1px 2px rgba(25, 60, 49, 0.06);
+    --shadow-button: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(25, 60, 49, 0.12);
+    --backdrop: rgba(25, 60, 49, 0.35);
+    --space-4: 4px;
+    --space-10: 10px;
+    --space-16: 16px;
+    --space-12: 12px;
+    --space-neg-1: -1px;
+    --space-24: 24px;
+    --space-14: 14px;
+    --space-2: 2px;
+    --space-3: 3px;
+    --space-8: 8px;
+    --space-30: 30px;
+    --space-5: 5px;
+    --space-20: 20px;
+    --space-1: 1px;
+    --space-6: 6px;
+    --space-neg-2: -2px;
+    --space-18: 18px;
+    --space-22: 22px;
+    --space-26: 26px;
+    --space-neg-6: -6px;
+    --space-36: 36px;
     --shadow-raised: 0 2px 6px rgba(25, 60, 49, 0.1), inset 0 0 0 1px rgba(25, 60, 49, 0.05);
     --r-card: 22px;
     --r-pill: 999px;
@@ -61,6 +96,7 @@
     --space-tight: clamp(0.25rem, 0.2rem + 0.15vw, 0.375rem);
     --space-group: clamp(0.75rem, 0.4rem + 0.5vw, 1rem);
     --space-card: clamp(1rem, 0.75rem + 0.2vw, 1.125rem);
+    --space-page: 2rem;
     --space-stage: clamp(1rem, 0.5rem + 1vw, 2rem);
   }
 
@@ -82,6 +118,13 @@
       --icon-grad-start: #a4dbb8;
       --suggestion-tint: rgba(240, 216, 163, 0.08);
       --suggestion-ink: #f0d8a3;
+      --warning-border: rgba(240, 216, 163, 0.35);
+      --warning-bg: rgba(240, 216, 163, 0.08);
+      --backdrop: rgba(0, 0, 0, 0.6);
+      --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.4);
+      --shadow-raised: 0 2px 6px rgba(0, 0, 0, 0.2);
+      --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+      --shadow-button: 0 2px 4px rgba(0, 0, 0, 0.15);
     }
   }
   * { box-sizing: border-box; }
@@ -98,31 +141,41 @@
   }
   h1, h2, h3, h4 { line-height: 1.25; margin: 0; font-family: var(--font-ui); }
   button, input, textarea { font-family: inherit; }
-  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible,
+  button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible,
   [tabindex]:focus-visible {
     outline: 3px solid var(--action);
-    outline-offset: 4px;
+    outline-offset: var(--space-4);
   }
+
+  .segment { text-decoration: none; display: inline-flex; align-items: center; }
+  .load-message { padding: var(--space-24); }
+  .field-discussion-title { color: var(--ink); font-weight: 700; }
+  .comment-error { color: var(--suggestion-ink); font-weight: 700; }
+  .comment-error:empty { display: none; }
+  :focus-visible { scroll-margin: var(--space-12); }
+  textarea, input { caret-color: var(--action); }
+  ::selection { background: var(--accent-surface); color: var(--accent-ink); }
 
   #notice {
     flex: 0 0 auto;
     z-index: 30;
     background: var(--ink);
     color: var(--surface);
-    padding: 10px 16px;
+    padding: var(--space-10) var(--space-16);
     justify-content: space-between;
     align-items: center;
-    gap: 16px;
+    gap: var(--space-16);
   }
   #notice[hidden] { display: none; }
   #notice:not([hidden]) { display: flex; }
   .notice-icon { font-size: 1rem; }
+  #notice button:focus-visible { outline-color: var(--surface); }
   #notice button {
     background: transparent;
     color: var(--surface);
     border: 1px solid var(--surface);
     border-radius: var(--r-pill);
-    padding: 4px 12px;
+    padding: var(--space-4) var(--space-12);
     cursor: pointer;
     font-weight: 700;
     font-size: var(--type-label);
@@ -133,7 +186,7 @@
   .sr-only {
     position: absolute;
     width: 1px; height: 1px;
-    padding: 0; margin: -1px;
+    padding: 0; margin: var(--space-neg-1);
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
@@ -142,30 +195,30 @@
 
   .notices-banner {
     flex: 0 0 auto;
-    margin: 12px 24px 0;
-    padding: 14px 16px;
-    border: 1px solid rgba(117, 80, 15, 0.35);
-    background: rgba(117, 80, 15, 0.08);
+    margin: var(--space-12) var(--space-24) 0;
+    padding: var(--space-14) var(--space-16);
+    border: 1px solid var(--warning-border);
+    background: var(--warning-bg);
     border-radius: var(--r-input);
     color: var(--suggestion-ink);
   }
-  .notices-banner p { margin: 2px 0; font-size: var(--type-label); }
+  .notices-banner p { margin: var(--space-2) 0; font-size: var(--type-label); }
 
   #topbar {
     flex: 0 0 auto;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 16px;
-    padding: 12px 24px;
+    gap: var(--space-16);
+    padding: var(--space-12) var(--space-24);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
-  #brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); }
+  #brand { display: flex; align-items: center; gap: var(--space-10); font-weight: 700; color: var(--ink); }
   .brand-mark {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 3px;
+    gap: var(--space-3);
     width: 26px;
     height: 26px;
   }
@@ -182,12 +235,12 @@
     display: flex;
     flex-wrap: wrap;
     max-width: 100%;
-    gap: 4px;
-    padding: 4px;
+    gap: var(--space-4);
+    padding: var(--space-4);
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 15px;
-    box-shadow: inset 0 1px 2px rgba(25, 60, 49, 0.06);
+    box-shadow: var(--shadow-inset);
   }
   .segment {
     min-height: 44px;
@@ -196,7 +249,7 @@
     color: var(--ink-soft);
     font-size: var(--type-label);
     font-weight: 500;
-    padding: 8px 16px;
+    padding: var(--space-8) var(--space-16);
     border-radius: 11px;
     cursor: pointer;
     white-space: nowrap;
@@ -223,7 +276,7 @@
     z-index: 50;
     background: var(--action);
     color: var(--action-ink);
-    padding: 10px 16px;
+    padding: var(--space-10) var(--space-16);
     border-radius: var(--r-input);
     font-weight: 700;
     font-size: var(--type-label);
@@ -235,36 +288,36 @@
   #rail {
     flex: 0 0 280px;
     overflow-y: auto;
-    padding: 16px;
+    padding: var(--space-16);
     background: var(--bg);
     border-right: 1px solid var(--border);
   }
   .rail-label {
-    margin: 0 4px 10px;
+    margin: 0 var(--space-4) var(--space-10);
     font-size: var(--type-label);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--ink-soft);
   }
-  .rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-8); }
   .rail-card {
     width: 100%;
     text-align: left;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--space-3);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-input);
-    padding: 10px 12px;
+    padding: var(--space-10) var(--space-12);
     cursor: pointer;
   }
   .rail-card.active { border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
   .rail-card-accent { border-color: var(--action); }
-  .rail-top { display: flex; align-items: center; gap: 8px; }
+  .rail-top { display: flex; align-items: center; gap: var(--space-8); }
   .rail-question { font-size: var(--type-label); font-weight: 600; color: var(--ink); }
-  .rail-term { font-size: var(--type-label); color: var(--ink-soft); padding-left: 30px; }
+  .rail-term { font-size: var(--type-label); color: var(--ink-soft); padding-left: var(--space-30); }
   /* Point 8: a colour-only dot fails "not by colour alone"; the badge carries
      its own count as text, so it reads without hover or focus. */
   .rail-totalk-badge {
@@ -273,7 +326,7 @@
     justify-content: center;
     min-width: 18px;
     height: 18px;
-    padding: 0 5px;
+    padding: 0 var(--space-5);
     border-radius: var(--r-pill);
     background: var(--suggestion-tint);
     color: var(--suggestion-ink);
@@ -288,7 +341,7 @@
     justify-content: center;
     min-width: 24px;
     height: 24px;
-    padding: 0 5px;
+    padding: 0 var(--space-5);
     border-radius: var(--r-icon);
     background: linear-gradient(145deg, var(--icon-grad-start), var(--action));
     color: var(--action-ink);
@@ -302,19 +355,19 @@
   #stage { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-stage); }
   /* Keep the poster's own bottom padding small so the whole paper sits on one
      1440x900 screen without a scroll bar. */
-  #body-shell.poster-active #stage { display: flex; flex-direction: column; padding-bottom: 8px; }
+  #body-shell.poster-active #stage { display: flex; flex-direction: column; padding-bottom: var(--space-8); }
 
   .view { display: none; }
   .view.active { display: block; }
-  .view-head { margin-bottom: 20px; }
-  .view-head h2 { font-size: var(--type-heading); font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
-  .view-sub { margin: 4px 0 0; font-size: var(--type-label); color: var(--ink-soft); }
+  .view-head { margin-bottom: var(--space-20); }
+  .view-head h1:not(.field-question-lg) { font-size: var(--type-heading); font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+  .view-sub { margin: var(--space-4) 0 0; font-size: var(--type-label); color: var(--ink-soft); }
 
   /* -- Poster ------------------------------------------------------ */
   #poster.active { display: flex; flex-direction: column; flex: 1 0 auto; min-height: 0; margin-bottom: 0; }
   .poster-head { margin-bottom: var(--space-group); max-width: 80rem; }
   .poster-eyebrow { margin: 0; font-size: var(--type-label); color: var(--ink-soft); }
-  .poster-title { margin: 1px 0 0; font-size: var(--type-title); font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+  .poster-title { margin: var(--space-1) 0 0; font-size: var(--type-title); font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
 
   /* Point 1: every card is short enough (one heading, one lead sentence, one
      link) that all nine fit above the fold at 1440x900. The row label is its
@@ -339,7 +392,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--ink-soft);
-    margin: 6px 0 -2px;
+    margin: var(--space-6) 0 var(--space-neg-2);
   }
   .poster-row-label:first-child { margin-top: 0; }
 
@@ -351,11 +404,10 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
-    box-shadow: var(--shadow-card);
     padding: var(--space-card);
   }
 
-  .field-eyebrow { display: flex; align-items: center; gap: 8px; }
+  .field-eyebrow { display: flex; align-items: center; gap: var(--space-8); }
   .field-term { font-size: var(--type-label); color: var(--ink-soft); }
 
   .field-question {
@@ -369,7 +421,7 @@
   .field-question-lg { font-size: var(--type-title); }
 
   .field-body { font-size: var(--type-body); color: var(--ink); }
-  .field-body p, .field-para { margin: 0 0 10px; }
+  .field-body p, .field-para { margin: 0 0 var(--space-10); }
   .field-body p:last-child, .field-para:last-child { margin-bottom: 0; }
 
   /* Point 1: the poster card's one complete sentence — never clamped, never
@@ -383,11 +435,11 @@
     flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
-    gap: 2px 12px;
+    gap: var(--space-2) var(--space-12);
   }
   .field-more {
     min-height: 44px;
-    padding: 4px 0;
+    padding: var(--space-4) 0;
     background: none;
     border: 0;
     font-size: var(--type-label);
@@ -401,7 +453,7 @@
      decoration. It states a count in text, so it never relies on colour. */
   .field-totalk {
     min-height: 44px;
-    padding: 4px 0;
+    padding: var(--space-4) 0;
     background: none;
     border: 0;
     font-size: var(--type-label);
@@ -412,14 +464,14 @@
   }
   .field-totalk:hover, .field-totalk:focus-visible { color: var(--action); text-decoration: underline; }
   .agenda-list > li:focus { outline: none; }
-  .agenda-list > li { scroll-margin-top: 16px; }
+  .agenda-list > li { scroll-margin-top: var(--space-16); }
 
   .field-gap { color: var(--ink-soft); }
   .field-gap-question { font-style: normal; }
   .field-gap-note { font-style: italic; }
   .field-para.field-gap {
     border-left: 2px dashed var(--line);
-    padding-left: 10px;
+    padding-left: var(--space-10);
   }
 
   /* Ownership is explicit in words and in the edge treatment: solid for
@@ -429,11 +481,11 @@
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 2px 8px;
+    gap: var(--space-2) var(--space-8);
     width: fit-content;
     max-width: 100%;
-    margin-bottom: 4px;
-    padding: 2px 8px;
+    margin-bottom: var(--space-4);
+    padding: var(--space-2) var(--space-8);
     border: 1px solid var(--ink);
     border-radius: 4px;
     background: var(--surface);
@@ -444,30 +496,30 @@
   }
   .status-label-model { border-style: dashed; }
   .status-word { font-weight: 700; }
-  .status-owner { border-left: 1px solid currentColor; padding-left: 8px; }
+  .status-owner { border-left: 1px solid currentColor; padding-left: var(--space-8); }
 
   .src-ref { font-size: var(--type-label); color: var(--ink-soft); }
   .src-ref a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
-  .entry-note, .entry-by { display: block; margin-top: 3px; font-size: var(--type-label); color: var(--ink-soft); }
+  .entry-note, .entry-by { display: block; margin-top: var(--space-3); font-size: var(--type-label); color: var(--ink-soft); }
 
-  .field-totalk-full { margin-top: 20px; }
-  .totalk-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .field-totalk-full { margin-top: var(--space-20); }
+  .totalk-list { list-style: none; margin: var(--space-8) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-10); }
   .totalk-item {
     background: var(--bg);
     border-radius: var(--r-input);
-    padding: 10px 14px;
+    padding: var(--space-10) var(--space-14);
     font-size: var(--type-label);
     color: var(--ink);
   }
 
-  .source-key-wrap { margin-top: 18px; }
-  .source-key { font-size: var(--type-label); color: var(--ink-soft); border-top: 1px solid var(--border); padding-top: 10px; margin: 0; }
-  .source-key li { margin-bottom: 3px; }
+  .source-key-wrap { margin-top: var(--space-18); }
+  .source-key { font-size: var(--type-label); color: var(--ink-soft); border-top: 1px solid var(--border); padding-top: var(--space-10); margin: 0; }
+  .source-key li { margin-bottom: var(--space-3); }
   .source-key a { color: var(--ink-soft); }
   #stage a { display: inline-block; min-width: 24px; min-height: 24px; }
 
   /* -- To talk about (was: Agenda) ------------------------------------ */
-  .agenda-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .agenda-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-12); }
   .agenda-item-open {
     width: 100%;
     text-align: left;
@@ -475,22 +527,21 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
-    box-shadow: var(--shadow-card);
-    padding: 16px 18px;
+    padding: var(--space-16) var(--space-18);
   }
-  .agenda-item-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .agenda-item-head { display: flex; align-items: center; gap: var(--space-10); margin-bottom: var(--space-6); }
   .agenda-item-title { font-size: var(--type-body); font-weight: 700; color: var(--ink); }
-  .agenda-findings { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: var(--type-body); }
-  .agenda-findings li { margin-bottom: 4px; }
+  .agenda-findings { margin: 0; padding-left: var(--space-18); color: var(--ink-soft); font-size: var(--type-body); }
+  .agenda-findings li { margin-bottom: var(--space-4); }
 
   .agenda-gaps { margin-top: var(--space-group); color: var(--ink); }
   .agenda-gaps > summary { font-weight: 700; }
-  .agenda-gaps summary { cursor: pointer; padding: 10px 0; }
+  .agenda-gaps summary { cursor: pointer; padding: var(--space-10) 0; }
   .agenda-gap-count { font-size: var(--type-label); font-weight: 400; color: var(--ink-soft); }
-  .agenda-gap-fields { list-style: none; margin: 8px 0 0; padding: 0; }
+  .agenda-gap-fields { list-style: none; margin: var(--space-8) 0 0; padding: 0; }
   .agenda-gap-field { border-top: 1px solid var(--border); }
-  .agenda-gap-field .num-badge { margin: 0 8px; }
-  .agenda-gap-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .agenda-gap-field .num-badge { margin: 0 var(--space-8); }
+  .agenda-gap-list { list-style: none; margin: var(--space-8) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-8); }
   .agenda-gap-item {
     width: 100%;
     text-align: left;
@@ -498,41 +549,40 @@
     background: transparent;
     border: 0;
     border-radius: var(--r-input);
-    padding: 10px 14px;
+    padding: var(--space-10) var(--space-14);
     font-size: var(--type-body);
     color: var(--ink-soft);
   }
   .agenda-gap-item:hover { background: var(--surface); }
 
   /* -- Field (single) ------------------------------------------------- */
-  .element-nav { display: flex; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
+  .element-nav { display: flex; justify-content: space-between; margin-bottom: var(--space-12); gap: var(--space-8); }
   .ghost-btn {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--ink-soft);
     border-radius: var(--r-pill);
-    padding: 6px 14px;
+    padding: var(--space-6) var(--space-14);
     font-size: var(--type-label);
     font-weight: 600;
     cursor: pointer;
   }
-  .field-head { margin-bottom: 8px; }
+  .field-head { margin-bottom: var(--space-8); }
   .field-body-full {
-    margin-top: 14px;
+    margin-top: var(--space-14);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
-    box-shadow: var(--shadow-card);
-    padding: 22px 26px;
+    padding: var(--space-22) var(--space-26);
     font-size: var(--type-body);
     max-width: 70ch;
   }
-  .field-body-full .field-para { margin-bottom: 14px; }
+  .field-body-full .field-para { margin-bottom: var(--space-14); }
 
-  .stmt-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 6px; vertical-align: middle; }
+  .stmt-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); margin-left: var(--space-6); vertical-align: middle; }
   .action-btn {
     border-radius: var(--r-pill);
-    padding: 5px 12px;
+    padding: var(--space-5) var(--space-12);
     font-size: var(--type-label);
     font-weight: 700;
     cursor: pointer;
@@ -541,40 +591,39 @@
   .action-btn-primary {
     background: var(--action);
     color: var(--action-ink);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(25, 60, 49, 0.12);
+    box-shadow: var(--shadow-button);
   }
   .action-btn-primary:hover { background: var(--action-hover); }
   .action-btn-outline { background: transparent; color: var(--action); }
   .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .comment-form {
-    margin: 22px 0 0;
-    padding: 18px 24px;
+    margin: var(--space-22) 0 0;
+    padding: var(--space-18) var(--space-24);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
-    box-shadow: var(--shadow-card);
     max-width: 70ch;
   }
-  .comment-form label { display: block; margin-bottom: 10px; font-size: var(--type-label); font-weight: 600; color: var(--ink-soft); }
+  .comment-form label { display: block; margin-bottom: var(--space-10); font-size: var(--type-label); font-weight: 600; color: var(--ink-soft); }
   .comment-form textarea {
     display: block;
     width: 100%;
     min-height: 4.5rem;
-    margin-top: 6px;
+    margin-top: var(--space-6);
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--r-input);
-    padding: 10px 12px;
+    padding: var(--space-10) var(--space-12);
     font-size: var(--type-label);
     color: var(--ink);
   }
   .comment-form input[type="text"] {
-    margin-top: 6px;
+    margin-top: var(--space-6);
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--r-input);
-    padding: 8px 12px;
+    padding: var(--space-8) var(--space-12);
     font-size: var(--type-label);
     color: var(--ink);
     width: 100%;
@@ -582,22 +631,21 @@
   }
 
   /* -- History (was: decision log) ------------------------------------ */
-  .by-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .by-filter { display: flex; flex-wrap: wrap; gap: var(--space-8); margin-bottom: var(--space-16); }
   .by-filter button[aria-pressed="true"] { background: var(--surface); border-color: var(--ink-soft); color: var(--ink); }
-  .session-divider { border-top: 1px solid var(--border); padding-top: 12px; color: var(--ink-soft); font-size: var(--type-label); }
+  .session-divider { border-top: 1px solid var(--border); padding-top: var(--space-12); color: var(--ink-soft); font-size: var(--type-label); }
   .merge-line { margin: 0; color: var(--ink-soft); font-size: var(--type-label); }
-  .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 70ch; }
+  .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-12); max-width: 70ch; }
   .history-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
-    box-shadow: var(--shadow-card);
-    padding: 14px 18px;
+    padding: var(--space-14) var(--space-18);
   }
-  .history-meta { font-size: var(--type-label); color: var(--ink-soft); margin: 0 0 6px; }
+  .history-meta { font-size: var(--type-label); color: var(--ink-soft); margin: 0 0 var(--space-6); }
   .history-body { margin: 0; color: var(--ink); font-size: var(--type-body); }
   /* The notice banner's amber, carried to the entry it is about. */
-  .seal-flag { font-size: var(--type-label); color: var(--suggestion-ink); margin: 0 0 6px; }
+  .seal-flag { font-size: var(--type-label); color: var(--suggestion-ink); margin: 0 0 var(--space-6); }
   .notices-banner .seq-link { color: inherit; }
   .seq-link {
     min-width: 24px;
@@ -621,45 +669,44 @@
   .cmp-grid {
     display: grid;
     grid-template-columns: repeat(var(--k, 3), minmax(15rem, 1fr));
-    gap: 6px 12px;
+    gap: var(--space-6) var(--space-12);
     align-items: stretch;
   }
   /* The margin and padding cancel out, and widen each head's background over
      the column gap so a card scrolling under the heads is not seen between them. */
-  .cmp-head { position: sticky; top: 0; z-index: 2; margin: 0 -6px; padding: 0 6px 6px; background: var(--bg); }
+  .cmp-head { position: static; z-index: 2; margin: 0 var(--space-neg-6); padding: 0 var(--space-6) var(--space-6); background: var(--bg); }
   .cmp-head-box {
     height: 100%;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: var(--space-2);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
-    box-shadow: var(--shadow-card);
-    padding: 10px 16px 12px;
+    padding: var(--space-10) var(--space-16) var(--space-12);
   }
   .cmp-name { font-size: var(--type-body); font-weight: 700; color: var(--ink); }
-  .cmp-lens { margin: 0 0 6px; font-size: var(--type-label); color: var(--ink-soft); }
+  .cmp-lens { margin: 0 0 var(--space-6); font-size: var(--type-label); color: var(--ink-soft); }
   .cmp-head .action-btn { margin-top: auto; }
   .cmp-row-label {
     grid-column: 1 / -1;
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin: 6px 0 -2px;
+    gap: var(--space-8);
+    margin: var(--space-6) 0 var(--space-neg-2);
     font-size: var(--type-label);
     font-weight: 700;
     color: var(--ink);
   }
   .cmp-row-caption { font-weight: 400; color: var(--ink-soft); }
-  .cmp-card { padding: 12px 14px 10px; gap: 6px; }
+  .cmp-card { padding: var(--space-12) var(--space-14) var(--space-10); gap: var(--space-6); }
   .cmp-diff { border-color: var(--action); }
   .cmp-same { background: transparent; box-shadow: none; }
   .cmp-same .field-lead { color: var(--ink-soft); }
   .diff-tag {
     align-self: flex-start;
-    padding: 1px 8px;
+    padding: var(--space-1) var(--space-8);
     border-radius: var(--r-pill);
     background: var(--accent-surface);
     color: var(--accent-ink);
@@ -670,10 +717,10 @@
   }
   .cmp-more { font-size: var(--type-label); }
   .cmp-more summary { min-height: 44px; cursor: pointer; font-size: var(--type-label); font-weight: 700; color: var(--action); }
-  .cmp-more .field-para { margin: 6px 0 0; }
+  .cmp-more .field-para { margin: var(--space-6) 0 0; }
   .choose-note {
-    margin: 0 0 12px;
-    padding: 8px 12px;
+    margin: 0 0 var(--space-12);
+    padding: var(--space-8) var(--space-12);
     border-radius: var(--r-input);
     background: var(--suggestion-tint);
     color: var(--suggestion-ink);
@@ -686,54 +733,56 @@
   dialog.dlg {
     width: min(36rem, calc(100vw - 32px));
     max-height: calc(100vh - 32px);
-    padding: 22px 26px;
+    padding: var(--space-22) var(--space-26);
     border: 1px solid var(--border);
     border-radius: var(--r-card);
     background: var(--surface);
     color: var(--ink);
-    box-shadow: var(--shadow-card), 0 24px 60px rgba(25, 60, 49, 0.25);
+    box-shadow: var(--shadow-modal);
     overflow-y: auto;
   }
-  dialog.dlg::backdrop { background: rgba(25, 60, 49, 0.35); }
+  dialog.dlg::backdrop { background: var(--backdrop); }
   .dlg h2 { font-size: var(--type-heading); font-weight: 700; letter-spacing: -0.01em; }
-  .dlg-sub { margin: 4px 0 0; font-size: var(--type-body); color: var(--ink-soft); }
+  .dlg-sub { margin: var(--space-4) 0 0; font-size: var(--type-body); color: var(--ink-soft); }
   .dlg-quote {
-    margin: 12px 0 0;
-    padding: 8px 12px;
+    margin: var(--space-12) 0 0;
+    padding: var(--space-8) var(--space-12);
     border-left: 2px solid var(--line);
     background: var(--bg);
     border-radius: 0 var(--r-input) var(--r-input) 0;
     font-size: var(--type-label);
   }
-  .dlg label { display: block; margin-top: 14px; font-size: var(--type-label); font-weight: 600; color: var(--ink); }
+  .dlg label { display: block; margin-top: var(--space-14); font-size: var(--type-label); font-weight: 600; color: var(--ink); }
   .dlg-hint { font-weight: 400; color: var(--ink-soft); }
   .dlg textarea, .dlg input[type="text"] {
     display: block;
     width: 100%;
-    margin-top: 6px;
+    margin-top: var(--space-6);
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--r-input);
-    padding: 10px 12px;
+    padding: var(--space-10) var(--space-12);
     font-size: var(--type-label);
     color: var(--ink);
   }
-  .dlg-checks { margin-top: 16px; padding: 10px 14px; border-radius: var(--r-input); background: var(--suggestion-tint); }
+  .dlg-checks { margin-top: var(--space-16); padding: var(--space-10) var(--space-14); border-radius: var(--r-input); background: var(--suggestion-tint); }
   .dlg-checks h3 { font-size: var(--type-label); font-weight: 700; color: var(--suggestion-ink); }
-  .dlg-checks ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: var(--type-body); }
-  .dlg-checks .seq { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 700; margin-right: 6px; color: var(--suggestion-ink); }
-  .dlg-checks p { margin: 8px 0 0; font-size: var(--type-label); color: var(--suggestion-ink); }
-  .dlg-error { margin: 12px 0 0; font-size: var(--type-label); font-weight: 700; color: var(--suggestion-ink); }
+  .dlg-checks ul { margin: var(--space-6) 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--type-body); }
+  .dlg-checks .seq { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 700; margin-right: var(--space-6); color: var(--suggestion-ink); }
+  .dlg-checks p { margin: var(--space-8) 0 0; font-size: var(--type-label); color: var(--suggestion-ink); }
+  .dlg-error { margin: var(--space-12) 0 0; font-size: var(--type-label); font-weight: 700; color: var(--suggestion-ink); }
   .dlg-error:empty { display: none; }
-  .dlg-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
-  .dlg-actions .action-btn, .dlg-actions .ghost-btn { padding: 8px 18px; font-size: var(--type-label); }
+  .dlg-actions { margin-top: var(--space-18); display: flex; justify-content: flex-end; gap: var(--space-8); }
+  .dlg-actions .action-btn, .dlg-actions .ghost-btn { padding: var(--space-8) var(--space-18); font-size: var(--type-label); }
 
   /* Point 1: the footer (plugin version, "Canvas after Dorobantu et al.
      2024") is print-only now — it cost about 100px of always-visible screen
      for a credit line, which mattered most at 390px (SQ-111's "half
      screen"). */
   .print-only { display: none; }
-  footer { padding: 10px 24px 16px; font-size: var(--type-label); color: var(--ink-soft); }
+  footer { padding: var(--space-10) var(--space-24) var(--space-16); font-size: var(--type-label); color: var(--ink-soft); }
+
+  .dlg textarea, .dlg input[type="text"], .comment-form textarea, .comment-form input[type="text"] { font-size: var(--type-body); }
 
   .empty-note { color: var(--ink-soft); font-style: italic; font-size: var(--type-label); }
 
@@ -742,7 +791,7 @@
   @media screen and (min-width: 901px) {
     .poster-cell .field-card { position: relative; }
     .poster-cell .field-eyebrow { position: absolute; top: var(--space-card); right: var(--space-card); }
-    .poster-cell .field-question { padding-right: 36px; }
+    .poster-cell .field-question { padding-right: var(--space-36); }
   }
 
   @media (max-width: 900px) {
@@ -754,7 +803,8 @@
       border-bottom: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      max-height: 220px;
+      max-height: 120px;
+      order: 1;
     }
     #body-shell.poster-active #rail,
     #body-shell.compare-active #rail { display: none; }
@@ -765,12 +815,12 @@
     .rail-totalk-badge { flex-shrink: 0; }
     .cmp-grid { grid-template-columns: repeat(var(--k, 3), minmax(0, 1fr)); }
     .cmp-row-label, .element-nav { flex-wrap: wrap; }
-    #stage { padding: 16px; }
-    #topbar { padding: 10px 14px; }
+    #stage { padding: var(--space-16); }
+    #topbar { padding: var(--space-10) var(--space-14); }
     #poster.active { min-height: 0; }
     .poster-grid { grid-template-columns: 1fr; grid-template-rows: none; }
     .poster-title { font-size: var(--type-title); }
-    .field-body-full { padding: 16px 18px; max-width: none; }
+    .field-body-full { padding: var(--space-16) var(--space-18); max-width: none; }
     .comment-form { max-width: none; }
   }
 
@@ -806,44 +856,44 @@
     .field-card, .agenda-item-open { cursor: default; box-shadow: none; }
     :root {
       color-scheme: light;
-      --bg: #ebf2eb; --surface: #fff; --ink: #193c31; --ink-soft: #354f42;
-      --action: #154b38; --action-ink: #fff; --icon-grad-start: #20583f;
-      --border: #cdddca; --suggestion-ink: #6b4c11;
+      --bg: var(--light-bg); --surface: var(--light-surface); --ink: var(--light-ink); --ink-soft: var(--light-ink-soft);
+      --action: var(--light-action); --action-ink: var(--light-action-ink); --icon-grad-start: var(--light-icon-grad-start);
+      --border: var(--light-border); --suggestion-ink: var(--light-suggestion-ink);
       --type-label: 12px; --type-body: 14px; --type-heading: 18px; --type-title: 22px;
     }
-    body { background: #fff; }
+    body { background: var(--surface); }
     #poster.active { display: block; min-height: 0; }
-    #poster .status-label { font-size: 9px; padding: 1px 5px; margin-bottom: 2px; }
+    #poster .status-label { font-size: 9px; padding: var(--space-1) var(--space-5); margin-bottom: var(--space-2); }
     #poster .num-badge { font-size: 10px; min-width: 20px; height: 20px; }
     #poster .poster-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: none; }
     #poster .field-card { break-inside: avoid; }
     /* The poster must land on one A4 landscape page (about 1030x700 CSS px
        after the page margin), so its type and spacing shrink for paper. */
     #poster { padding: 0; }
-    #poster .poster-head { margin-bottom: 8px; }
+    #poster .poster-head { margin-bottom: var(--space-8); }
     #poster .poster-title { font-size: 22px; }
     #poster .poster-eyebrow { font-size: 11px; }
-    #poster .poster-grid { gap: 6px 10px; }
-    #poster .poster-row-label { font-size: 10px; margin: 4px 0 -1px; }
-    #poster .field-card { padding: 10px 12px 10px; gap: 4px; border-radius: 14px; }
+    #poster .poster-grid { gap: var(--space-6) var(--space-10); }
+    #poster .poster-row-label { font-size: 10px; margin: var(--space-4) 0 var(--space-neg-1); }
+    #poster .field-card { padding: var(--space-10) var(--space-12) var(--space-10); gap: var(--space-4); border-radius: 14px; }
     #poster .field-question { font-size: 13.5px; }
     #poster .field-lead { font-size: 11.5px; line-height: 1.35; }
   }
   @page { size: A4; margin: 2cm; }
   @page poster { size: A4 landscape; margin: 1.2cm; }
-  .page-section { break-before: page; margin-bottom: 2rem; }
+  .page-section { break-before: page; margin-bottom: var(--space-page); }
   #poster { page: poster; }
 </style>
 </head>
 <body>
-<a href="#poster" class="skip-link">Skip to poster</a>
+<a href="#stage" class="skip-link">Skip to content</a>
 <div id="notice" role="alert" hidden>
   <span class="notice-icon" aria-hidden="true">&#9888;</span>
   <span id="notice-text"></span>
   <button type="button" id="notice-dismiss">Dismiss</button>
 </div>
 <div id="app">
-  <p style="padding:24px;">Loading…</p>
+  <p class="load-message">Loading…</p>
 </div>
 <dialog id="dlg" class="dlg" aria-labelledby="dlg-title"></dialog>
 <script>
@@ -1182,7 +1232,7 @@
   // type; the canvas term sits under it, small — kept here because this is
   // the element view, the one place point 3 still allows it.
   function fieldHeader(e, big) {
-    return '<' + (big ? 'h1' : 'span') + ' class="field-question' + (big ? ' field-question-lg' : '') + '">'
+    return '<' + (big ? 'h1 tabindex="-1"' : 'span') + ' class="field-question' + (big ? ' field-question-lg' : '') + '">'
       + esc(HUMAN_QUESTIONS[e.number] || e.title) + '</' + (big ? 'h1' : 'span') + '>'
       + '<span class="field-eyebrow"><span class="num-badge" aria-hidden="true">' + e.number + '</span>'
       + '<span class="field-term">' + esc(e.title) + '</span></span>';
@@ -1204,7 +1254,7 @@
   }
 
   function tabButton(view, label) {
-    return '<button type="button" class="segment" data-view-target="' + view + '" aria-pressed="false">' + esc(label) + '</button>';
+    return '<a class="segment" href="?view=' + view + '" data-view-target="' + view + '">' + esc(label) + '</a>';
   }
 
   function renderRail(s) {
@@ -1244,7 +1294,7 @@
     return '<li class="poster-cell">'
       + '<article class="' + classes.join(' ') + '">'
       + '<span class="field-eyebrow" aria-hidden="true"><span class="num-badge">' + e.number + '</span></span>'
-      + '<h3 class="field-question">' + esc(question) + '</h3>'
+      + '<h2 class="field-question">' + esc(question) + '</h2>'
       + leadHtml
       + '<div class="field-foot">'
       + '<button type="button" class="field-more" data-view-target="element-' + e.number + '">More<span class="sr-only"> about ' + esc(question) + '</span></button>'
@@ -1272,7 +1322,7 @@
     return '<section id="poster" data-view="poster" class="view page-section" tabindex="-1">'
       + '<div class="poster-head">'
       + (outlet ? '<p class="poster-eyebrow">' + esc(outlet) + '</p>' : '')
-      + '<h1 class="poster-title">' + esc(paperTitle(s)) + '</h1>'
+      + '<h1 tabindex="-1" class="poster-title">' + esc(paperTitle(s)) + '</h1>'
       + '<p class="view-sub poster-orientation">The paper&rsquo;s argument in nine fields. Open a field to comment, mark a statement as said, or accept it with your own sentence. Agents propose; you decide.</p>'
       + '</div>'
       + '<ol class="poster-grid">' + cells.join('') + '</ol>'
@@ -1381,7 +1431,7 @@
     var blocked = chooseBlock(s);
     var heads = variants.map(function (v) {
       return '<div class="cmp-head"><div class="cmp-head-box">'
-        + '<h3 class="cmp-name">' + esc(v.name) + '</h3>'
+        + '<h2 class="cmp-name">' + esc(v.name) + '</h2>'
         + '<p class="cmp-lens">' + (v.lens ? 'Lens: ' + esc(v.lens) : 'No lens recorded') + '</p>'
         + '<button type="button" class="action-btn action-btn-primary" data-action="choose" data-variant="' + esc(v.name) + '"'
         + (blocked ? ' disabled aria-describedby="choose-note"' : '') + '>Choose this framing<span class="sr-only">: ' + esc(v.name) + '</span></button>'
@@ -1389,12 +1439,12 @@
     }).join('');
     var rows = s.elements.map(function (e) {
       var differs = several && fieldDiffers(variants, e.number);
-      return '<h3 class="cmp-row-label"><span class="num-badge" aria-hidden="true">' + e.number + '</span>' + esc(HUMAN_QUESTIONS[e.number] || e.title)
-        + (several ? '<span class="cmp-row-caption">&middot; ' + (differs ? 'differs between framings' : 'the same in every framing') + '</span>' : '') + '</h3>'
+      return '<h2 class="cmp-row-label"><span class="num-badge" aria-hidden="true">' + e.number + '</span>' + esc(HUMAN_QUESTIONS[e.number] || e.title)
+        + (several ? '<span class="cmp-row-caption">&middot; ' + (differs ? 'differs between framings' : 'the same in every framing') + '</span>' : '') + '</h2>'
         + variants.map(function (v) { return renderCompareCard(v, e, differs, several); }).join('');
     }).join('');
     return '<section id="compare" data-view="compare" class="view page-section">'
-      + '<div class="view-head"><h2>Framings</h2><p class="view-sub">The same paper read through each lens. Fields that differ are marked; the rest are faded. Choosing one makes it the main canvas and keeps the others as the record.</p></div>'
+      + '<div class="view-head"><h1 tabindex="-1">Framings</h1><p class="view-sub">The same paper read through each lens. Fields that differ are marked; the rest are faded. Choosing one makes it the main canvas and keeps the others as the record.</p></div>'
       + (blocked ? '<p class="choose-note" id="choose-note">' + esc(blocked) + '</p>' : '')
       + '<div class="cmp-grid" style="--k:' + variants.length + '">' + heads + rows + '</div>'
       + '</section>';
@@ -1413,7 +1463,7 @@
 
     var totalkRaw = findingsFor(state.decisions, e.number).filter(passesFilter);
     var totalkFull = totalkRaw.length
-      ? '<div class="field-totalk-full"><h3 class="view-sub" style="color:var(--ink);font-weight:700;">To talk about</h3>'
+      ? '<div class="field-totalk-full"><h2 class="view-sub field-discussion-title">To talk about</h2>'
         + '<ul class="totalk-list">' + totalkRaw.map(function (d) {
           return '<li class="totalk-item">' + renderEntryBody(d.body) + renderEntryBy(d) + '</li>';
         }).join('') + '</ul></div>'
@@ -1422,8 +1472,9 @@
     var commentForm = fixtureMode
       ? '<p class="empty-note">Read-only example. Explore the fields; notes and decisions cannot be saved here.</p>'
       : '<div class="comment-form">'
-        + '<label>Something to talk about? Add a note for the meeting.<textarea data-comment-body-for="' + e.number + '"></textarea></label>'
+        + '<label>Something to talk about? Add a note for the meeting.<textarea aria-required="true" aria-describedby="comment-error-' + e.number + '" data-comment-body-for="' + e.number + '"></textarea></label>'
         + '<label>Why (optional) <input type="text" data-comment-why-for="' + e.number + '"></label>'
+        + '<p id="comment-error-' + e.number + '" class="comment-error" role="alert"></p>'
         + '<button type="button" class="action-btn action-btn-primary" data-action="comment" data-element="' + e.number + '" data-element-title="' + esc(e.title) + '">Add a note</button>'
         + '</div>';
 
@@ -1463,7 +1514,7 @@
     if (!sections) sections = '<p class="empty-note">Nothing to talk about right now.</p>';
 
     return '<section id="agenda" data-view="agenda" class="view page-section">'
-      + '<div class="view-head"><h2>To talk about</h2><p class="view-sub">Open questions and notes for the meeting. Open a field to add a comment.</p></div>'
+      + '<div class="view-head"><h1 tabindex="-1">To talk about</h1><p class="view-sub">Open questions and notes for the meeting. Open a field to add a comment.</p></div>'
       + sections
       + '</section>';
   }
@@ -1556,7 +1607,7 @@
         + '</li>';
     }).join('');
     return '<section id="log" data-view="log" class="view page-section">'
-      + '<div class="view-head"><h2>History</h2><p class="view-sub">What has been said and decided, in order.</p></div>'
+      + '<div class="view-head"><h1 tabindex="-1">History</h1><p class="view-sub">What has been said and decided, in order.</p></div>'
       + '<div class="by-filter" role="group" aria-label="Show entries by">' + buttons + '</div>'
       + (rows ? '<ol class="history-list">' + rows + '</ol>' : '<p class="empty-note">Nothing yet.</p>')
       + '</section>';
@@ -1581,7 +1632,7 @@
     if (activeView === 'compare' && !variantsOf(state).length) activeView = 'poster';
     app.innerHTML = renderTopbar(state)
       + renderNotices(state)
-      + '<div id="body-shell">' + renderRail(state) + '<main id="stage">' + renderStagePanels(state) + '</main></div>'
+      + '<div id="body-shell">' + renderRail(state) + '<main id="stage" tabindex="-1">' + renderStagePanels(state) + '</main></div>'
       + renderFooter(state);
     applyActiveView();
   }
@@ -1615,7 +1666,8 @@
     for (i = 0; i < tabs.length; i++) {
       var tabMatch = tabs[i].getAttribute('data-view-target') === activeView;
       tabs[i].classList.toggle('active', tabMatch);
-      tabs[i].setAttribute('aria-pressed', tabMatch ? 'true' : 'false');
+      if (tabMatch) tabs[i].setAttribute('aria-current', 'page');
+      else tabs[i].removeAttribute('aria-current');
     }
     var railCards = app.querySelectorAll('.rail-card');
     for (i = 0; i < railCards.length; i++) {
@@ -1624,6 +1676,11 @@
       if (railMatch) railCards[i].setAttribute('aria-current', 'true');
       else railCards[i].removeAttribute('aria-current');
     }
+  }
+
+  function focusActiveHeading() {
+    var heading = app.querySelector('.view.active h1');
+    if (heading) heading.focus();
   }
 
   function fetchState() {
@@ -1666,19 +1723,30 @@
     sessionCode = null;
   }
 
-  function doPost(path, payload) {
+  function fieldError(field, message) {
+    if (!field) return;
+    field.setAttribute('aria-invalid', 'true');
+    var box = document.getElementById(field.getAttribute('aria-describedby'));
+    if (box) box.textContent = message;
+    field.focus();
+  }
+
+  function doPost(path, payload, field) {
     if (!token) { showNotice(LINK_USED); return; }
     post(path, payload).then(function (res) {
       if (res.status === 200 && res.json && res.json.ok) {
-        return refreshState();
+        return refreshState().then(focusActiveHeading);
       }
       if (res.status === 409) {
         showNotice('The canvas changed since this view loaded; reloading.');
-        return refreshState();
+        return refreshState().then(focusActiveHeading);
       }
-      showNotice((res.json && res.json.error) || ('Request failed (' + res.status + ').'));
+      var message = (res.json && res.json.error) || ('Request failed (' + res.status + ').');
+      if (field) fieldError(field, message);
+      else showNotice(message);
     }).catch(function (err) {
-      showNotice('Request failed: ' + err.message);
+      if (field) fieldError(field, 'Request failed: ' + err.message);
+      else showNotice('Request failed: ' + err.message);
     });
   }
 
@@ -1716,17 +1784,18 @@
     dialogState = null;
   }
 
-  function dialogError(message) {
+  function dialogError(message, field) {
     // A failure can arrive after the dialog closed: the write is in, the reload
     // of the state is not. Inside a closed dialog nothing is visible, so such a
     // message goes to the notice bar, which outlives the dialog.
     if (!dlg.open) { showNotice(message); return; }
     var box = dlg.querySelector('.dlg-error');
     if (box) box.textContent = message;
+    if (field) fieldError(field, message);
   }
 
   function dialogButtons(confirmLabel) {
-    return '<p class="dlg-error" role="alert"></p>'
+    return '<p id="dlg-error" class="dlg-error" role="alert"></p>'
       + '<div class="dlg-actions"><button type="button" class="ghost-btn" data-dlg="cancel">Cancel</button>'
       + '<button type="submit" class="action-btn action-btn-primary">' + esc(confirmLabel) + '</button></div>';
   }
@@ -1753,7 +1822,7 @@
       + '<p class="dlg-sub">' + esc(found.question.id) + ' &middot; ' + esc(found.question.text) + '</p>'
       + '<blockquote class="dlg-quote">' + esc(found.statement.text) + '</blockquote>'
       + '<label>In your own words, why does this hold? <span class="dlg-hint">(required, one sentence)</span>'
-      + '<textarea name="explained" rows="2" autofocus aria-required="true"></textarea></label>'
+      + '<textarea name="explained" rows="2" autofocus aria-required="true" aria-describedby="dlg-error"></textarea></label>'
       + '<label>Why accept it now? <span class="dlg-hint">(optional)</span><input type="text" name="why"></label>'
       + checksHtml
       + dialogButtons(checks.length ? 'Accept anyway' : 'Accept')
@@ -1770,7 +1839,7 @@
       + '<h2 id="dlg-title">Choose the &ldquo;' + esc(v.name) + '&rdquo; framing</h2>'
       + '<p class="dlg-sub">' + (v.lens ? 'Lens: ' + esc(v.lens) + '. ' : '') + 'Its statements replace the main canvas. The other framings stay in place as the record of what was compared.</p>'
       + '<label>Why this framing? <span class="dlg-hint">(required)</span>'
-      + '<textarea name="why" rows="2" autofocus aria-required="true"></textarea></label>'
+      + '<textarea name="why" rows="2" autofocus aria-required="true" aria-describedby="dlg-error"></textarea></label>'
       + '<label>What you are setting aside <span class="dlg-hint">(filled in from the other framings; edit as you like)</span>'
       + '<textarea name="rejected" rows="3">' + esc(defaultRejected(variants, v.name)) + '</textarea></label>'
       + dialogButtons('Choose this framing')
@@ -1785,13 +1854,13 @@
     var path;
     if (what.kind === 'accept') {
       var explained = field('explained');
-      if (!explained) { dialogError('Say in your own words why this holds. The record keeps it.'); return; }
+      if (!explained) { dialogError('Say in your own words why this holds. The record keeps it.', form.elements.explained); return; }
       payload = { questionId: what.questionId, expectedHash: what.hash, explained: explained };
       if (field('why')) payload.why = field('why');
       path = '/api/accept';
     } else {
       var why = field('why');
-      if (!why) { dialogError('Say why you choose this framing. The record keeps it.'); return; }
+      if (!why) { dialogError('Say why you choose this framing. The record keeps it.', form.elements.why); return; }
       payload = { name: what.name, why: why };
       if (field('rejected')) payload.rejected = field('rejected');
       path = '/api/choose';
@@ -1805,19 +1874,28 @@
         closeDialog();
         // The chosen framing is now the main canvas: show it.
         if (what.kind === 'choose') activeView = 'poster';
-        return refreshState();
+        return refreshState().then(focusActiveHeading);
       }
       if (res.status === 409) {
         closeDialog();
         showNotice('The canvas changed since this view loaded; reloading.');
-        return refreshState();
+        return refreshState().then(focusActiveHeading);
       }
-      dialogError((res.json && res.json.error) || ('Request failed (' + res.status + ').'));
+      dialogError((res.json && res.json.error) || ('Request failed (' + res.status + ').'), form.elements[what.kind === 'accept' ? 'explained' : 'why']);
     }).catch(function (err) {
       dialogBusy = false;
-      dialogError('Request failed: ' + err.message);
+      dialogError('Request failed: ' + err.message, form.elements[what.kind === 'accept' ? 'explained' : 'why']);
     });
   }
+
+  function clearFieldError(event) {
+    event.target.removeAttribute('aria-invalid');
+    var box = document.getElementById(event.target.getAttribute('aria-describedby'));
+    if (box) box.textContent = '';
+  }
+
+  app.addEventListener('input', clearFieldError);
+  dlg.addEventListener('input', clearFieldError);
 
   dlg.addEventListener('submit', function (event) {
     event.preventDefault();
@@ -1826,7 +1904,8 @@
   dlg.addEventListener('click', function (event) {
     if (event.target.closest('[data-dlg="cancel"]')) closeDialog();
   });
-  dlg.addEventListener('close', function () { dialogState = null; });
+  // A native close event is queued: reopening before it arrives must keep the new state.
+  dlg.addEventListener('close', function () { if (!dlg.open) dialogState = null; });
 
   // Fixture mode only: `?view=<view>` and `?dialog=choose:<name>` or
   // `?dialog=accept:<question id>` open a view or a dialog on load, so a
@@ -1855,6 +1934,7 @@
     // Navigation (view switching) works in fixture mode too: it never writes.
     var navBtn = event.target.closest('[data-view-target]');
     if (navBtn) {
+      event.preventDefault();
       activeView = navBtn.getAttribute('data-view-target');
       applyActiveView();
       var scrollTo = navBtn.getAttribute('data-scroll-to');
@@ -1862,6 +1942,8 @@
       if (target) {
         target.scrollIntoView({ block: 'start' });
         target.focus({ preventScroll: true });
+      } else {
+        focusActiveHeading();
       }
       return;
     }
@@ -1882,18 +1964,18 @@
       var bodyInput = document.querySelector('[data-comment-body-for="' + num + '"]');
       var whyInput2 = document.querySelector('[data-comment-why-for="' + num + '"]');
       var body = bodyInput ? bodyInput.value.trim() : '';
-      if (!body) { showNotice('A note needs some text.'); return; }
+      if (!body) { fieldError(bodyInput, 'A note needs some text.'); return; }
       var commentPayload = { ref: num + ' ' + title, body: body };
       var why2 = whyInput2 ? whyInput2.value.trim() : '';
       if (why2) commentPayload.why = why2;
-      doPost('/api/comment', commentPayload);
+      doPost('/api/comment', commentPayload, bodyInput);
     }
   });
 
   if (!fixtureMode) openSession();
-  if (fixtureMode && qs.get('view')) activeView = qs.get('view');
+  if (qs.get('view')) activeView = qs.get('view');
   refreshState().then(openFromUrl).catch(function (err) {
-    app.innerHTML = '<p role="alert" style="padding:24px;">Could not load the canvas: ' + esc(err.message) + '</p>';
+    app.innerHTML = '<p role="alert" class="load-message">Could not load the canvas: ' + esc(err.message) + '</p>';
   });
 })();
 </script>

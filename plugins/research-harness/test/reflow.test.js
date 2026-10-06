@@ -52,7 +52,7 @@ for (const [width, height] of [[320, 720], [390, 844], [600, 900], [768, 1024], 
       await page.waitForSelector(`section[data-view="${view}"].active`);
       const metrics = await page.evaluate(() => {
         const stage = document.querySelector('#stage');
-        const tabs = [...document.querySelectorAll('#view-tabs button')].map((node) => {
+        const tabs = [...document.querySelectorAll('#view-tabs a')].map((node) => {
           const r = node.getBoundingClientRect();
           return { text: node.textContent, left: r.left, right: r.right, width: r.width, height: r.height };
         });
@@ -63,11 +63,15 @@ for (const [width, height] of [[320, 720], [390, 844], [600, 900], [768, 1024], 
           documentWidth: document.documentElement.scrollWidth,
           stageWidth: stage.clientWidth, stageContent: stage.scrollWidth,
           tabs, controls,
+          viewTop: document.querySelector('.view.active').getBoundingClientRect().top,
+          railTop: document.querySelector('#rail').getBoundingClientRect().top,
           comparisonContexts: [...document.querySelectorAll('#compare .cmp-context')].map((node) => getComputedStyle(node).position),
         };
       });
       assert.equal(metrics.documentWidth, width, `${view}: document scrollWidth equals viewport`);
       assert.equal(metrics.stageContent, metrics.stageWidth, `${view}: stage has no hidden horizontal overflow`);
+      assert.ok(metrics.viewTop < height, view + ': selected content starts in the first screen');
+      if (view !== 'poster' && view !== 'compare') assert.ok(metrics.railTop > metrics.viewTop, view + ': narrow rail follows content');
       for (const tab of metrics.tabs) {
         assert.ok(tab.left >= 0 && tab.right <= width, `${view}: ${tab.text} tab is within viewport`);
       }

@@ -244,8 +244,10 @@ For an explicitly selected library paper, replace `pdf` with `libraryPointer`,
 relative to `RESEARCH_HARNESS_LIBRARY`; that one PDF may be outside the project.
 Supply exactly one of them. The page map must name those same PDF bytes.
 `context` is mandatory, even when empty. A canvas, glossary or decisions file
-in that list must belong to the selected main/variant state. Other local sibling
-notes must be individually named; missing files stop the request. Every metadata
+in that list must belong to the selected main/variant state; the check folds
+the name's case and compares existing files by inode, so a differently cased
+name or a hard link of another state's authority is refused too. Other local
+sibling notes must be individually named; missing files stop the request. Every metadata
 field is supplied by the caller; use `unknown` rather than inventing a reader or
 read coverage. The adapter renders quoted YAML scalar frontmatter itself and
 creates ordinary relative Markdown links to checked source/context targets.
@@ -301,12 +303,18 @@ The required body headings, in order, are:
 ## Open questions [proposed]
 ```
 
-Every section must contain text. Non-quotation paragraphs start `[proposed]`;
-quotations use the strict blockquote grammar above. No generated frontmatter,
-links, HTML, code fences, `[stated]`, `[accepted]`, `fact-checked` or `human-read`
-labels are allowed. The final quote check uses the full extraction, not the
-lossy request view. Source, map, config and selected-context edits during the
-request refuse publication. All source hashes are rechecked before publication.
+Every section must contain text. Non-quotation paragraphs start `[proposed]`,
+including prose between the H1 and the first H2; a paragraph without the marker
+is refused. Quotations use the strict blockquote grammar above, and every
+non-blank line of that section must be one — the checker would otherwise pass
+a prose line inside `Quotations` uninventoried. No generated frontmatter,
+links, HTML, code fences, `[stated]`, `[accepted]`, `fact-checked` or
+`human-read` labels are allowed; a bare `scheme://` URL, an inline
+`[text](target)` or reference `[text][id]` link and a `[id]: ...` definition are
+links as well and are refused. The final quote check uses the full extraction,
+not the lossy request view. Source, map, config and selected-context edits
+during the request refuse publication. All source hashes are rechecked before
+publication.
 
 Use a local, untracked extraction/cache directory. Failed responses stay beside
 the selected page map as `<output-stem>.draft.md` and a static

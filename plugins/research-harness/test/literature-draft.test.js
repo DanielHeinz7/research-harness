@@ -162,6 +162,21 @@ test('missing metadata, escaping context and unselected state refuse before egre
   }
 });
 
+test('a differently cased name or a hard link of another state file is never context', async (t) => {
+  for (const kind of ['case-variant', 'hard-link']) {
+    const s = await setup(t);
+    const alias = kind === 'case-variant' ? 'research/CANVAS.md' : 'research/alias.md';
+    if (kind === 'hard-link') fs.linkSync(path.join(s.root, 'research/canvas.md'), path.join(s.root, alias));
+    writeJson(s.inputs, { ...s.input, context: [alias] });
+    const result = await run(s.args);
+    assert.notEqual(result.status, 0, kind);
+    assert.equal(s.requests.length, 0, kind);
+    assert.equal(read(path.join(s.root, 'research/canvas.md')), 'DO NOT SEND MAIN CANVAS');
+    // A hard link exists on every filesystem, so the refusal names the guard.
+    if (kind === 'hard-link') assert.match(result.stderr, /unselected-state-context/);
+  }
+});
+
 test('context overflow refuses instead of truncating the selected inputs', async (t) => {
   const s = await setup(t);
   writeJson(s.gateway, { ...json(s.gateway), contextBytes: 50 });
@@ -192,6 +207,29 @@ test('timeout, truncated output and malformed templates never publish or retry',
     noFinal(s);
     assert.equal(s.requests.length, 1);
   }
+});
+
+test('links in every form and unmarked prose never become a published note', async (t) => {
+  const preface = body.replace('# Literature note [proposed]\n\n', '# Literature note [proposed]\n\nAn invented remark.\n\n');
+  const cases = [
+    ['bare URL', body.replace('follows meetings.', 'follows meetings. See https://example.invalid/paper.'), 'unsupported-response-markup'],
+    ['reference link', body.replace('follows meetings.', 'follows meetings [record][inv].'), 'unsupported-response-markup'],
+    ['link definition', body.replace('follows meetings.', 'follows meetings.\n\n[inv]: ../../unselected.md'), 'unsupported-response-markup'],
+    ['unmarked H1 preface', preface, 'proposal-marker-required'],
+    ['unmarked section prose', body.replace('[proposed] Compare the selected framing.', 'Compare the selected framing.'), 'proposal-marker-required'],
+    ['non-blockquote Quotations line', body.replace('## Quotations\n\n', '## Quotations\n\nAn invented remark.\n\n'), 'quotation-blockquote-required'],
+  ];
+  for (const [name, content, reason] of cases) {
+    const s = await setup(t, (_req, res) => res.end(JSON.stringify(reply(content))));
+    const result = await run(s.args);
+    assert.notEqual(result.status, 0, name);
+    assert.equal(s.requests.length, 1, name);
+    noFinal(s);
+    assert.equal(json(s.diagnostic).reason, reason, name);
+  }
+  // The same preface carrying the marker is prose the template allows.
+  const s = await setup(t, (_req, res) => res.end(JSON.stringify(reply(body.replace('# Literature note [proposed]\n\n', '# Literature note [proposed]\n\n[proposed] An invented preface.\n\n')))));
+  assert.equal((await run(s.args)).status, 0);
 });
 
 test('HTTP errors and redirects do not leak response diagnostics or use a fallback', async (t) => {

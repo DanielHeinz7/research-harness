@@ -32,10 +32,12 @@ id, unresolved origin, unmet element-4 dependency, missing sealing key or
 broken decision log refuses by name. The glossary is published by an atomic
 rename, then the decision is appended; a crash between these writes can leave
 an [accepted] marker without a decision. Review labels that entry unlogged,
-not a glossary acceptance. To recover that marker-only entry, reset its marker
-in glossary.md to `[proposed]`, then run `glossary show <id>` again, read the
-payload, and accept again with the newly displayed binding digest and your own
-explanation. Do not repair or invent a DECISION in the ledger.
+not a glossary acceptance. To recover that marker-only entry, the researcher
+resets its marker in glossary.md to `[proposed]` by hand — the guard refuses
+that edit to the model, because dropping a marker is removing a commitment —
+and then you run `glossary show <id>` again, read the payload, and accept again
+with the newly displayed binding digest and your own explanation. Do not repair
+or invent a DECISION in the ledger.
 The ledger keeps its eight-hex payload identifier; that identifier is not the
 binding digest required by --hash.
 

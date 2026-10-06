@@ -440,10 +440,79 @@ test('SQ-218: publication refuses a glossary changed while the temporary file wa
     }
     return result;
   });
-  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }), /glossary.*changed.*nothing is accepted/i);
+  // SQ-220: the lost update is a refusal like every other, not a fault — the
+  // caller gets the one line the CLI prints, with no usage text behind it.
+  const lost = acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT });
+  assert.equal(lost.ok, false, 'a changed glossary refuses the acceptance');
+  assert.equal(lost.code, 'stale');
+  assert.equal(lost.usage, undefined, 'a refusal without usage is one line');
+  assert.match(lost.error, /glossary.*changed.*nothing is accepted/i);
   assert.equal(read(root, 'glossary.md'), concurrent, 'publication preserves the concurrent edit');
   assert.equal(read(root, 'decisions.md'), before.ledger, 'lost-update refusal adds no DECISION');
   assert.deepEqual(fs.readdirSync(path.dirname(file(root, 'glossary.md'))).filter(n => n.startsWith('.glossary.md.')), [], 'refusal removes the prepared temporary file');
+});
+
+// The CLI test below needs the lost-update window open inside a child process.
+// NODE_OPTIONS loads this before the CLI, so it edits glossary.md at the moment
+// publication sets the temporary file's mode: after the accept read the entry
+// and prepared its decision, before the file's bytes are rechecked.
+const LOST_UPDATE_PRELOAD = `'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const chmod = fs.chmodSync;
+fs.chmodSync = (target, ...args) => {
+  const result = chmod(target, ...args);
+  if (typeof target === 'string' && path.basename(target).startsWith('.glossary.md.')) {
+    const file = path.join(path.dirname(target), 'glossary.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('Quiet window', 'Other window'));
+  }
+  return result;
+};
+`;
+
+test('SQ-220: the CLI prints a lost update as one refusal line, not a stack trace', () => {
+  const root = keyedProject();
+  const before = { glossary: read(root, 'glossary.md'), ledger: read(root, 'decisions.md') };
+  const concurrent = before.glossary.replace('Quiet window', 'Other window');
+  const preload = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-preload-')), 'lost-update.js');
+  fs.writeFileSync(preload, LOST_UPDATE_PRELOAD);
+  const out = childProcess.spawnSync(
+    process.execPath,
+    [cli, 'glossary', 'accept', 'quiet-window', '--hash', hashOf(before.glossary, 'quiet-window'), '--explained', EXPLAINED],
+    { cwd: root, env: { ...process.env, CLAUDE_PLUGIN_ROOT: PROFILE_ROOT, NODE_OPTIONS: `--require ${preload}` }, encoding: 'utf8' },
+  );
+  assert.equal(out.status, 1, out.stdout + out.stderr);
+  assert.equal(out.stderr, '', 'a refusal is not a stack trace');
+  assert.equal(out.stdout.trim(), 'The glossary changed during acceptance; reload and look again. Nothing is accepted.', 'exactly one refusal line on stdout');
+  assert.equal(read(root, 'glossary.md'), concurrent, 'the concurrent edit stands untouched');
+  assert.equal(read(root, 'decisions.md'), before.ledger, 'nothing is appended to the ledger');
+  assert.deepEqual(fs.readdirSync(path.dirname(file(root, 'glossary.md'))).filter(n => n.startsWith('.glossary.md.')), [], 'the prepared temporary file is removed');
+});
+
+test('SQ-220: two headings sharing an id give cover to neither, even when the first collides', () => {
+  const original = doc(entryText('quiet-window', { definition: 'Invented definition 22373.' }), LAG);
+  const root = keyedProject({ glossaryText: original });
+  const accepted = acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT });
+  assert.equal(accepted.ok, true, accepted.error);
+  // The same id twice: a colliding swap of the accepted payload first, the
+  // accepted payload itself last — the order under which the last heading
+  // decides what the sealed body is compared with.
+  const duplicated = doc(
+    entryText('quiet-window', { definition: 'Invented definition 37527.', marker: '[accepted]' }),
+    entryText('quiet-window', { definition: 'Invented definition 22373.', marker: '[accepted]' }),
+    LAG,
+  );
+  const readings = glossary.parseGlossary(duplicated).entries.filter((e) => e.id === 'quiet-window');
+  assert.equal(readings.length, 2, 'the fixture has two headings with the id');
+  assert.equal(glossary.payloadHash(readings[0]), accepted.hash, 'the swapped payload collides in the ledger hash');
+  assert.notEqual(JSON.stringify(glossary.entryPayload(readings[0])), JSON.stringify(glossary.entryPayload(readings[1])), 'and it is a different payload');
+
+  fs.writeFileSync(file(root, 'glossary.md'), duplicated);
+  const report = reviewOf(root);
+  assert.equal(report.glossaryAcceptances.length, 0, 'a duplicated id covers none of its blocks');
+  assert.equal(report.glossaryUnloggedAcceptances.length, 2, 'both readings are unlogged');
+  for (const a of report.glossaryUnloggedAcceptances) assert.equal(a.coveredBy, null, 'neither reading has cover');
+  assert.equal(report.glossaryStaleAcceptances.length, 0, 'the accepted payload itself did not move');
 });
 
 test('SQ-212: glossary publication replaces the file atomically by rename', (t) => {

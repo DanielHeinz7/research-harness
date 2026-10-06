@@ -556,13 +556,20 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, glossaryT
   // binding): an entry marked [accepted] is covered by a verified DECISION that
   // names the entry, its payload hash and its exact canonical payload.
   const glossary = glossaryText === null || glossaryText === undefined ? null : glossaryLib.parseGlossary(glossaryText);
+  // The payload an id names, per heading: an id two headings share names no
+  // single reading and is not a link target (§ Entry format and references), so
+  // it maps to no payload and a decision about it covers neither block. Letting
+  // the last heading win would compare a decision's sealed payload with a
+  // heading it never named, and a short-hash collision then reads as cover.
   const glossaryPayloads = new Map();
   const acceptedEntries = [];
   if (glossary) {
     for (const e of glossary.entries) {
-      glossaryPayloads.set(e.id, JSON.stringify(glossaryLib.entryPayload(e)));
-      if (e.marker !== 'accepted' || e.id === null) continue;
-      acceptedEntries.push({ id: e.id, line: e.line, term: e.term, hash: glossaryLib.payloadHash(e), coveredBy: null });
+      if (e.id === null) continue;
+      const payload = JSON.stringify(glossaryLib.entryPayload(e));
+      glossaryPayloads.set(e.id, glossaryPayloads.has(e.id) ? null : payload);
+      if (e.marker !== 'accepted') continue;
+      acceptedEntries.push({ id: e.id, line: e.line, term: e.term, hash: glossaryLib.payloadHash(e), payload, coveredBy: null });
     }
   }
   const stateOf = (e) => decisionState(ledger, e);
@@ -598,11 +605,16 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, glossaryT
       // The ledger's short hash is only an identifier: a collision must not
       // cover different text. The first body line is the sealed JSON payload;
       // the remaining lines are the decision's labelled explanation fields.
-      const samePayload = e.body.split('\n')[0] === glossaryPayloads.get(g[1]);
+      const sealedPayload = e.body.split('\n')[0];
+      const samePayload = glossaryPayloads.get(g[1]) === sealedPayload;
       if (samePayload && (!covered || (state === 'verified' && covered.state !== 'verified'))) glossaryCover.set(coverKey, cover);
       if (!glossaryDecisions.has(g[1])) glossaryDecisions.set(g[1], []);
       glossaryDecisions.get(g[1]).push({ seq: e.seq, ref: e.ref, hash: e.hash, state });
-      const live = samePayload && acceptedEntries.some((a) => a.id === g[1] && a.hash === e.hash);
+      // Live is asked per accepted entry, not per id: an entry that still holds
+      // the sealed payload keeps its acceptance out of the stale list even
+      // while a second heading shares its id — such an id covers nothing, but
+      // the payload itself did not move.
+      const live = acceptedEntries.some((a) => a.id === g[1] && a.hash === e.hash && a.payload === sealedPayload);
       if (!live) glossaryStaleAcceptances.push({ seq: e.seq, ref: e.ref, hash: e.hash });
       continue;
     }

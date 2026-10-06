@@ -1,6 +1,6 @@
 # Technical appendix: the research record
 
-Sections 1–8 describe the implementation at main commit `4b382f3445fa127406cb30950b3b040138c5bcdb` (release 0.4.1), checked on 1 October 2026, except where a 0.5 addition is noted. Their source line numbers and measured counts refer to that commit. Section 9 describes the two-person commands at main `01e6d576fbd85675021509eedede26ce3b2bf31a`; it does not extend the earlier perimeter measurements. The [public-data walkthrough](../plugins/research-harness/README.md#walkthrough-the-three-capabilities-on-a-public-dataset) demonstrates framing comparison, acceptance with an explanation, and review of the record. Its console commands are exercised by `demo.test.js`; a person's completion time has not been measured. The recorded run demonstrates the mechanism, not the quality of a live model's research judgment.[^demo]
+Sections 1–8 describe the implementation at main commit `4b382f3445fa127406cb30950b3b040138c5bcdb` (release 0.4.1), checked on 1 October 2026, except where a 0.5 addition is noted. Their source line numbers and measured counts refer to that commit. Section 9 describes the two-person commands at main `01e6d576fbd85675021509eedede26ce3b2bf31a`; it does not extend the earlier perimeter measurements. Sections 10–14 moved here from the top-level README on 6 October 2026 (main `aceeac4`) without change to their content. The [public-data walkthrough](../plugins/research-harness/README.md#walkthrough-the-three-capabilities-on-a-public-dataset) demonstrates framing comparison, acceptance with an explanation, and review of the record. Its console commands are exercised by `demo.test.js`; a person's completion time has not been measured. The recorded run demonstrates the mechanism, not the quality of a live model's research judgment.[^demo]
 
 ## 1. State and write paths
 
@@ -124,7 +124,7 @@ pulling again without rebase, `merge-log --skip-decision <n>` leaves that one
 DECISION out of the moved copies and records the omission. It refuses a skip
 that would leave a dangling reference. The canvas may still have an
 `[accepted]` marker: the person resets it by hand after merging, reads the
-check, and accepts again. The [README](../README.md#two-people-one-canvas) gives
+check, and accepts again. [Section 10](#10-two-people-terminal-steps) gives
 the terminal steps.[^merge]
 
 ### Guard boundaries and known limits
@@ -140,6 +140,209 @@ whole-directory reads that do not name the key file.
 A later merge that moves an earlier MERGE entry leaves the old entry numbers
 in that entry's narrative text stale; only the two reference fields above are
 rewritten.
+
+## 10. Two people: terminal steps
+
+These are the steps §9 describes, as a person types them.
+
+A researcher and supervisor can work on one canvas at one machine or in two git
+clones, including remotely. The log records both people's entries. Both clones
+must run research-harness 0.5 and share the project's sealing key. A clone still
+on a pre-seal version cannot merge its log with a sealing clone: `merge-log`
+refuses an incoming log that does not verify under the shared key.
+
+For two clones, the key holder first exports the existing project key from the
+original project, in their own terminal:
+
+```sh
+research-harness key export --out /path/outside-repo/project.seal.key
+```
+
+The output file must end in `.seal.key`. It is created with mode `0600`; the
+command never prints the key. Hand over the file separately, not as plain-text
+mail, not through a command line or transcript, and not through the repository.
+
+The second person installs the plugin as described in
+[Install](../plugins/research-harness/README.md#install), runs
+`research-harness install-cli` once in Claude Code to make the terminal command
+available, and clones the paper project. In their own terminal:
+
+```sh
+git clone <project-url> paper-project
+cd paper-project
+research-harness join --key-file /path/outside-repo/project.seal.key --name "B. Supervisor"
+```
+
+`join` checks the key against the log before copying it and sets the local name.
+It runs `doctor` and tells you when the exported file can be deleted; it does
+not delete it. Do not initialize a second key for a sealed log.
+
+In each clone, make pulls use a merge rather than a rebase:
+
+```sh
+git config pull.rebase false
+```
+
+At one machine no key handover is needed. Before each person's writes, set
+`research-harness name "A. Researcher"` or
+`research-harness name "B. Supervisor"` as appropriate. The name setting is
+user-wide, not per project; without it the CLI uses `git config user.name`.
+`By` is a statement, not proof: whoever holds the key can write any name.
+
+Before the session, export the agenda, which contains the view's "To talk about"
+items. Then mark the start of the session:
+
+```sh
+research-harness agenda --out agenda.md
+research-harness session start "Supervision on the study framing"
+```
+
+After the session, export its protocol:
+
+```sh
+research-harness session protocol --out protocol.md
+```
+
+This selects the latest session. To select an earlier one, put its SESSION entry
+number after `protocol`, for example `research-harness session protocol 12`.
+A session runs until the next SESSION marker or the end of the log; there is no
+end command. People send the agenda and protocol themselves.
+
+When a pull conflicts on `research/decisions.md`, run the following inside that
+merge, not during a rebase:
+
+```sh
+research-harness merge-log
+git add research/decisions.md
+git commit
+```
+
+Resolve any other conflicts before committing. `merge-log` keeps the other
+clone's log unchanged and moves your divergent entries after it, renumbered and
+re-sealed. It records the moves in a MERGE entry. It handles only the log; git
+handles `canvas.md` and other files. The text above the first entry and all
+shared unsealed entries must match byte for byte.
+
+A merge is refused if moving your acceptance after a check the other clone
+opened would make that unseen check read as closed. Nothing is written. Follow
+the refusal's entry number: abort with `git merge --abort`, pull again with
+`git pull --no-rebase`, then run `research-harness merge-log --skip-decision <n>`.
+For example, `research-harness merge-log --skip-decision 12` leaves out DECISION
+12; do not put `#` before the number in a shell command. The omitted entry stays
+in git history and the MERGE entry records it. Stage and commit as above.
+The statement in `canvas.md` may still read `[accepted]`: reset its marker by
+hand to its previous non-accepted marker after the merge, then accept it again
+with `research-harness accept <n.m> --explained "<your sentence>"` after reading
+the other person's check. The tool does not reset the canvas marker for you.
+
+These setup and writing steps belong to people: the guard refuses model calls
+to `name`, `key`, `join`, `session start` and `merge-log`, and reads or writes
+naming a path ending in `.seal.key`. The model may run `agenda` and
+`session protocol [<n>]` only without any flag. The `--out` exports above are
+human steps too.
+
+## 11. The construct glossary and the literature note
+
+### Construct glossary
+
+A project may keep `research/glossary.md` beside the canvas: one entry per
+construct, with its term, aliases, definition, a local origin, and the
+distinctions from neighbouring constructs. A canvas statement cites an entry as
+`src: glossary.md#felt-safety`; a manuscript links it as
+`[felt safety](research/glossary.md#felt-safety)`. Agents propose entries and
+never accept them. The researcher accepts one with
+`/research-harness:glossary-accept <id> --explained "<their sentence>"`, and the
+sealed decision log binds that entry's payload, so a later change to a
+definition is reported as stale rather than silently inherited by what cites
+it. `review` adds a `Glossary mechanics` group for entry structure and
+provenance, declared canvas and manuscript coverage, a lexical cross-check, and
+accepted-text stability. It cannot judge whether a definition is the right one
+for the study, and says so.
+
+### Literature note
+
+A literature note is drafted from one local paper, and what it produces is a
+proposal before it is anything else. A page map binds each printed page of the
+PDF to the physical page it was read from, so a quotation's printed-page locator
+can be checked at all. The drafting request goes through an already approved
+local gateway route, and before any note is saved, every quotation is compared
+against the page the note claims — wording only, as a contiguous sequence of
+words, with typographic variants folded and word boundaries kept intact. A
+passage from another page, one invented word, a reversed run, or a quotation
+form the gate cannot read word for word refuses the note, and a note with no
+quotations does not pass either.
+
+```
+This check covers only verbatim wording on the claimed printed page. It does not
+verify paraphrase, numbers or attribution, and it does not accept a research
+claim. Project relevance and transfer judgments remain [proposed] for human
+review.
+```
+
+`/research-harness:literature-note` walks a researcher through the sequence, and
+[the plugin reference](../plugins/research-harness/references/literature-note.md)
+documents the commands, the exit codes and a walkthrough on an invented paper.
+No source PDF or extracted text ships with the plugin, and no note-acceptance
+ledger exists: an idea the note raises becomes a canvas proposal through the
+canvas skill, which the researcher then accepts or not.
+
+## 12. Design notes
+
+### A contract, not a path
+
+The contract is **"a paper project repo."** Where that repo lives is
+configuration.
+
+The plugin must not hard-wire any root — least of all its author's local
+convention. It ships through Toolshed to other researchers, and they do not have
+that root. Toolshed stands in the same relationship to its own author's
+directories.
+
+A repository counts as a paper project when it contains `research/canvas.md`.
+Nothing else. In any other repository the plugin stays silent, except that a
+command or tool call naming the `research/` location is still judged there.
+
+### Where the rules come from
+
+The harness's question set is derived from published methodological and
+craft literature — the AMJ Management Research Canvas, the seven-part
+*Publishing in AMJ* series, the MIS Quarterly editorial on phenomenon-focused
+problematization, and two JAIS pieces on writing. Full references in
+[REFERENCES.md](../REFERENCES.md).
+
+The plugin does not ship these texts. It encodes its own question set, modelled
+on them and citing them, and points at a local full-text collection through
+`RESEARCH_HARNESS_LIBRARY`.
+
+## 13. Configuration
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `RESEARCH_HARNESS_DIR` | state directory inside the paper repo | `research/` |
+| `RESEARCH_HARNESS_LIBRARY` | local full-text collection of the cited works | unset |
+| `RESEARCH_HARNESS_STATE_DIR` | session ledger and the decision log's sealing key, outside the paper repo | `~/.claude/research-harness` |
+
+The genre profile is not an environment variable — it is named in the canvas
+frontmatter (`profile: is-qualitative`) so it travels with the project.
+
+## 14. Releasing
+
+    node scripts/release.js <version> "<summary>" [--dry-run] [--trailer "<line>"] [--accept-denies]
+
+Run it from a clean `main`. It refuses unless the version is semver and greater
+than the one in both manifests, runs the plugin tests, the perimeter probe and
+the guard's false-positive replay (`verification/probes/probe-benign.js`) over
+the newest harvest in `verification/local/`, and only then sets the version in
+`.claude-plugin/marketplace.json` (twice) and
+`plugins/research-harness/.claude-plugin/plugin.json`, commits
+`Release <version>: <summary>`, pushes `main`, and updates the installed plugin.
+
+The replay's DENY count is compared with the last release's, kept in the
+gitignored `verification/local/release-baseline.json`; more DENYs stop the
+release unless `--accept-denies` is given. Without a harvest the script refuses
+and names the command to make one
+(`node verification/probes/probe-benign.js --harvest`). `--dry-run` runs the
+checks and prints the remaining commands without running them.
 
 ## Evidence references
 

@@ -72,7 +72,7 @@ Built to survive UI changes (Daniel, 2026-10-06):
 
 **Visual:** The review output listing open elements, a stale acceptance and an unsourced statement. Then the session view in a browser with two names on the decision history.
 
-> A read-only review lists what is open, what went stale, and which statements have no source. A researcher and a supervisor can share one canvas and go through it in the browser view during a meeting. The log records who wrote each entry.
+> A read-only review lists what is open, what went stale, and which statements have no source. Co-authors can share one canvas and go through it together in the browser view during a meeting. The log records who wrote each entry.
 
 ## 9 · Limits and start (2:36–2:52)
 

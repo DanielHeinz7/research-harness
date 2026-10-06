@@ -11,7 +11,7 @@ Der Schlüssel kommt aus der Keychain (Eintrag `elevenlabs`) und steht nie in ei
     python3 tts.py --voice <id>            # vertont, danach: python3 build.py && npx hyperframes render
     python3 tts.py --voice <id> --model eleven_v3  # anderes Modell, etwa für einen Hörvergleich
 """
-import argparse, base64, json, subprocess, sys, urllib.request, urllib.error
+import argparse, base64, json, os, subprocess, sys, urllib.request, urllib.error
 
 API = "https://api.elevenlabs.io/v1"
 MODEL = "eleven_v3"  # Hörvergleich 04.10.: auf Deutsch besser als eleven_multilingual_v2 (Daniel)
@@ -67,6 +67,7 @@ def main():
     ap.add_argument("--list-voices", action="store_true")
     ap.add_argument("--model", help=f"Standard: {MODEL}, für Daniels Klon {CLONE_MODEL}")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--only", type=int, action="append", help="nur diese Szene neu vertonen (mehrfach erlaubt)")
     a = ap.parse_args()
 
     if a.list_voices:
@@ -82,10 +83,16 @@ def main():
     scenes = json.load(open("scenes.json"))
     chars = sum(len(s["text"]) for s in scenes)
     print(f"{len(scenes)} Szenen, {chars} Zeichen, Modell {a.model}, Stimme {a.voice}")
+    if a.only:
+        chars = sum(len(scenes[n - 1]["text"]) for n in a.only)
+        print(f"nur Szenen {a.only}: {chars} Zeichen")
     if a.dry_run:
         return
+    os.makedirs("audio", exist_ok=True)
 
     for i, s in enumerate(scenes, 1):
+        if a.only and i not in a.only:
+            continue
         body = {"text": s["text"], "model_id": a.model}
         if a.voice == CLONE:
             body["voice_settings"] = CLONE_SETTINGS

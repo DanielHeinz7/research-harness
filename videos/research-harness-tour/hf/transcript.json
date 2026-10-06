@@ -1689,462 +1689,444 @@
   "id": "w281",
   "text": "A",
   "start": 84.48,
-  "end": 84.608
+  "end": 84.596
  },
  {
   "id": "w282",
   "text": "read-only",
-  "start": 84.724,
-  "end": 85.072
+  "start": 84.689,
+  "end": 85.026
  },
  {
   "id": "w283",
   "text": "review",
-  "start": 85.142,
-  "end": 85.397
+  "start": 85.084,
+  "end": 85.467
  },
  {
   "id": "w284",
   "text": "lists",
-  "start": 85.455,
-  "end": 85.734
+  "start": 85.641,
+  "end": 86.001
  },
  {
   "id": "w285",
   "text": "what",
-  "start": 85.78,
-  "end": 85.931
+  "start": 86.047,
+  "end": 86.175
  },
  {
   "id": "w286",
   "text": "is",
-  "start": 85.978,
-  "end": 86.047
+  "start": 86.221,
+  "end": 86.303
  },
  {
   "id": "w287",
   "text": "open,",
-  "start": 86.105,
-  "end": 86.465
+  "start": 86.361,
+  "end": 86.686
  },
  {
   "id": "w288",
   "text": "what",
-  "start": 86.581,
-  "end": 86.756
+  "start": 86.721,
+  "end": 86.86
  },
  {
   "id": "w289",
   "text": "went",
-  "start": 86.814,
-  "end": 86.976
+  "start": 86.906,
+  "end": 87.069
  },
  {
   "id": "w290",
   "text": "stale,",
-  "start": 87.023,
-  "end": 87.429
+  "start": 87.115,
+  "end": 87.51
  },
  {
   "id": "w291",
   "text": "and",
-  "start": 87.464,
+  "start": 87.533,
   "end": 87.626
  },
  {
   "id": "w292",
   "text": "which",
-  "start": 87.673,
+  "start": 87.684,
   "end": 87.859
  },
  {
   "id": "w293",
   "text": "statements",
   "start": 87.905,
-  "end": 88.404
+  "end": 88.369
  },
  {
   "id": "w294",
   "text": "have",
-  "start": 88.462,
-  "end": 88.636
+  "start": 88.416,
+  "end": 88.555
  },
  {
   "id": "w295",
   "text": "no",
-  "start": 88.671,
-  "end": 88.787
+  "start": 88.59,
+  "end": 88.694
  },
  {
   "id": "w296",
   "text": "source.",
-  "start": 88.869,
-  "end": 89.356
+  "start": 88.776,
+  "end": 89.228
  },
  {
   "id": "w297",
-  "text": "A",
-  "start": 89.53,
-  "end": 89.6
+  "text": "Co-authors",
+  "start": 89.287,
+  "end": 89.855
  },
  {
   "id": "w298",
-  "text": "researcher",
-  "start": 89.681,
-  "end": 90.146
+  "text": "can",
+  "start": 89.913,
+  "end": 90.041
  },
  {
   "id": "w299",
-  "text": "and",
-  "start": 90.204,
-  "end": 90.308
+  "text": "share",
+  "start": 90.088,
+  "end": 90.32
  },
  {
   "id": "w300",
-  "text": "a",
-  "start": 90.355,
-  "end": 90.378
+  "text": "one",
+  "start": 90.378,
+  "end": 90.552
  },
  {
   "id": "w301",
-  "text": "supervisor",
-  "start": 90.424,
-  "end": 91.028
+  "text": "canvas",
+  "start": 90.598,
+  "end": 90.993
  },
  {
   "id": "w302",
-  "text": "can",
-  "start": 91.086,
-  "end": 91.214
+  "text": "and",
+  "start": 91.04,
+  "end": 91.133
  },
  {
   "id": "w303",
-  "text": "share",
-  "start": 91.26,
-  "end": 91.492
+  "text": "go",
+  "start": 91.191,
+  "end": 91.307
  },
  {
   "id": "w304",
-  "text": "one",
-  "start": 91.55,
-  "end": 91.701
+  "text": "through",
+  "start": 91.365,
+  "end": 91.562
  },
  {
   "id": "w305",
-  "text": "canvas",
-  "start": 91.748,
-  "end": 92.131
+  "text": "it",
+  "start": 91.597,
+  "end": 91.655
  },
  {
   "id": "w306",
-  "text": "and",
-  "start": 92.189,
-  "end": 92.282
+  "text": "together",
+  "start": 91.69,
+  "end": 92.05
  },
  {
   "id": "w307",
-  "text": "go",
-  "start": 92.34,
-  "end": 92.468
+  "text": "in",
+  "start": 92.096,
+  "end": 92.154
  },
  {
   "id": "w308",
-  "text": "through",
-  "start": 92.537,
-  "end": 92.781
+  "text": "the",
+  "start": 92.189,
+  "end": 92.259
  },
  {
   "id": "w309",
-  "text": "it",
-  "start": 92.816,
-  "end": 92.897
+  "text": "browser",
+  "start": 92.294,
+  "end": 92.653
  },
  {
   "id": "w310",
-  "text": "in",
-  "start": 92.955,
-  "end": 93.025
+  "text": "view",
+  "start": 92.7,
+  "end": 92.874
  },
  {
   "id": "w311",
-  "text": "the",
-  "start": 93.071,
-  "end": 93.141
+  "text": "during",
+  "start": 92.92,
+  "end": 93.164
  },
  {
   "id": "w312",
-  "text": "browser",
-  "start": 93.187,
-  "end": 93.582
+  "text": "a",
+  "start": 93.199,
+  "end": 93.222
  },
  {
   "id": "w313",
-  "text": "view",
-  "start": 93.64,
-  "end": 93.849
+  "text": "meeting.",
+  "start": 93.269,
+  "end": 93.64
  },
  {
   "id": "w314",
-  "text": "during",
-  "start": 93.919,
-  "end": 94.221
+  "text": "The",
+  "start": 93.663,
+  "end": 93.768
  },
  {
   "id": "w315",
-  "text": "a",
-  "start": 94.267,
-  "end": 94.29
+  "text": "log",
+  "start": 93.826,
+  "end": 94.0
  },
  {
   "id": "w316",
-  "text": "meeting.",
-  "start": 94.348,
-  "end": 94.813
+  "text": "records",
+  "start": 94.07,
+  "end": 94.43
  },
  {
   "id": "w317",
-  "text": "The",
-  "start": 94.929,
-  "end": 95.045
+  "text": "who",
+  "start": 94.464,
+  "end": 94.569
  },
  {
   "id": "w318",
-  "text": "log",
-  "start": 95.103,
-  "end": 95.277
+  "text": "wrote",
+  "start": 94.615,
+  "end": 94.859
  },
  {
   "id": "w319",
-  "text": "records",
-  "start": 95.335,
-  "end": 95.718
+  "text": "each",
+  "start": 94.906,
+  "end": 95.068
  },
  {
   "id": "w320",
-  "text": "who",
-  "start": 95.741,
-  "end": 95.834
+  "text": "entry.",
+  "start": 95.115,
+  "end": 95.44
  },
  {
   "id": "w321",
-  "text": "wrote",
-  "start": 95.881,
-  "end": 96.136
+  "text": "It",
+  "start": 95.44,
+  "end": 95.579
  },
  {
   "id": "w322",
-  "text": "each",
-  "start": 96.183,
-  "end": 96.334
+  "text": "will",
+  "start": 95.614,
+  "end": 95.742
  },
  {
   "id": "w323",
-  "text": "entry.",
-  "start": 96.392,
-  "end": 96.879
+  "text": "not",
+  "start": 95.788,
+  "end": 95.916
  },
  {
   "id": "w324",
-  "text": "It",
-  "start": 96.88,
-  "end": 97.019
+  "text": "tell",
+  "start": 95.951,
+  "end": 96.137
  },
  {
   "id": "w325",
-  "text": "will",
-  "start": 97.054,
-  "end": 97.182
+  "text": "you",
+  "start": 96.195,
+  "end": 96.264
  },
  {
   "id": "w326",
-  "text": "not",
-  "start": 97.228,
-  "end": 97.356
+  "text": "whether",
+  "start": 96.311,
+  "end": 96.52
  },
  {
   "id": "w327",
-  "text": "tell",
-  "start": 97.391,
-  "end": 97.577
+  "text": "your",
+  "start": 96.566,
+  "end": 96.671
  },
  {
   "id": "w328",
-  "text": "you",
-  "start": 97.635,
-  "end": 97.704
+  "text": "research",
+  "start": 96.717,
+  "end": 97.077
  },
  {
   "id": "w329",
-  "text": "whether",
-  "start": 97.751,
-  "end": 97.96
+  "text": "is",
+  "start": 97.123,
+  "end": 97.193
  },
  {
   "id": "w330",
-  "text": "your",
-  "start": 98.006,
-  "end": 98.111
+  "text": "good.",
+  "start": 97.251,
+  "end": 97.53
  },
  {
   "id": "w331",
-  "text": "research",
-  "start": 98.157,
-  "end": 98.517
+  "text": "It",
+  "start": 97.599,
+  "end": 97.739
  },
  {
   "id": "w332",
-  "text": "is",
-  "start": 98.563,
-  "end": 98.633
+  "text": "keeps",
+  "start": 97.785,
+  "end": 98.029
  },
  {
   "id": "w333",
-  "text": "good.",
-  "start": 98.691,
-  "end": 98.97
+  "text": "track",
+  "start": 98.075,
+  "end": 98.331
  },
  {
   "id": "w334",
-  "text": "It",
-  "start": 99.039,
-  "end": 99.179
+  "text": "of",
+  "start": 98.401,
+  "end": 98.459
  },
  {
   "id": "w335",
-  "text": "keeps",
-  "start": 99.225,
-  "end": 99.469
+  "text": "what",
+  "start": 98.528,
+  "end": 98.679
  },
  {
   "id": "w336",
-  "text": "track",
-  "start": 99.515,
-  "end": 99.771
+  "text": "you",
+  "start": 98.737,
+  "end": 98.819
  },
  {
   "id": "w337",
-  "text": "of",
-  "start": 99.841,
-  "end": 99.899
+  "text": "decided.",
+  "start": 98.877,
+  "end": 99.469
  },
  {
   "id": "w338",
-  "text": "what",
-  "start": 99.968,
-  "end": 100.119
+  "text": "To",
+  "start": 99.585,
+  "end": 99.701
  },
  {
   "id": "w339",
-  "text": "you",
-  "start": 100.177,
-  "end": 100.259
+  "text": "try",
+  "start": 99.759,
+  "end": 100.003
  },
  {
   "id": "w340",
-  "text": "decided.",
-  "start": 100.317,
-  "end": 100.909
+  "text": "it,",
+  "start": 100.061,
+  "end": 100.223
  },
  {
   "id": "w341",
-  "text": "To",
-  "start": 101.025,
-  "end": 101.141
+  "text": "install",
+  "start": 100.281,
+  "end": 100.653
  },
  {
   "id": "w342",
-  "text": "try",
-  "start": 101.199,
-  "end": 101.443
+  "text": "the",
+  "start": 100.699,
+  "end": 100.769
  },
  {
   "id": "w343",
-  "text": "it,",
-  "start": 101.501,
-  "end": 101.663
+  "text": "plugin",
+  "start": 100.804,
+  "end": 101.117
  },
  {
   "id": "w344",
-  "text": "install",
-  "start": 101.721,
-  "end": 102.093
+  "text": "in",
+  "start": 101.175,
+  "end": 101.233
  },
  {
   "id": "w345",
-  "text": "the",
-  "start": 102.139,
-  "end": 102.209
+  "text": "Claude",
+  "start": 101.303,
+  "end": 101.558
  },
  {
   "id": "w346",
-  "text": "plugin",
-  "start": 102.244,
-  "end": 102.557
+  "text": "Code",
+  "start": 101.593,
+  "end": 101.918
  },
  {
   "id": "w347",
-  "text": "in",
-  "start": 102.615,
-  "end": 102.673
+  "text": "and",
+  "start": 102.0,
+  "end": 102.174
  },
  {
   "id": "w348",
-  "text": "Claude",
-  "start": 102.743,
-  "end": 102.998
+  "text": "run",
+  "start": 102.243,
+  "end": 102.394
  },
  {
   "id": "w349",
-  "text": "Code",
-  "start": 103.033,
-  "end": 103.358
+  "text": "the",
+  "start": 102.429,
+  "end": 102.499
  },
  {
   "id": "w350",
-  "text": "and",
-  "start": 103.44,
-  "end": 103.614
+  "text": "canvas",
+  "start": 102.545,
+  "end": 102.928
  },
  {
   "id": "w351",
-  "text": "run",
-  "start": 103.683,
-  "end": 103.834
+  "text": "on",
+  "start": 102.998,
+  "end": 103.068
  },
  {
   "id": "w352",
-  "text": "the",
-  "start": 103.869,
-  "end": 103.939
+  "text": "your",
+  "start": 103.114,
+  "end": 103.23
  },
  {
   "id": "w353",
-  "text": "canvas",
-  "start": 103.985,
-  "end": 104.368
+  "text": "own",
+  "start": 103.277,
+  "end": 103.393
  },
  {
   "id": "w354",
-  "text": "on",
-  "start": 104.438,
-  "end": 104.508
- },
- {
-  "id": "w355",
-  "text": "your",
-  "start": 104.554,
-  "end": 104.67
- },
- {
-  "id": "w356",
-  "text": "own",
-  "start": 104.717,
-  "end": 104.833
- },
- {
-  "id": "w357",
   "text": "paper.",
-  "start": 104.879,
-  "end": 105.518
+  "start": 103.439,
+  "end": 104.078
  }
 ]

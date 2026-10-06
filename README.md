@@ -1,14 +1,20 @@
 # research-harness
 
-research-harness is a plugin for Claude Code that keeps the framing of a paper
-in the paper's own repository, and keeps track of who decided what. The AI
-assistant may draft and suggest. Only the researcher accepts a statement, in a
-sentence of their own, and every acceptance lands in a decision log you can
-check later.
+research-harness is a harness for AI-native research: paper projects in which
+agents do real work, not just answer questions. In a Claude Code session, agents
+write competing framings of a study in parallel, raise check questions against
+your argument, draft literature notes from your PDFs, and review the state of
+the project. The harness keeps that work in the paper's own repository and
+draws one line through it: agents propose, and only the researcher accepts.
 
-It is meant for researchers who write papers with an AI assistant at their side
-and want to be able to say, months later, which parts of the argument they
-committed to and why.
+Every acceptance comes with a sentence in the researcher's own words and lands
+in a sealed decision log. Months later you can still say which parts of the
+argument you committed to, why, and which parts an agent wrote that nobody
+accepted.
+
+Software teams use harnesses like this to let coding agents work on a codebase
+under rules, checks, and decision rights. research-harness does the same for a
+paper.
 
 ## What you work on: the canvas
 
@@ -62,8 +68,8 @@ shows a measured case.
 
 ## What else it does
 
-- **Compare framings.** The assistant writes the same study under several
-  lenses side by side. You pick one; the others stay in the record together
+- **Compare framings.** Parallel agents write the same study under several
+  lenses, one framing each. You pick one; the others stay in the record together
   with your reason for setting them aside.
 - **Review the record.** A read-only review lists open elements, stale
   acceptances (text changed after you accepted it), statements that carry

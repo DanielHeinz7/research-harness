@@ -28,7 +28,7 @@ function readSkill(name) {
 const names = fs.readdirSync(skillsDir).filter((n) => fs.existsSync(path.join(skillsDir, n, 'SKILL.md')));
 
 test('the new skills exist', () => {
-  for (const n of ['canvas', 'canvas-review', 'accept', 'check', 'record-review', 'glossary-accept']) {
+  for (const n of ['canvas', 'canvas-review', 'accept', 'check', 'record-review', 'glossary-accept', 'literature-note']) {
     assert.ok(names.includes(n), `skills/${n}/SKILL.md is missing`);
   }
 });
@@ -221,4 +221,43 @@ test('SQ-212: glossary acceptance skill states the crash window without an all-o
   assert.match(body, /crash.*between.*writes/);
   assert.match(body, /unlogged/);
   assert.doesNotMatch(body, /neither file is left half-done/);
+});
+
+// SQ-216: package 4 of the literature-note design. The skill has to carry the
+// boundary the checker prints, take explicit pointers rather than discover
+// them, and route the one request itself instead of through a generic subagent.
+// Blockquote markers go before the prose is compared: the boundary is the same
+// words whether it is printed, quoted or fenced.
+const flat = (text) => text.replace(/^> ?/gm, '').replace(/\s+/g, ' ');
+
+test('literature-note carries the wording-only boundary and accepts nothing', () => {
+  const { body } = readSkill('literature-note');
+  const text = flat(body);
+  assert.match(text, /This check covers only verbatim wording on the claimed printed page\./);
+  assert.match(
+    text,
+    /It does not verify paraphrase, numbers or attribution, and it does not accept a research claim\./,
+  );
+  assert.match(text, /Project relevance and transfer judgments remain \[proposed\] for human review\./);
+  assert.match(text, /You never accept anything/);
+  assert.match(text, /Never label the note `fact-checked` or `human-read`/);
+  assert.match(text, /never move a statement to `\[stated\]` or `\[accepted\]`/);
+});
+
+test('literature-note requires explicit pointers to the paper and the context', () => {
+  const { body } = readSkill('literature-note');
+  const text = flat(body);
+  assert.match(text, /one explicit library pointer relative to `RESEARCH_HARNESS_LIBRARY`/);
+  assert.match(text, /Do not scan the library, do not discover sibling projects/);
+  assert.match(text, /Write `unknown` for a reader or a read coverage nobody supplied/);
+});
+
+test('literature-note sends the one request itself, with no generic subagent exemption', () => {
+  const { body } = readSkill('literature-note');
+  const text = flat(body);
+  assert.match(text, /not through a generic drafting subagent/);
+  assert.match(text, /not by asking for a Sidequest scope exemption/);
+  // the approved route is not a licence to bypass a refusal or add a provider
+  assert.match(text, /not permission to bypass a refused action/);
+  assert.match(text, /Do not substitute another provider/);
 });

@@ -5,8 +5,10 @@ This file documents the local stages of the literature-note design
 package 1, turning one local PDF into a full text, a reduced request view and a
 page map that says which printed page each physical page is, and package 2, the
 fail-closed check of a note's quotations against that paper. Package 3 adds the
-configured direct drafting adapter below. The skill and human review workflow
-are separate; nothing here establishes a reviewed note or an accepted claim.
+configured direct drafting adapter below, package 4 the `literature-note` skill
+and the walkthrough that runs all three stages on an invented paper. Nothing
+here establishes a reviewed note or an accepted claim, and no note-acceptance
+ledger exists.
 
 ## Why the printed page is the anchor
 
@@ -197,8 +199,9 @@ successful check cannot be quoted without its boundary.
 ## What these stages do not do
 
 They do not accept a research claim or touch the canvas or the decisions log.
-The adapter drafts proposals; the review workflow and skill are separate. A
-checked quotation is one input to a note, never a reviewed note, and neither a
+The adapter and the skill draft proposals; acceptance stays with the researcher
+on the existing canvas path, and a note has no acceptance of its own. A checked
+quotation is one input to a note, never a reviewed note, and neither a
 successful extraction nor a verified quotation follows from, or replaces, a
 human reading.
 
@@ -345,3 +348,68 @@ record its live behavior as UNVERIFIED. The package's tests exercise a local fak
 HTTP server only: no KIT request or four-level live-wiring validation was run.
 Independent candidate review of egress selection and final-output publication
 is required before integration; mocked HTTP cannot establish endpoint ownership.
+
+## The skill
+
+`skills/literature-note/SKILL.md` walks the stages above in one order: the
+researcher supplies the explicit inputs, the model extracts and pins the printed
+pages, the adapter drafts through the approved gateway, and the quotation check
+decides what may become a note. The skill repeats the boundary above in the same
+words and says that the check covers wording only — not paraphrase, not numbers,
+not attribution. It never accepts: no `[stated]`, no `[accepted]`, no
+`fact-checked` or `human-read` label, and no note-acceptance ledger. An idea the
+note raises moves into the canvas as a proposal through the canvas skill, and the
+researcher accepts it there.
+
+The request comes from this workflow, directly through the gateway. There is no
+generic subagent and no Sidequest scope exemption for one: the paper text needs
+no tools, no repository permissions and no acceptance authority, and a subagent
+would carry all three. A refused route is a stop, not permission to substitute a
+provider or change hooks.
+
+## Walkthrough: extraction, draft and check
+
+The walkthrough runs on an invented paper project. Every name in it is made up,
+and `test/literature-workflow.test.js` executes exactly these commands against
+the `regular.pdf` fixture and a loopback fake gateway, never a live model:
+
+    invented-paper-project/
+      research/canvas.md          the selected framing (main state)
+      research/decisions.md       the ledger; the walkthrough must not touch it
+      sources/meeting-paper.pdf   the invented paper, printed pages 41 to 43
+      notes/selected-sibling.md   the sibling note named as context
+      local-cache/                extraction, page map and any draft; untracked
+      inputs.json                 the explicit inputs shown above
+
+Run each command from the plugin directory.
+
+1. Extract and pin the pages:
+
+       python3 scripts/extract-paper.py <project>/sources/meeting-paper.pdf --offset 40 --out <project>/local-cache
+
+   Exit 0, printed pages 41, 42 and 43, and `local-cache/meeting-paper.page-map.json`
+   carries the SHA-256 of those PDF bytes.
+
+2. Draft through the approved gateway. Write the input JSON shown above, then:
+
+       python3 scripts/draft-literature-note.py --project <project> --inputs <project>/inputs.json --gateway-config <approved-gateway.json>
+
+   Exit 0 writes `<project>/notes/meeting-paper.proposed.md` and its
+   `meeting-paper.proposed.quote-check.json`, whose `result` is `verified` and
+   whose `inventory.checked` counts the quotations. The frontmatter carries the
+   supplied bibliography and version, `unknown` reader and read coverage, and
+   the model identifier; the links are ordinary relative Markdown links that
+   resolve. `research/canvas.md` and `research/decisions.md` are byte-identical
+   to before.
+
+3. Check, and show what the gate refuses:
+
+       python3 scripts/verify-quotes.py <project>/notes/meeting-paper.proposed.md --page-map <project>/local-cache/meeting-paper.page-map.json
+
+   Exit 0. Then corrupt one word of a quotation in a copy of the note and check
+   the copy: exit 1, naming the line, the printed page and the reason. Restore
+   the word, change that quotation's locator to a page the passage is not on,
+   and check again: exit 1 as well. Each failure blocks final output — the
+   adapter publishes only after its own clean check, and a corrupted response
+   leaves `<project>/local-cache/meeting-paper.proposed.diagnostic.json` and a
+   local draft, with no note and no report at the output path.

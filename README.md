@@ -71,6 +71,33 @@ provenance, declared canvas and manuscript coverage, a lexical cross-check, and
 accepted-text stability. It cannot judge whether a definition is the right one
 for the study, and says so.
 
+## The literature note
+
+A literature note is drafted from one local paper, and what it produces is a
+proposal before it is anything else. A page map binds each printed page of the
+PDF to the physical page it was read from, so a quotation's printed-page locator
+can be checked at all. The drafting request goes through an already approved
+local gateway route, and before any note is saved, every quotation is compared
+against the page the note claims — wording only, as a contiguous sequence of
+words, with typographic variants folded and word boundaries kept intact. A
+passage from another page, one invented word, a reversed run, or a quotation
+form the gate cannot read word for word refuses the note, and a note with no
+quotations does not pass either.
+
+```
+This check covers only verbatim wording on the claimed printed page. It does not
+verify paraphrase, numbers or attribution, and it does not accept a research
+claim. Project relevance and transfer judgments remain [proposed] for human
+review.
+```
+
+`/research-harness:literature-note` walks a researcher through the sequence, and
+[the plugin reference](plugins/research-harness/references/literature-note.md)
+documents the commands, the exit codes and a walkthrough on an invented paper.
+No source PDF or extracted text ships with the plugin, and no note-acceptance
+ledger exists: an idea the note raises becomes a canvas proposal through the
+canvas skill, which the researcher then accepts or not.
+
 ## Try it on public data
 
 [`examples/ai-assistants-interviews/`](examples/ai-assistants-interviews/README.md)

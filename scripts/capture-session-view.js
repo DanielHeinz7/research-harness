@@ -40,7 +40,7 @@ const USAGE = `Usage: node scripts/capture-session-view.js [options]
 
 The page is the session view in fixture mode, rendered from
 docs/media/showcase-state.json. Run it from anywhere in the repository;
-screenshots are not committed.`;
+the committed screenshots and their commands are listed in docs/media/README.md.`;
 
 let values;
 try {

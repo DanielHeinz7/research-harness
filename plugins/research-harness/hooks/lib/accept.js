@@ -181,17 +181,27 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
     return refuse('stale', `The glossary entry ${id} no longer holds the text you saw (its binding digest is now ${digest}); reload and look again. Nothing is accepted.`);
   }
 
-  const logged = writeGlossaryDecision(state, text, glossary.withEntryMarker(text, entry, 'accepted'), {
-    date: today(),
-    kind: 'DECISION',
-    ref: `glossary ${id} accepted`,
-    hash,
-    body: JSON.stringify(payload),
-    by: state.by,
-    why: reason,
-    explained: explanation,
-    rejected: rejectedText,
-  });
+  let logged;
+  try {
+    logged = writeGlossaryDecision(state, text, glossary.withEntryMarker(text, entry, 'accepted'), {
+      date: today(),
+      kind: 'DECISION',
+      ref: `glossary ${id} accepted`,
+      hash,
+      body: JSON.stringify(payload),
+      by: state.by,
+      why: reason,
+      explained: explanation,
+      rejected: rejectedText,
+    });
+  } catch (err) {
+    // The one publication failure that is a refusal: the glossary changed while
+    // the decision was being prepared, nothing was written to either file, and
+    // the researcher reloads and looks again. Every other error is a real I/O
+    // failure and keeps its error and trace.
+    if (err && err.lostUpdate) return refuse('stale', err.message);
+    throw err;
+  }
   return { ok: true, seq: logged.seq, seal: logged.seal, hash, id, term: entry.term, payload, was: entry.marker };
 }
 
@@ -199,6 +209,16 @@ function acceptGlossaryEntry({ root, id, why, explained, rejected, expectedHash,
 // The temporary file is beside it so rename stays on the same filesystem.
 // Recheck the expected bytes at publication, including for rollback. This is
 // a lost-update check, not a lock across the comparison and rename.
+//
+// A lost update is a refusal, not a fault: nothing was written, and the
+// researcher reloads and looks again. It is raised here because publication is
+// the one write of this file that must not continue past a changed comparison,
+// and marked so the acceptance turns it into the one-line refusal every other
+// refusal is (SQ-220), leaving the I/O failures their error and their trace.
+function glossaryChangedError() {
+  return Object.assign(new Error('The glossary changed during acceptance; reload and look again. Nothing is accepted.'), { lostUpdate: true });
+}
+
 function atomicGlossaryWrite(file, text, before) {
   const temp = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}`);
   try {
@@ -206,7 +226,7 @@ function atomicGlossaryWrite(file, text, before) {
     fs.writeFileSync(temp, text, { flag: 'wx', mode });
     fs.chmodSync(temp, mode);
     if (!fs.readFileSync(file).equals(Buffer.from(before))) {
-      throw new Error('The glossary changed during acceptance; reload and look again. Nothing is accepted.');
+      throw glossaryChangedError();
     }
     fs.renameSync(temp, file);
   } finally {

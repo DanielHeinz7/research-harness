@@ -27,6 +27,10 @@ The layouts are the point of the fixtures:
 - `blank-page.pdf` has a genuinely empty middle page.
 - `repeated-body.pdf` repeats one body sentence on every page, and has a
   download banner on the first page and a references section on the last.
+- `verbatim.pdf` is one page for the quotation check: a word whose substring
+  must not match, a typographic apostrophe, two accented words and an em dash.
+  It is written as cp1252 bytes, the code page of the fixture font, so
+  `pdftotext` returns those characters rather than UTF-8 mojibake.
 """
 
 import hashlib
@@ -66,6 +70,15 @@ REFERENCES = [
 ]
 REPEATED_BODY = "We thank the reviewers of this invented journal for their careful reading."
 
+VERBATIM_TITLE = "Verbatim wording: accents, a dash and one cart"
+# `café’s` carries the typographic apostrophe, `naïve` two accents
+# and `—` the em dash: one page for the normalization the quotation check
+# must and must not perform.
+VERBATIM_BODY = [
+    "The cart in the café’s reading room holds the figures that the",
+    "naïve committee compares — a quarter of the argument at most.",
+]
+
 
 def escape(text):
     return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
@@ -93,8 +106,13 @@ def page_stream(header, body, footer):
     return "".join(out)
 
 
-def build_pdf(streams):
-    """A minimal PDF: catalog, page tree, one page plus content object each."""
+def build_pdf(streams, encoding="utf-8"):
+    """A minimal PDF: catalog, page tree, one page plus content object each.
+
+    The content streams carry the fixture text directly, so `encoding` is the
+    code page the text is written as: the font declares `/WinAnsiEncoding`, so
+    a page with characters outside ASCII must be written as cp1252.
+    """
     count = len(streams)
     font_id = 3 + 2 * count
     objects = [b"<< /Type /Catalog /Pages 2 0 R >>"]
@@ -108,7 +126,7 @@ def build_pdf(streams):
                 % (font_id, 4 + 2 * index)
             ).encode("ascii")
         )
-        data = stream.encode("utf-8")
+        data = stream.encode(encoding)
         objects.append(
             b"<< /Length "
             + str(len(data)).encode("ascii")
@@ -171,7 +189,14 @@ FIXTURE_PAGES = {
         page_stream([RUNNING_HEAD], [REPEATED_BODY] + BODY_2, ["42"]),
         page_stream([RUNNING_HEAD], [REPEATED_BODY] + REFERENCES, ["43"]),
     ],
+    "verbatim.pdf": lambda: [
+        page_stream([RUNNING_HEAD], [VERBATIM_TITLE] + VERBATIM_BODY, ["41"]),
+    ],
 }
+
+# The text of every other fixture is ASCII; the page for the quotation check is
+# not, and the fixture font declares /WinAnsiEncoding.
+FIXTURE_ENCODING = {"verbatim.pdf": "cp1252"}
 
 CONFIRMED_MAPS = {
     "irregular.confirmed-map.json": ("irregular.pdf", [41, 43, 44]),
@@ -196,7 +221,7 @@ def write_confirmed_map(name, pdf_name, printed):
 
 def main():
     for name, build in FIXTURE_PAGES.items():
-        (HERE / name).write_bytes(build_pdf(build()))
+        (HERE / name).write_bytes(build_pdf(build(), FIXTURE_ENCODING.get(name, "utf-8")))
     for name, (pdf_name, printed) in CONFIRMED_MAPS.items():
         write_confirmed_map(name, pdf_name, printed)
 

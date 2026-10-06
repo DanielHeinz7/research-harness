@@ -21,7 +21,19 @@ python3 make-fixtures.py
 | `ambiguous-label.pdf` | The bare volume number `12` sits beside the footer label, so one band yields two candidates |
 | `blank-page.pdf` | Page 2 has an empty content stream and no text layer |
 | `repeated-body.pdf` | A sentence repeated on every page as body text, with the banner and references of `regular.pdf` |
+| `verbatim.pdf` | One page for the quotation check: `cart` (whose substring must not match), a typographic apostrophe, `café`/`naïve` accents and an em dash. Its text is cp1252 bytes, the code page of the fixture font |
 
 `irregular.confirmed-map.json` and `blank-page.confirmed-map.json` are the
 researcher-confirmed page maps for those two fixtures: the first pairs
 1→41, 2→43, 3→44, the second marks page 2 as explicitly unnumbered.
+
+`quote-notes/` holds the invented notes for `test/literature-quotes.test.js`,
+one per quotation-check assertion: `exact.md` (every quotation matches, one
+delimiter pair curly, one quoted line from the references page), `mismatch.md`
+(wrong page, one invented word, one unmapped page), `boundaries.md` (a
+substring and a broken word boundary), `stitched.md` (the right words in the
+wrong order, and page zero), `malformed.md` (a blockquote outside the section,
+a blockquote without a locator, an inline quotation), `unsupported.md` (an
+ellipsis and a page range), `empty.md` (a quotation section with nothing in
+it), `repeated.md` (a passage that is on all three pages) and `unicode.md`
+(accents, a ligature and a dash variant).

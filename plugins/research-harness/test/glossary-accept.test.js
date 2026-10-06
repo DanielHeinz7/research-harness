@@ -358,8 +358,9 @@ test('review covers an accepted entry only by a verified decision naming its pay
 
   // A DECISION that claims the payload but does not verify gives no cover.
   const forged = keyedProject();
-  const hash = glossary.payloadHash(glossary.parseGlossary(read(forged, 'glossary.md')).entries[0]);
-  fs.appendFileSync(file(forged, 'decisions.md'), `\n## [#4] 2026-10-05 · DECISION · glossary quiet-window accepted · text ${hash}\nA quiet placeholder. [accepted]\n**Explained:** forged\n**By:** A. Researcher\n`);
+  const entry = glossary.parseGlossary(read(forged, 'glossary.md')).entries[0];
+  const hash = glossary.payloadHash(entry);
+  fs.appendFileSync(file(forged, 'decisions.md'), `\n## [#4] 2026-10-05 · DECISION · glossary quiet-window accepted · text ${hash}\n${JSON.stringify(glossary.entryPayload(entry))}\n**Explained:** forged\n**By:** A. Researcher\n`);
   fs.writeFileSync(file(forged, 'glossary.md'), doc(entryText('quiet-window', { marker: '[accepted]' }), LAG));
   report = reviewOf(forged);
   assert.equal(report.glossaryUnloggedAcceptances.length, 1);
@@ -400,6 +401,49 @@ test('SQ-212: a short-hash collision cannot accept swapped text with the display
   assert.equal(out.status, 1, 'swapped colliding payload is refused as stale');
   assert.equal(read(root, 'glossary.md'), swapped, 'collision refusal preserves the swapped proposal');
   assert.equal(read(root, 'decisions.md'), ledger, 'collision refusal does not append a decision');
+});
+
+test('SQ-218: review rejects verified cover when the live payload collides with the accepted hash', () => {
+  const original = doc(entryText('quiet-window', { definition: 'Invented definition 22373.' }), LAG);
+  const root = keyedProject({ glossaryText: original });
+  const accepted = acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT });
+  assert.equal(accepted.ok, true, accepted.error);
+  assert.equal(accepted.hash, '13575256');
+  assert.equal(reviewOf(root).glossaryAcceptances.length, 1, 'the original payload has verified cover');
+  const ledger = read(root, 'decisions.md');
+  const swapped = read(root, 'glossary.md').replace('Invented definition 22373.', 'Invented definition 37527.');
+  assert.equal(glossary.payloadHash(glossary.parseGlossary(swapped).entries[0]), '13575256');
+  fs.writeFileSync(file(root, 'glossary.md'), swapped);
+
+  const report = reviewOf(root);
+  assert.equal(report.ledger.status, 'verified', 'the original sealed decision still verifies');
+  assert.equal(report.glossaryAcceptances.length, 0, 'colliding text has no verified cover');
+  assert.equal(report.glossaryUnloggedAcceptances[0].coveredBy, null);
+  assert.equal(report.glossaryStaleAcceptances[0].seq, 4);
+  const out = run(root, ['review'], PROFILE_ROOT);
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stdout, /quiet-window: definition changed since acceptance/);
+  assert.equal(read(root, 'glossary.md'), swapped, 'review preserves the accepted marker and changed payload');
+  assert.equal(read(root, 'decisions.md'), ledger, 'review leaves the sealed ledger intact');
+});
+
+test('SQ-218: publication refuses a glossary changed while the temporary file was prepared', (t) => {
+  const root = keyedProject();
+  const before = { glossary: read(root, 'glossary.md'), ledger: read(root, 'decisions.md') };
+  // Even an edit to another entry must not be overwritten by acceptance.
+  const concurrent = before.glossary.replace('Handoff lag', 'Handoff gap');
+  const chmod = fs.chmodSync;
+  t.mock.method(fs, 'chmodSync', (target, ...args) => {
+    const result = chmod(target, ...args);
+    if (typeof target === 'string' && path.basename(target).startsWith('.glossary.md.')) {
+      fs.writeFileSync(file(root, 'glossary.md'), concurrent);
+    }
+    return result;
+  });
+  assert.throws(() => acceptGlossaryEntry({ root, id: 'quiet-window', explained: EXPLAINED, pluginRoot: PROFILE_ROOT }), /glossary.*changed.*nothing is accepted/i);
+  assert.equal(read(root, 'glossary.md'), concurrent, 'publication preserves the concurrent edit');
+  assert.equal(read(root, 'decisions.md'), before.ledger, 'lost-update refusal adds no DECISION');
+  assert.deepEqual(fs.readdirSync(path.dirname(file(root, 'glossary.md'))).filter(n => n.startsWith('.glossary.md.')), [], 'refusal removes the prepared temporary file');
 });
 
 test('SQ-212: glossary publication replaces the file atomically by rename', (t) => {
@@ -490,6 +534,18 @@ test('SQ-212: review labels the marker-only crash window unlogged, not a glossar
   const unlogged = /## Unlogged glossary acceptances\n([\s\S]*?)(?=\n## |$)/.exec(out.stdout)?.[1];
   assert.equal(logged?.trim(), 'none', 'marker-only entry is excluded from Glossary acceptances');
   assert.match(unlogged || '', /quiet-window.*unlogged/, 'marker-only entry is explicitly labeled unlogged');
+
+  // Follow the skill's recovery: reset only the marker, show and read again,
+  // then make a new acceptance rather than fabricating a missing decision.
+  fs.writeFileSync(file(root, 'glossary.md'), read(root, 'glossary.md').replace('[accepted]', '[proposed]'));
+  const shown = run(root, ['glossary', 'show', 'quiet-window'], PROFILE_ROOT);
+  assert.equal(shown.status, 0, shown.stdout + shown.stderr);
+  const digest = /^Binding digest: ([0-9a-f]{64})$/m.exec(shown.stdout)?.[1];
+  assert.ok(digest);
+  const recovered = run(root, ['glossary', 'accept', 'quiet-window', '--hash', digest, '--explained', EXPLAINED], PROFILE_ROOT);
+  assert.equal(recovered.status, 0, recovered.stdout + recovered.stderr);
+  assert.equal(reviewOf(root).glossaryAcceptances.length, 1, 'reset/show/accept restores verified cover');
+  assert.equal(reviewOf(root).glossaryUnloggedAcceptances.length, 0);
 });
 
 

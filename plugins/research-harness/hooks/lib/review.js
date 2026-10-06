@@ -554,11 +554,13 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, glossaryT
   }
   // The glossary's side of the same question (§ Authorization and text
   // binding): an entry marked [accepted] is covered by a verified DECISION that
-  // names the entry and the payload hash it binds, and by nothing else.
+  // names the entry, its payload hash and its exact canonical payload.
   const glossary = glossaryText === null || glossaryText === undefined ? null : glossaryLib.parseGlossary(glossaryText);
+  const glossaryPayloads = new Map();
   const acceptedEntries = [];
   if (glossary) {
     for (const e of glossary.entries) {
+      glossaryPayloads.set(e.id, JSON.stringify(glossaryLib.entryPayload(e)));
       if (e.marker !== 'accepted' || e.id === null) continue;
       acceptedEntries.push({ id: e.id, line: e.line, term: e.term, hash: glossaryLib.payloadHash(e), coveredBy: null });
     }
@@ -593,10 +595,14 @@ function mechanicalReview({ parsed, graph, checks = [], decisionsText, glossaryT
       const cover = { seq: e.seq, state };
       const coverKey = `${g[1]}:${e.hash}`;
       const covered = glossaryCover.get(coverKey);
-      if (!covered || (state === 'verified' && covered.state !== 'verified')) glossaryCover.set(coverKey, cover);
+      // The ledger's short hash is only an identifier: a collision must not
+      // cover different text. The first body line is the sealed JSON payload;
+      // the remaining lines are the decision's labelled explanation fields.
+      const samePayload = e.body.split('\n')[0] === glossaryPayloads.get(g[1]);
+      if (samePayload && (!covered || (state === 'verified' && covered.state !== 'verified'))) glossaryCover.set(coverKey, cover);
       if (!glossaryDecisions.has(g[1])) glossaryDecisions.set(g[1], []);
       glossaryDecisions.get(g[1]).push({ seq: e.seq, ref: e.ref, hash: e.hash, state });
-      const live = acceptedEntries.some((a) => a.id === g[1] && a.hash === e.hash);
+      const live = samePayload && acceptedEntries.some((a) => a.id === g[1] && a.hash === e.hash);
       if (!live) glossaryStaleAcceptances.push({ seq: e.seq, ref: e.ref, hash: e.hash });
       continue;
     }

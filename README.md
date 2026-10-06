@@ -42,7 +42,8 @@ inspectable:
 - an append-only decision log in `research/decisions.md`, made tamper-evident by
   a seal chained over its entries under a per-project key that never enters the
   repository, so a forged acceptance is visible as an entry that does not verify
-- a dependency check across the nine elements, reported rather than enforced —
+- a dependency check across the nine elements, reported by `review` and enforced
+  where `accept` refuses an acceptance whose dependencies are not yet accepted —
   the canvas is a puzzle whose pieces must fit, not a sequence of stages
 - a genre profile that owns the question emphasis and the dependency graph,
   because the canvas's own authors say both depend on the kind of research being
@@ -53,6 +54,22 @@ inspectable:
   commitment, to alter what the researcher said, or to write the decision log
 - a clickable session view for author-team meetings, which doubles as the
   approval path
+
+## The construct glossary
+
+A project may keep `research/glossary.md` beside the canvas: one entry per
+construct, with its term, aliases, definition, a local origin, and the
+distinctions from neighbouring constructs. A canvas statement cites an entry as
+`src: glossary.md#felt-safety`; a manuscript links it as
+`[felt safety](research/glossary.md#felt-safety)`. Agents propose entries and
+never accept them. The researcher accepts one with
+`/research-harness:glossary-accept <id> --explained "<their sentence>"`, and the
+sealed decision log binds that entry's payload, so a later change to a
+definition is reported as stale rather than silently inherited by what cites
+it. `review` adds a `Glossary mechanics` group for entry structure and
+provenance, declared canvas and manuscript coverage, a lexical cross-check, and
+accepted-text stability. It cannot judge whether a definition is the right one
+for the study, and says so.
 
 ## Try it on public data
 

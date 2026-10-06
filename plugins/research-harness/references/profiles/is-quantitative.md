@@ -24,6 +24,11 @@ to canvas elements is this profile's proposal.
   from hypotheses generated through exploration. Define each construct's domain
   before developing its measures (Gregor & Klein 2014, §§2.1, 2.3;
   MacKenzie et al. 2011, pp. 294–298; Mertens & Recker 2020, HARKing discussion).
+  The construct glossary holds those definitions, and follows the same order:
+  an entry is accepted after the theory and the question it answers, under
+  element 4's `4 <- 2, 3` edges. An accepted entry is a writing commitment, not
+  registry preregistration, and accepting one accepts no 4.1 hypothesis — the
+  `hypotheses-before-data` check reads canvas acceptances alone.
 - **Element 6 (Design) holds manipulations, measures, the analysis plan and the
   power argument.** Specify the measurement model, plan instrument validation
   and address common-method bias and causal identification. Plan sampling and
@@ -43,7 +48,8 @@ to canvas elements is this profile's proposal.
 ## Dependency graph
 
 An element may not be `[accepted]` while an element it depends on is not.
-Reported by `canvas-review`, never enforced. Each edge is this profile's
+`canvas-review` reports the violation, and `accept` refuses the acceptance;
+what may be written and when is never gated. Each edge is this profile's
 acceptance-order proposal, not a journal rule or a claim that research is
 strictly linear. The sources support the reasons below but do not prescribe
 these numbered edges. Exploratory work can inform theory (Gregor & Klein 2014,
@@ -80,6 +86,11 @@ manuscript, Table 3, "Explicate sampling strategy").
 |---|---|
 | 4, 6 | `references/preregistration.md` — a priori hypotheses and analysis planning; a log-order check, not registry preregistration (Mertens & Recker 2020) |
 | all | `references/amj-map.md` — secondary writing guidance from *Publishing in AMJ*, not the methodological basis of this profile |
+
+The construct glossary (`references/construct-glossary.md`) is none of this
+profile's modules: its schema, origin requirement and authorization axis hold
+across genres. What this profile owns is when a definition can settle here —
+after element 2 and element 3.
 
 ```checks
 hypotheses-before-data

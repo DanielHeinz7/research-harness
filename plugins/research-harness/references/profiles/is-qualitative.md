@@ -29,6 +29,11 @@ qualitative research" (Dorobantu et al. 2024). This profile follows both:
   Prior theory is something to problematize, not the source of the question.
 - **Element 4 (Constructs) emerges from the material.** Its questions are
   answered late, and a firm answer before findings exist is a warning sign.
+  The construct glossary follows that timing: entries may start as `[proposed]`
+  sensitizing terms and gain a definition as findings emerge. A
+  `Definition: pending` proposal stays visible, no source is invented to make
+  an early check green, and a change to an accepted entry needs a new
+  researcher decision.
 - **Element 5 (Setting) carries weight.** Access, rapport and what the setting
   makes visible are substantive, not administrative. Read with Bansal & Corley
   (2012), *Publishing in AMJ — Part 7*.
@@ -38,7 +43,8 @@ qualitative research" (Dorobantu et al. 2024). This profile follows both:
 ## Dependency graph
 
 An element may not be `[accepted]` while an element it depends on is not.
-Reported by `canvas-review`, never enforced. Three edges differ from the order
+`canvas-review` reports the violation, and `accept` refuses the acceptance;
+what may be written and when is never gated. Three edges differ from the order
 in which the canvas presents its elements; each is a design proposal, not
 settled method, and each is one line to change.
 
@@ -60,11 +66,14 @@ settled method, and each is one line to change.
   stance of Monteiro et al. (2022).
 - `4 ← 7`: the framework emerges from the research (Dorobantu et al. 2024).
 
-Nothing here gates anything. There is no rule against answering element 7
-before element 1, and the canvas's authors explicitly decline "to impose a
-universal template". What the graph buys is the other direction: setting
-element 1 back to `[tentative]` makes everything resting on it visibly
-inconsistent at once, instead of quietly stale.
+Nothing here gates what may be written, or when. There is no rule against
+answering element 7 before element 1, and the canvas's authors explicitly
+decline "to impose a universal template". What the graph gates is acceptance:
+`accept` refuses an element whose dependencies are not accepted, and a glossary
+entry follows element 4's edges, `4 <- 2, 7`, so the definitions 4.2 and 4.3
+rest on settle after the findings they interpret. What the graph buys is the
+other direction: setting element 1 back to `[tentative]` makes everything
+resting on it visibly inconsistent at once, instead of quietly stale.
 
 A hypothetico-deductive profile would restore the canvas's presentation order —
 `2 → 3`, `3 → 4 → 5`, with `9` last. That profile is not built here, and
@@ -76,3 +85,8 @@ building it is a copy of this file with nine lines changed.
 |---|---|
 | 1, 2 | `references/problematization.md` |
 | all | `references/amj-map.md` — which part of *Publishing in AMJ* to read for each element |
+
+The construct glossary (`references/construct-glossary.md`) is none of this
+profile's modules: its schema, origin requirement and authorization axis hold
+across genres. What this profile owns is when definitions can settle here —
+through element 4's emphasis and the edges above.

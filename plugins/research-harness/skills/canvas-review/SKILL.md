@@ -19,6 +19,16 @@ rendered canvas would not see; the state of the decision log's seal chain
 text hash no longer matches; accepted statements no verified log entry accounts for; and DECISION
 entries that give no cover. Report all of it verbatim to the researcher first.
 
+When the state directory holds a glossary, the report ends with `Glossary
+mechanics`: entry structure and provenance, the glossary references in elements
+3, 4, 7 and 8, the declared manuscripts' links and `constructs:` declarations,
+the lexical cross-check of declared terms and aliases, and every accepted entry
+whose payload no longer matches its sealed decision. Report that group too, and
+keep the two lines it always prints — `Declared construct coverage checked;
+undeclared constructs require human inspection.` and `Human construct judgment:
+not performed by this check` — in what you tell the researcher. The group reads
+only; it never repairs an entry, and neither do you.
+
 A statement under "Committed but not visible" is not a parse error and not an
 attack you should assume: an HTML comment or an indented block is also how a
 researcher parks something. Report it plainly — the file and the rendered view
@@ -33,7 +43,28 @@ Then read the profile named in the canvas frontmatter under
 `${CLAUDE_PLUGIN_ROOT}/references/profiles/` and
 `${CLAUDE_PLUGIN_ROOT}/references/canvas-elements.md`.
 
-## 2. Fit — where elements contradict each other
+## 2. Constructs — the judgment the mechanics cannot make
+
+The glossary group checks structure, that declared references resolve, and that
+an accepted entry still hashes to its decision. It cannot tell you whether the
+definitions are right, so ask:
+
+- Do the entries actually distinguish different things, or merely use different
+  labels?
+- Is the adopted definition appropriate for this study and supported by its
+  source?
+- Does the design measure or observe the construct the paper names?
+- Did the manuscript introduce an undeclared construct, conflate terms, or
+  change meaning while retaining the same words?
+
+An accepted entry is the researcher's decision about the displayed text. It is
+not a verdict on measurement validity, and it is not human judgment about the
+construct — the mechanical report says so itself. A `definition changed since
+acceptance` finding names the statements and manuscript locations that rest on
+the entry and invalidates nothing: the researcher decides whether the new
+wording changes their claims.
+
+## 3. Fit — where elements contradict each other
 
 Check these pairs and write what you find:
 
@@ -49,20 +80,20 @@ Check these pairs and write what you find:
 - 3 against 1: is the question the one the puzzle poses, or a narrower one
   that was easier to answer?
 
-## 3. Refutation — one element at a time
+## 4. Refutation — one element at a time
 
 For every element that holds a committed statement, write one paragraph
 answering: **what would have to be true for this element to be wrong, and
 does the material or the literature say it?** Try to refute before you report
 fit. If you cannot construct a refutation, say that too — it is information.
 
-## 4. Manuscript support
+## 5. Manuscript support
 
 If the researcher names a manuscript, read it and check every `[stated]` and
 `[accepted]` statement against it. List those the manuscript no longer
 supports, with the section that contradicts them.
 
-## 5. Untagged statements
+## 6. Untagged statements
 
 For each statement in the "untagged" list, decide whether it makes a factual
 claim. If it does, propose the tag: `src: <where>` if you can locate it,
@@ -72,7 +103,10 @@ statement yourself; propose it alongside.
 ## What you write
 
 Only `[proposed]` paragraphs in the canvas, next to the statement they concern,
-and `DISCOVERY` entries recorded through the harness, which seals them.
+`[proposed]` or `[tentative]` glossary entries for a construct the glossary
+misses or words differently, and `DISCOVERY` entries recorded through the
+harness, which seals them. You may not change, retitle or remove an entry the
+researcher stated or accepted, and you never accept one yourself.
 
 Word each DISCOVERY body as an open question the author team can sit down and
 talk about, not a verdict. Name the field involved by its human question, not

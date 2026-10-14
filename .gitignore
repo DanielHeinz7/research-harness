@@ -23,3 +23,5 @@ verification/local/
 .claude/settings.local*.json
 # Topic handoffs next to HANDOFF.md: they name board tickets and local paths.
 HANDOFF-*.md
+# Impeccable decision-page runtime state (served questions, hands, logs)
+.impeccable/questions/

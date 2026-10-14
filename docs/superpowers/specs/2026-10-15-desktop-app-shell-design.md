@@ -1,6 +1,6 @@
 # Desktop app, sub-project 1: app shell and human steps
 
-Status: draft for the owner's review, 2026-10-15.
+Status: approved by the owner, 2026-10-15.
 Decision record: vault `appdev/research-harness.md`, blocks of 2026-10-14 ("Desktop-App mit eigenem
 Agenten") and 2026-10-15 ("Design-Overhaul", "Desktop-App vorerst unsigniert"). Visual direction:
 `.impeccable/surfaces/plugins-research-harness-dashboard-canvas-html.md` (galley proof, commit
@@ -31,9 +31,10 @@ From the vault, owner's words recorded there:
 - Five sub-projects, order 1 → 2 → 3, 4 in parallel. Signing waits (unsigned for now).
 - The galley-proof world for the shell and the session view.
 
-Recommendations of 2026-10-14 that this spec turns into decisions, for the owner to confirm or
-overrule in review: Electron rather than Tauri; the app lives in `desktop/` and bundles the plugin;
-the UI is a web page against a local API in the plugin; the write token lives only in memory.
+Confirmed by the owner in the review of this spec (2026-10-15): Electron rather than Tauri; the app
+lives in `desktop/` and bundles the plugin; the UI is a web page against a local API in the plugin;
+the write token lives only in memory; "send" is part of v1 (3.4); on update, only a conflict in
+`decisions.md` is merged automatically, any other conflict aborts with an explanation (3.4).
 
 ## 3. Architecture
 
@@ -105,9 +106,8 @@ server; in browser mode the server uses `git` from `PATH`.
   existing `merge-log` path and commits when the merged log verifies. Any other conflict aborts the
   merge and says in plain words which file both sides changed and that nothing was lost.
 - Send runs commit and push of the project's research files. A rejected push gets updates first,
-  then pushes once more. **Assumption for review:** the vault lists "klonen und aktualisieren"; this
-  spec adds "send" because without it the second person never sees the first person's work, and the
-  old mockup's "B. Supervisor added 2 entries" presumes it.
+  then pushes once more. Send was added in review: without it the second person never sees the first
+  person's work.
 
 ### 3.5 What the app stores
 

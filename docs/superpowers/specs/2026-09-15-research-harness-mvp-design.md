@@ -870,6 +870,10 @@ a Node start can take longer, and the command then runs unjudged. Nothing in the
 plugin can close this, because the hook is the only place it can act. The seal
 and `canvas-review` still catch a changed `[accepted]` statement afterwards.
 
+Update 2026-10-14 (SQ-235): Claude Code 2.1.295 added `onFailure: "block"` for
+command hooks, and the guard's hook now sets it. A timeout, a crash or a failed
+start blocks the call instead; a headless run on 2.1.300 showed the block.
+
 **What "cannot judge" covers.** The clause is not a blank to be filled in by
 whoever implements the next case. It is this list, so that the perimeter tickets
 implement a stated rule instead of inventing one:

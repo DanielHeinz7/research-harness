@@ -78,7 +78,7 @@ fallback) adds an app layer that works with no project open:
 The existing project routes (`/api/state`, `/api/accept`, `/api/choose`, `/api/stated`,
 `/api/comment`) keep their contract and act on the current project. Every route except
 `/api/session` needs the token, as today. Route handlers call the library functions the CLI calls;
-they never shell out to `research-harness`.
+they run the plugin's own CLI entry with `execFile` and an argument array, never through a shell (see the plan, Task 3, for why).
 
 The server runs in an Electron `utilityProcess`, so a long git call never freezes the window.
 

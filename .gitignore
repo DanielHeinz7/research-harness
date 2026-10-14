@@ -21,3 +21,5 @@ verification/local/
 
 # Claude Code local settings of whoever works in this checkout
 .claude/settings.local*.json
+# Topic handoffs next to HANDOFF.md: they name board tickets and local paths.
+HANDOFF-*.md

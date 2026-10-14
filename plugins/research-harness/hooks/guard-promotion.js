@@ -1548,15 +1548,113 @@ function runsProgramText(words) {
 // list of operands, so each item in it is judged the way an argument word is,
 // and a bare `research` names the state directory. Elsewhere a body is text
 // the receiver reads, and only the paths it spells name the state (SQ-232).
-const STDIN_OPERAND_COMMANDS = new Set(['xargs', 'parallel']);
+// SQ-234: `read` is one of them, wherever it stands (`while read f`, `until !
+// read f`, after a pipe): a loop hands each item it reads to the commands in
+// its body (`while read f; do rm -r "$f"; done`). On such a line what printf
+// and echo print is data too. The items are cut from the data as it is written,
+// so a command that rewrites the data on its way to the reader (`printf
+// notes,research | tr , '\0' | xargs -0 rm -r`, or sed, awk, cut) makes items
+// the guard never sees: that transformation is not followed.
+const STDIN_OPERAND_COMMANDS = new Set(['xargs', 'parallel', 'read']);
+
+// SQ-234: the short options of those commands that take a value, so a cluster
+// is read the way getopt reads it and `-d X`, `-dX` and `-rd X` all find the
+// delimiter. A letter in `attached` takes a value only from its own word (GNU
+// xargs's `-e`, `-i` and `-l`). parallel is read like xargs.
+const ITEM_OPTIONS = new Map([
+  ['xargs', { value: 'adEIJLnPRsS', attached: 'eil' }],
+  ['parallel', { value: 'adEIJLnPRsS', attached: 'eil' }],
+  ['read', { value: 'adinNptu', attached: '' }],
+]);
+
+// SQ-234: the commands that print their arguments, so what they print is data.
+const PRINTERS = new Set(['printf', 'echo']);
+
+// SQ-234: the text printf prints for a format or a `%b` argument, and echo for
+// an argument, as `-e` (and sh's echo) has it: the one-letter escapes, `\NNN` or
+// `\0NNN` octal, `\xHH` hex and `\uHHHH`. A NUL, which no file name holds, a
+// character this guard uses as a mark, and `\c`, after which nothing more is
+// printed, become a newline: each ends an item.
+function printedText(text) {
+  return text.replace(/\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|0?[0-7]{1,3}|[\s\S])/g, (all, esc) => {
+    if (esc === 'c') return '\n';
+    if (esc.length === 1 && Object.prototype.hasOwnProperty.call(ANSI_ESCAPES, esc)) return ANSI_ESCAPES[esc];
+    let code;
+    if (/^[xuU]./.test(esc)) code = parseInt(esc.slice(1), 16);
+    else if (/^[0-7]/.test(esc)) code = parseInt(esc, 8) & 0xff;
+    else return all;
+    return code > 4 && code <= 0x10ffff ? String.fromCodePoint(code) : '\n';
+  });
+}
+
+// SQ-234: a printf conversion stands for an argument, which is judged as data
+// of its own. The text around it is judged twice, once as if the argument ended
+// an item and once as if it were empty, so `research,%s` and `research%s` with
+// an empty argument print an item that names the state.
+const PRINTF_CONVERSION_RE = /%(?:%|[-+ #0']*(?:\*|[0-9]+)?(?:\.(?:\*|[0-9]*))?[A-Za-z])/g;
+
+function printedTexts(text) {
+  const ended = text.replace(PRINTF_CONVERSION_RE, (c) => (c === '%%' ? '%' : '\n'));
+  if (ended === text) return [printedText(text)];
+  return [printedText(ended), printedText(text.replace(PRINTF_CONVERSION_RE, (c) => (c === '%%' ? '%' : '')))];
+}
+
+// SQ-234: the delimiters set by the options of `args[0]`, one of
+// STDIN_OPERAND_COMMANDS: `-d X`, `-dX`, `--delimiter=X` and `--delimiter X`.
+// read ends an item on the first character of X as it stands (a NUL for an
+// empty X, which ends a line here); xargs and parallel take one character, or
+// an escape that stands for one. A null is a delimiter the guard cannot read.
+function itemDelimiters(args) {
+  const name = baseNameOf(args[0].text);
+  const { value, attached } = ITEM_OPTIONS.get(name);
+  const delimiterOf = (w) => {
+    if (!w || w.opaque) return null;
+    if (name === 'read') return w.text ? w.text[0] : '\n';
+    const ch = printedText(w.text);
+    return [...ch].length === 1 ? ch : null;
+  };
+  const found = [];
+  for (let k = 1; k < args.length; k += 1) {
+    const { text, opaque } = args[k];
+    if (opaque || text === '--' || text === '-' || !text.startsWith('-')) break;
+    if (text.startsWith('--')) {
+      if (name === 'read') break;
+      if (text.startsWith('--delimiter=')) found.push(delimiterOf({ text: text.slice('--delimiter='.length), opaque: false }));
+      else if (XARGS_VALUE_FLAGS.has(text)) {
+        if (text === '--delimiter') found.push(delimiterOf(args[k + 1]));
+        k += 1;
+      }
+      continue;
+    }
+    for (let c = 1; c < text.length; c += 1) {
+      const rest = text.slice(c + 1);
+      if (!value.includes(text[c]) && !(attached.includes(text[c]) && rest)) continue;
+      if (text[c] === 'd') found.push(delimiterOf(rest ? { text: rest, opaque: false } : args[k + 1]));
+      if (!rest) k += 1;
+      break;
+    }
+  }
+  return found;
+}
 
 // The items xargs reads from a body by default: blanks and newlines separate
 // them, quotes group characters and are dropped, and a backslash takes the next
 // character. Each whole trimmed line counts besides, as the item `-d`, `-0`,
 // `-L` and `-I` make of it. Neither xargs nor parallel expands a pattern in an
 // item, so each is `inert`: it names the state only by spelling it.
-function operandWords(text) {
+// SQ-234: read splits a line on blanks without removing quotes or backslashes
+// (`read -r`), or on the IFS characters it is given, and `xargs -d X` splits on
+// X and nothing else. So the text is also cut on blanks as it stands, and, where
+// the line names delimiters, on them with and without the blanks, each piece
+// trimmed. The delimiters are taken together, so a line that names many of them
+// costs no more to judge than a line that names one.
+function operandWords(text, delimiters) {
   const items = new Set(text.split('\n').map((line) => line.trim()));
+  const named = delimiters.join('');
+  for (const set of named ? [' \t\n', `\n${named}`, ` \t\n${named}`] : [' \t\n']) {
+    const separator = new RegExp(`[${set.replace(/[\\\]^[-]/g, '\\$&')}]`);
+    for (const piece of text.split(separator)) items.add(piece.trim());
+  }
   let item = null;
   let quote = null;
   for (let k = 0; k < text.length; k += 1) {
@@ -2358,8 +2456,13 @@ function bashVerdict(command, projectRoot) {
   // SQ-233: whether the line runs xargs or parallel, and each data body's text
   // with the directory it is read from, judged as operands once the whole line
   // is known (`cat <<EOF | xargs rm` names xargs after the body's command).
+  // SQ-234: or read, with the delimiters those commands and IFS set, null for
+  // one the guard cannot read; printf and echo arguments are data texts too.
   let operands = false;
+  let reads = false;
   const dataTexts = [];
+  const delimiters = [];
+  const ifsValues = [];
 
   for (const sc of commands) {
     // SQ-106: a loop is read by its parts. The lexer hands `for f in W; do
@@ -2447,7 +2550,20 @@ function bashVerdict(command, projectRoot) {
     // Leading `NAME=value` words are assignments, not the command.
     const verbAt = sc.words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
     const argv = verbAt < 0 ? [] : sc.words.slice(verbAt);
-    if (argv.some((w) => !w.opaque && STDIN_OPERAND_COMMANDS.has(baseNameOf(w.text)))) operands = true;
+    for (let k = 0; k < argv.length; k += 1) {
+      if (argv[k].opaque || !STDIN_OPERAND_COMMANDS.has(baseNameOf(argv[k].text))) continue;
+      operands = true;
+      if (baseNameOf(argv[k].text) === 'read') reads = true;
+      delimiters.push(...itemDelimiters(argv.slice(k)));
+    }
+    for (const w of sc.words) {
+      const ifs = /^IFS\+?=([\s\S]*)$/.exec(w.text);
+      if (ifs) ifsValues.push(w.opaque ? null : ifs[1]);
+    }
+    const printer = argv.findIndex((w) => !w.opaque && PRINTERS.has(baseNameOf(w.text)));
+    if (printer >= 0) {
+      for (const w of argv.slice(printer + 1)) for (const text of printedTexts(w.text)) dataTexts.push({ text, at: base });
+    }
 
     // SQ-71: only a project that holds state can have its state touched. Where
     // there is none, an unfollowable `cd`, an operand the guard cannot read and
@@ -2558,7 +2674,13 @@ function bashVerdict(command, projectRoot) {
     // h && cat h/…`) — the same reason `cd` above keeps mutating `base`.
     trackSymlink(argv, base, links);
   }
-  if (operands && dataTexts.some(({ text, at }) => operandWords(text)
+  // SQ-234: IFS splits what read reads, and only that. A delimiter the guard
+  // cannot read leaves the items of every data text unknown, which is judged as
+  // a pattern it cannot compute is: refused where state exists.
+  if (reads) for (const value of ifsValues) delimiters.push(...(value === null ? [null] : value));
+  if (operands && delimiters.includes(null) && hasState && dataTexts.some(({ text }) => text.trim())) uncomputable = true;
+  const known = [...new Set(delimiters.filter((d) => d !== null))];
+  if (operands && dataTexts.some(({ text, at }) => operandWords(text, known)
     .some((w) => wordTouchesState(w, at, stateParts, stateNames, hasState, true, stateRoot)))) touches = true;
 
   if (acceptAttempt) return ACCEPT_DENIAL;

@@ -1370,6 +1370,56 @@ test('SQ-233: heredoc data that reaches the state through xargs or shell expansi
   }
 });
 
+// SQ-234. SQ-233 cut a data body into items only on a line that runs xargs or
+// parallel, and only at blanks and newlines. A `read` loop over `notes` and
+// `research` on two lines removed the state directory, and so did `xargs -d ,`
+// over `notes,research`, or the same data printed by printf. A `read` anywhere
+// on the line now counts like xargs, the delimiter that `-d` or IFS sets ends an
+// item too, and what printf and echo print is data. Each item is judged the way
+// an argument word is.
+test('SQ-234: data a read loop or xargs -d cuts into items is judged item by item', () => {
+  const root = makeProject();
+  for (const [form, cmd] of [
+    ['a while-read loop', "while read f; do rm -r \"$f\"; done <<'EOF'\nnotes\nresearch\nEOF"],
+    ['IFS= read -r', "while IFS= read -r f; do rm -r \"$f\"; done <<'EOF'\nnotes\nresearch\nEOF"],
+    ['an until loop', "until ! read f; do rm -r \"$f\"; done <<'EOF'\nnotes\nresearch\nEOF"],
+    ['cat piped into the loop', "cat <<'EOF' | while read f; do rm -r \"$f\"; done\nnotes\nresearch\nEOF"],
+    ['the second field of a line', "while read a b; do rm -r \"$b\"; done <<'EOF'\nnotes research\nEOF"],
+    ['printf piped into the loop', 'printf "notes research\\n" | while read a b; do rm -r "$b"; done'],
+    ['xargs -d ,', "xargs -d , rm -r <<'EOF'\nnotes,research\nEOF"],
+    ['xargs -d, attached', "xargs -d, rm -r <<'EOF'\nnotes,research\nEOF"],
+    ['xargs --delimiter=,', "xargs --delimiter=, rm -r <<'EOF'\nnotes,research\nEOF"],
+    ['printf piped into xargs -d ,', 'printf notes,research | xargs -d , rm -r'],
+    // The same splitting under the other spellings it reads.
+    ['a delimiter given as an escape', "xargs --delimiter '\\x2c' rm -r <<'EOF'\nnotes,research\nEOF"],
+    ['read -d in a cluster', "while read -rd, f; do rm -r \"$f\"; done <<'EOF'\nnotes,research\nEOF"],
+    ['IFS=,', "while IFS=, read a b; do rm -r \"$b\"; done <<'EOF'\nnotes,research\nEOF"],
+    ['a delimiter the guard cannot read', "xargs -d \"$D\" rm -r <<'EOF'\nnotes,research\nEOF"],
+    ['echo -e', 'echo -e "notes\\nresearch" | while read f; do rm -r "$f"; done'],
+    ['a NUL printf prints for xargs -0', "printf 'notes\\0research' | xargs -0 rm -r"],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+    assert.match(out.permissionDecisionReason, /read-only/, form);
+  }
+  for (const [form, cmd] of [
+    ['the loop only reads', "while read f; do echo \"$f\"; done <<'EOF'\nnotes\nresearch\nEOF"],
+    ['no read loop and no xargs on the line', 'cockpit rueckmeldung <<\'EOF\'\n{"titel":"notes, research","vault":"vault/research/x.md"}\nEOF'],
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, form);
+  }
+  // Without research state an item gets what an argument word gets, no more, and
+  // a delimiter the guard cannot read has nothing to land on.
+  const bare = makeBareProject();
+  for (const cmd of [
+    "while read f; do rm -r \"$f\"; done <<'EOF'\nnotes\nresearch\nEOF",
+    'printf notes,research | xargs -d , rm -r',
+    "xargs -d \"$D\" rm -r <<'EOF'\nnotes,research\nEOF",
+  ]) {
+    assert.equal(run(bare, 'Bash', { command: cmd }), null, cmd);
+  }
+});
+
 // SQ-67. SQ-55 reads a heredoc body as stdin data, which is right when the
 // receiving command is `cat` and wrong when it is a shell or interpreter that
 // reads its program from stdin: `bash <<EOF … EOF` runs the body, and quoting

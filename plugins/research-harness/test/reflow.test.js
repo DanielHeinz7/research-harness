@@ -7,13 +7,11 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'dashboard', 'canvas.html'), 'utf8');
 const state = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'docs', 'media', 'showcase-state.json'), 'utf8');
-const narrow = html.slice(html.indexOf('@media (max-width: 900px)'), html.indexOf('@media print'));
-
-// Restoring the old unwrappable field strip or scrolling view tabs breaks
-// access to fields and hides the active History tab on a 320px screen.
+// Restoring an unwrappable field strip or scrolling view tabs breaks access to
+// fields and hides the active History tab on a 320px screen.
 test('narrow navigation reflows instead of using a fixed-width horizontal strip', () => {
-  assert.doesNotMatch(narrow, /min-width:\s*190px|overflow-x:\s*auto/);
-  assert.match(narrow, /\.rail-list\s*\{[^}]*display:\s*grid/);
+  assert.doesNotMatch(html, /min-width:\s*190px|overflow-x:\s*auto/);
+  assert.match(html, /\.chips\s*\{[^}]*flex-wrap:\s*wrap/);
   assert.match(html, /#view-tabs\s*\{[^}]*flex-wrap:\s*wrap/);
 });
 
@@ -42,10 +40,10 @@ for (const [width, height] of [[320, 720], [390, 844], [600, 900], [768, 1024], 
     await page.goto('http://session.test/?fixture=/fixture.json&view=agenda');
     await page.waitForSelector('section[data-view].active');
     for (const view of views) {
-      // Use the actual view controls, including each field in the rail.
+      // Use the actual view controls: a field opens from the poster's "Open field".
       if (view.startsWith('element-')) {
-        await page.locator('#view-tabs [data-view-target="agenda"]').click();
-        await page.locator(`#rail [data-view-target="${view}"]`).click();
+        await page.locator('#view-tabs [data-view-target="poster"]').click();
+        await page.locator(`#poster [data-view-target="${view}"]`).first().click();
       } else {
         await page.locator(`#view-tabs [data-view-target="${view}"]`).click();
       }
@@ -64,14 +62,17 @@ for (const [width, height] of [[320, 720], [390, 844], [600, 900], [768, 1024], 
           stageWidth: stage.clientWidth, stageContent: stage.scrollWidth,
           tabs, controls,
           viewTop: document.querySelector('.view.active').getBoundingClientRect().top,
-          railTop: document.querySelector('#rail').getBoundingClientRect().top,
+          chips: [...document.querySelectorAll('#fieldnav .chip')].map((node) => { const r = node.getBoundingClientRect(); return { text: node.getAttribute('aria-label'), left: r.left, right: r.right }; }),
+          chipsBottom: document.querySelector('#fieldnav').getBoundingClientRect().bottom,
           comparisonContexts: [...document.querySelectorAll('#compare .cmp-context')].map((node) => getComputedStyle(node).position),
         };
       });
       assert.equal(metrics.documentWidth, width, `${view}: document scrollWidth equals viewport`);
       assert.equal(metrics.stageContent, metrics.stageWidth, `${view}: stage has no hidden horizontal overflow`);
       assert.ok(metrics.viewTop < height, view + ': selected content starts in the first screen');
-      if (view !== 'poster' && view !== 'compare') assert.ok(metrics.railTop > metrics.viewTop, view + ': narrow rail follows content');
+      assert.equal(metrics.chips.length, 9, view + ': all nine field chips are reachable');
+      for (const chip of metrics.chips) assert.ok(chip.left >= 0 && chip.right <= width, `${view}: chip "${chip.text}" is within the viewport`);
+      assert.ok(metrics.chipsBottom <= metrics.viewTop + 1, view + ': the field chips sit above the content');
       for (const tab of metrics.tabs) {
         assert.ok(tab.left >= 0 && tab.right <= width, `${view}: ${tab.text} tab is within viewport`);
       }

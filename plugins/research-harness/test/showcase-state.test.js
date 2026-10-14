@@ -71,9 +71,10 @@ function contrast(a, b) {
   return (levels[0] + 0.05) / (levels[1] + 0.05);
 }
 
-// Shrinking a role, restoring the old muted ink or losing the poster's
-// viewport-height grid must fail on the rendered showcase, not a CSS grep.
-test('the rendered session view scales for projectors and keeps text contrast above 7:1', { skip: !chromium, timeout: 120000 }, async (t) => {
+// Shrinking a role, restoring a muted ink or losing the column's growth must
+// fail on the rendered showcase, not a CSS grep. The galley proof scrolls: the
+// old "poster fits one screen" check is gone with the nine-card grid.
+test('the rendered session view scales for projectors and keeps text contrast above AA', { skip: !chromium, timeout: 120000 }, async (t) => {
   let browser;
   try { browser = await chromium.launch(); } catch (err) {
     if (!/Executable doesn't exist/.test(err.message)) throw err;
@@ -94,34 +95,29 @@ test('the rendered session view scales for projectors and keeps text contrast ab
         await page.waitForSelector('section[data-view].active');
         const metrics = await page.evaluate(() => {
           const active = document.querySelector('section[data-view].active');
-          const nodes = [active, ...active.querySelectorAll('*'), ...document.querySelectorAll('#topbar *, #rail *')]
+          const nodes = [active, ...active.querySelectorAll('*'), ...document.querySelectorAll('#chrome *')]
             .filter((node) => node.getClientRects().length && [...node.childNodes].some((child) => child.nodeType === 3 && child.textContent.trim()));
           const sizes = nodes.map((node) => parseFloat(getComputedStyle(node).fontSize));
           const tokens = getComputedStyle(document.documentElement);
           const rgb = (name) => tokens.getPropertyValue(name).trim().match(/[a-f\d]{2}/gi).map((hex) => parseInt(hex, 16));
-          const stage = document.querySelector('#stage');
+          const names = ['--paper', '--panel', '--ink', '--ink-2', '--ink-3', '--red', '--red-ink', '--blue'];
           return {
-            minimum: Math.min(...sizes), body: parseFloat(getComputedStyle(document.querySelector('.field-lead')).fontSize),
+            minimum: Math.min(...sizes),
+            body: parseFloat(getComputedStyle(document.querySelector('.stext, .field-lead, .field-para')).fontSize),
             label: parseFloat(getComputedStyle(document.querySelector('.status-label')).fontSize),
-            colors: Object.fromEntries(['--bg', '--surface', '--ink', '--ink-soft', '--action', '--action-ink', '--action-hover', '--icon-grad-start', '--accent-surface', '--accent-ink', '--suggestion-ink'].map((name) => [name, rgb(name)])),
-            stageHeight: stage.clientHeight, stageContent: stage.scrollHeight,
-            posterBottom: document.querySelector('.poster-grid').getBoundingClientRect().bottom,
+            colors: Object.fromEntries(names.map((name) => [name, rgb(name)])),
           };
         });
         assert.ok(metrics.minimum >= 14, `${colorScheme} ${width} ${view}: smallest visible text is ${metrics.minimum}px`);
-        for (const ink of ['--ink', '--ink-soft', '--action', '--suggestion-ink']) {
-          for (const bg of ['--bg', '--surface']) {
+        for (const ink of ['--ink', '--ink-2', '--ink-3']) {
+          for (const bg of ['--paper', '--panel']) {
             assert.ok(contrast(metrics.colors[ink], metrics.colors[bg]) >= 7, `${colorScheme}: ${ink} on ${bg} meets 7:1`);
           }
         }
-        for (const bg of ['--action', '--action-hover', '--icon-grad-start']) {
-          assert.ok(contrast(metrics.colors['--action-ink'], metrics.colors[bg]) >= 7, `${colorScheme}: badge/action text on ${bg} meets 7:1`);
-        }
-        assert.ok(contrast(metrics.colors['--accent-ink'], metrics.colors['--accent-surface']) >= 7);
-        if (view === 'poster' && width >= 1440) {
-          assert.ok(metrics.stageContent <= metrics.stageHeight + 1, `${width}: poster fits without scrolling (${metrics.stageContent}/${metrics.stageHeight}, bottom ${metrics.posterBottom})`);
-          assert.ok(metrics.posterBottom >= height - 40, `${width}: poster fills the viewport`);
-        }
+        // Red and blue are the owner's fixed marks: used on bold words, buttons and links, held at AA.
+        for (const mark of ['--red', '--blue']) assert.ok(contrast(metrics.colors[mark], metrics.colors['--paper']) >= 4.5, `${colorScheme}: ${mark} on paper meets 4.5:1`);
+        assert.ok(contrast(metrics.colors['--red-ink'], metrics.colors['--red']) >= 4.5, `${colorScheme}: text on a red button meets 4.5:1`);
+        if (width === 1440) assert.ok(Math.abs(metrics.body - 18) < 0.5 || view !== 'poster', 'the column is 18px at 1440');
         if (width === 1920) assert.ok(metrics.body >= 18, '1920px body reaches the projector floor');
         t.diagnostic(`${colorScheme} ${width} ${view}: body=${metrics.body}px label=${metrics.label}px min=${metrics.minimum}px`);
       }
@@ -136,9 +132,14 @@ test('the showcase state holds what the session view renders, in the schema it r
   assert.equal(state.elements.length, 9, 'nine fields');
   assert.equal(state.variants.length, 3, 'three framings to compare');
   assert.ok(state.decisions.some((d) => d.ref === 'framing chosen: trust'), 'one framing is chosen');
-  for (const marker of ['accepted', 'proposed', 'stated']) {
+  for (const marker of ['accepted', 'stated', 'tentative', 'proposed']) {
     assert.ok(statements.some((s) => s.marker === marker), `a [${marker}] statement`);
   }
+  // The galley proof's build fixture: an empty field and a field with two open suggestions.
+  const asks = state.elements.map((e) => e.questions.flatMap((q) => q.statements).filter((s) => s.marker === 'proposed').length);
+  assert.ok(state.elements.some((e) => e.questions.every((q) => q.statements.length === 0)), 'an empty field');
+  assert.ok(asks.some((n) => n >= 2), 'a field with two open suggestions');
+  assert.ok(state.decisions.some((d) => /^\d\.\d accepted$/.test(d.ref) && d.explained), 'an accepted statement with its sentence, for the decision line');
   assert.ok(state.agenda.fields.length > 0, 'something to talk about');
   assert.deepEqual([...new Set(state.decisions.map((d) => d.by))].sort(), ['A. Author', 'B. Supervisor']);
   assert.equal(state.review.ledger.status, 'verified', 'no broken ledger banner over the showcase');
@@ -159,6 +160,19 @@ for (const [label, view, query] of [
     assert.match(page.app.innerHTML, new RegExp(`<section id="${view}"`), 'the view itself rendered');
   });
 }
+
+test('the poster shows every status word once at least, the decision line and a margin query with its slot', async () => {
+  const poster = await mount('');
+  const section = poster.app.innerHTML.match(/<section id="poster"[\s\S]*?<\/section>/)[0];
+  for (const word of ['Decided', 'Said by the authors', 'Draft', 'Suggestion']) {
+    assert.ok(section.includes(`<span class="status-word">${word}</span>`), `${word} is on the poster`);
+  }
+  assert.match(section, /<p class="setnote"><b>6 Oct 2026 &middot; A\. Author<\/b> &mdash; <q>I accept that these developers/);
+  assert.match(section, /<div class="slot" id="slot-6\.1" aria-details="st-6\.1">Suggestion 1 would be set here<\/div>/);
+  assert.match(section, /<article class="query next" id="st-6\.1"[^>]*aria-describedby="slot-6\.1"/);
+  assert.match(section, /Nothing set yet\. 2 suggestions wait in the margin\./);
+  assert.doesNotMatch(section.slice(8), /<section/, 'the poster holds no nested section');
+});
 
 test('the poster carries the paper title and the History both names', async () => {
   const poster = await mount('');
@@ -195,9 +209,9 @@ test('agenda disclosure keeps the discussion first and every unanswered prompt r
     assert.equal(await page.locator('#agenda .agenda-item-open').count(), 1, 'the real discussion remains prominent');
     const gaps = page.locator('#agenda .agenda-gaps');
     assert.equal(await gaps.getAttribute('open'), null, 'unanswered group starts compact');
-    assert.match(await gaps.locator(':scope > summary').textContent(), /23 questions in 9 fields/);
+    assert.match(await gaps.locator(':scope > summary').textContent(), /22 questions in 9 fields/);
     assert.equal(await page.locator('#agenda .agenda-gap-field').count(), 9, 'one group per field');
-    assert.equal(await page.locator('#agenda .agenda-gap-item').count(), 23, 'all prompts retained');
+    assert.equal(await page.locator('#agenda .agenda-gap-item').count(), 22, 'all prompts retained');
     await gaps.locator(':scope > summary').focus();
     await page.keyboard.press('Enter');
     assert.notEqual(await gaps.getAttribute('open'), null, 'keyboard opens the group');
@@ -216,4 +230,107 @@ test('agenda disclosure keeps the discussion first and every unanswered prompt r
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width, 'expanded navigation and history still reflow');
   }
   assert.deepEqual(writes, [], 'exploring the read-only example saves nothing');
+});
+
+async function openShowcase(t, viewport, colorScheme = 'light') {
+  let browser;
+  try { browser = await chromium.launch(); } catch (err) {
+    if (!/Executable doesn't exist/.test(err.message)) throw err;
+    browser = await chromium.launch({ channel: 'chromium' });
+  }
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport, colorScheme });
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.route('http://session.test/**', (route) => route.fulfill({
+    contentType: new URL(route.request().url()).pathname === '/fixture.json' ? 'application/json' : 'text/html',
+    body: new URL(route.request().url()).pathname === '/fixture.json' ? JSON.stringify(state) : html,
+  }));
+  await page.goto('http://session.test/?fixture=/fixture.json');
+  await page.waitForSelector('#poster.active .query');
+  return { page, errors };
+}
+
+// The signature interaction: each margin query is tied to its slot in the
+// column by a programmatic relation a screen reader announces, and by a leader
+// line that lights with it. Narrow, the query sits directly under its slot.
+test('every margin query names its slot, the slot names it back, and focus lights the leader line and the slot', { skip: !chromium, timeout: 120000 }, async (t) => {
+  const { page, errors } = await openShowcase(t, { width: 1440, height: 900 });
+  const pairs = await page.evaluate(() => [...document.querySelectorAll('#poster .query')].map((query) => {
+    const slot = document.getElementById(query.getAttribute('aria-describedby'));
+    return {
+      id: query.id, slotId: slot && slot.id, slotClass: slot && slot.className, back: slot && slot.getAttribute('aria-details'),
+      dataSlot: query.getAttribute('data-slot'), named: Boolean(document.getElementById(query.getAttribute('aria-labelledby'))),
+      line: Boolean(document.querySelector(`#poster .leader[data-q="${query.id}"]`)),
+    };
+  }));
+  assert.equal(pairs.length, 3, 'the showcase holds three open suggestions');
+  for (const pair of pairs) {
+    assert.equal(pair.slotClass, 'slot');
+    assert.equal(pair.back, pair.id, `${pair.id}: the slot points back at its query`);
+    assert.equal(pair.dataSlot, pair.slotId);
+    assert.ok(pair.named && pair.line, `${pair.id}: labelled, and a leader line is drawn`);
+  }
+  const accept = page.locator('#poster .query').nth(1).locator('[data-action="accept"]');
+  await accept.focus();
+  const lit = await page.evaluate(() => ({
+    query: document.querySelectorAll('#poster .query.lit').length, slot: document.querySelectorAll('#poster .slot.lit').length, line: document.querySelectorAll('#poster .leader.lit').length,
+    id: document.querySelector('#poster .query.lit').id,
+  }));
+  assert.deepEqual([lit.query, lit.slot, lit.line], [1, 1, 1], 'one query, its slot and its line light together');
+  assert.equal(lit.id, pairs[1].id);
+  await page.locator('#fieldnav .chip').first().focus();
+  assert.equal(await page.locator('#poster .lit').count(), 0, 'moving focus away unlights them');
+  assert.deepEqual(errors, []);
+});
+
+test('narrow, each query sits directly under its slot with no leader drawn', { skip: !chromium, timeout: 120000 }, async (t) => {
+  const { page, errors } = await openShowcase(t, { width: 320, height: 720 });
+  const narrow = await page.evaluate(() => ({
+    underSlot: [...document.querySelectorAll('#poster .query')].every((q) => q.previousElementSibling && q.previousElementSibling.id === q.getAttribute('data-slot')
+      && q.getBoundingClientRect().top >= q.previousElementSibling.getBoundingClientRect().bottom - 1),
+    lines: document.querySelectorAll('#poster .leader').length,
+    overflow: document.documentElement.scrollWidth,
+  }));
+  assert.equal(narrow.underSlot, true);
+  assert.equal(narrow.lines, 0);
+  assert.equal(narrow.overflow, 320, 'reflow holds at 320px');
+  assert.deepEqual(errors, []);
+});
+
+test('Present: Enter on the control shows one field with its queries, arrow keys step, Escape leaves and returns focus', { skip: !chromium, timeout: 120000 }, async (t) => {
+  const { page, errors } = await openShowcase(t, { width: 1440, height: 900 });
+  const present = page.locator('#present');
+  assert.equal(await present.isHidden(), true);
+  await page.locator('.present-btn').focus();
+  await page.keyboard.press('Enter');
+  await present.waitFor({ state: 'visible' });
+  assert.match(await present.locator('.present-bar .count').textContent(), /Field 6 of 9/, 'opens on the first field with a query waiting');
+  assert.equal(await present.locator('.query').count(), 2, 'the field comes with its margin queries');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'present-title', 'focus moves to the field');
+  assert.equal(await page.evaluate(() => document.getElementById('app').inert), true, 'the page behind is inert');
+  await page.keyboard.press('ArrowRight');
+  assert.match(await present.locator('.present-bar .count').textContent(), /Field 7 of 9/);
+  assert.equal(await present.locator('.query').count(), 0);
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  assert.match(await present.locator('.present-bar .count').textContent(), /Field 5 of 9/);
+  const projector = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#present .stext, #present .askline, #present .quiet')).fontSize));
+  assert.ok(projector >= 21, `projector scale: ${projector}px`);
+  await page.keyboard.press('Escape');
+  assert.equal(await present.isHidden(), true);
+  assert.equal(await page.evaluate(() => document.activeElement.className), 'present-btn', 'focus returns to the control');
+  assert.equal(await page.evaluate(() => document.getElementById('app').inert), false);
+  assert.deepEqual(errors, []);
+});
+
+test('the fonts load from the plugin, with no request leaving the origin', { skip: !chromium, timeout: 120000 }, async (t) => {
+  const { page } = await openShowcase(t, { width: 1440, height: 900 });
+  const families = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].map((f) => f.family.replace(/"/g, '')).sort();
+  });
+  assert.deepEqual([...new Set(families)], ['Hanken Grotesk', 'Source Serif 4']);
+  assert.match(html, /url\("fonts\/source-serif-4-latin-wght-normal\.woff2"\)/);
+  assert.match(html, /url\("fonts\/hanken-grotesk-latin-wght-normal\.woff2"\)/);
 });

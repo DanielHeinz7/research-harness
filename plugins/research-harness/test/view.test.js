@@ -860,3 +860,52 @@ for (const colorScheme of ['light', 'dark']) {
     t.diagnostic('lowest visible-control focus contrast ' + Math.min(...ratios.map((item) => item.ratio)).toFixed(2) + ':1');
   });
 }
+
+// The change mark: on a statement that differs from the view's previous state
+// read, never on the first read, never a toast, and a name only where the state
+// names one (an accepted statement carries its accepter in the log).
+test('Change mark: "New · just now" on a statement changed since the last read, a name only for an accepted one, cleared by the next read, never a notice', async () => {
+  const before = structuredClone(viewState);
+  const questions = (s) => s.elements.flatMap((e) => e.questions);
+  const q = questions(before).find((x) => x.statements.some((s) => s.marker === 'tentative' || s.marker === 'proposed'));
+  const target = q.statements.find((s) => s.marker === 'tentative' || s.marker === 'proposed');
+  const stated = structuredClone(before);
+  questions(stated).find((x) => x.id === q.id).statements.find((s) => s.text === target.text).marker = 'stated';
+  const accepted = structuredClone(stated);
+  questions(accepted).find((x) => x.id === q.id).statements.find((s) => s.text === target.text).marker = 'accepted';
+  accepted.decisions.push({ seq: 90, kind: 'DECISION', ref: `${q.id} accepted`, date: '2026-10-15', body: `${target.text} [accepted]`, by: 'B. Supervisor', explained: 'Because I say so.', sealStatus: 'verified' });
+  const reads = [before, stated, accepted, accepted];
+  let n = 0;
+  const page = await mount({ state: before, mode: 'live', routes: { '/api/state': () => ({ status: 200, body: reads[Math.min(n++, reads.length - 1)] }), '/api/stated': { ok: true } } });
+  const marks = () => page.app.innerHTML.match(/<span class="newmark">[^<]*<\/span>/g) || [];
+  const act = async () => { page.click({ 'data-action': 'stated', 'data-question': q.id, 'data-hash': target.hash }); await settle(); };
+  assert.deepEqual(marks(), [], 'the first read marks nothing');
+  await act();
+  assert.deepEqual(marks(), ['<span class="newmark">New &middot; just now</span>'], 'no author in the state, so none is shown');
+  await act();
+  assert.deepEqual(marks(), ['<span class="newmark">New &middot; B. Supervisor &middot; just now</span>'], 'the log names who accepted');
+  await act();
+  assert.deepEqual(marks(), [], 'the next read without a change clears the mark');
+  assert.equal(page.notice.hidden, true, 'no toast or notice for a change');
+});
+
+test('Field chips carry number and name: tooltip and accessible name for every field, width by statement count, empty fields dashed', async () => {
+  const page = await mount({ state: viewState });
+  const nav = page.app.innerHTML.match(/<nav id="fieldnav"[\s\S]*?<\/nav>/)[0];
+  for (const e of viewState.elements) {
+    const count = e.questions.reduce((sum, q) => sum + q.statements.length, 0);
+    const chip = nav.match(new RegExp(`<li style="--n:(\\d+)"><a class="chip( empty)?[^"]*"[^>]*data-chip="${e.number}"[^>]*>`));
+    assert.ok(chip, `field ${e.number} has a chip`);
+    assert.equal(Number(chip[1]), count, `field ${e.number}: chip width follows its ${count} statements`);
+    assert.equal(Boolean(chip[2]), count === 0, `field ${e.number}: dashed exactly when empty`);
+    assert.match(chip[0], new RegExp(`title="${e.title.replace(/&/g, '&amp;')}"`), `field ${e.number}: tooltip carries the name`);
+    assert.match(chip[0], new RegExp(`aria-label="${e.number} ${e.title.replace(/&/g, '&amp;')}, `), `field ${e.number}: the accessible name starts with number and name`);
+  }
+});
+
+test('a statement number is addressable by fragment and survives the code redemption', async () => {
+  const live = await mount({ state: viewState, mode: 'live', hash: '#c=abc123&st-3.1' });
+  assert.equal(live.location.hash, '#st-3.1', 'the code is stripped, the statement address stays');
+  assert.match(live.app.innerHTML, /id="st-1\.1"/);
+  assert.match(live.app.innerHTML, /<a class="sid" href="#st-1\.1" aria-label="Statement 1\.1">1\.1<\/a>/);
+});

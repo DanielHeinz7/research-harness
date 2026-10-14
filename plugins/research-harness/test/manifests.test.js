@@ -45,6 +45,23 @@ test('hooks.json is valid and every command is rooted at CLAUDE_PLUGIN_ROOT', ()
   }
 });
 
+// A PreToolUse command hook that times out or crashes lets the tool call
+// through unless it sets onFailure: "block" (Claude Code 2.1.295 or later).
+// The guard is a gate, so it blocks. SessionStart only adds context and stays
+// fail-open.
+test('the guard blocks the tool call when it times out or crashes; SessionStart fails open', () => {
+  const hooks = readJson(path.join(pluginRoot, 'hooks', 'hooks.json'));
+  const commandHooks = (event) => hooks.hooks[event].flatMap((group) => group.hooks);
+  const guard = commandHooks('PreToolUse');
+  assert.ok(guard.length > 0, 'PreToolUse carries no hook');
+  for (const hook of guard) {
+    assert.equal(hook.onFailure, 'block', `PreToolUse ${hook.command}: onFailure`);
+  }
+  for (const hook of commandHooks('SessionStart')) {
+    assert.notEqual(hook.onFailure, 'block', `SessionStart ${hook.command}: onFailure`);
+  }
+});
+
 test('there is no commands/ directory', () => {
   assert.equal(fs.existsSync(path.join(pluginRoot, 'commands')), false);
 });

@@ -1320,6 +1320,56 @@ test('SQ-232: a heredoc body that is stdin data is judged on the paths it spells
   }
 });
 
+// SQ-233. SQ-232 judged a data body on the paths it spells, which left two ways
+// through. xargs makes each item it reads an operand, so a bare `research` in
+// the body removed the state directory under `xargs rm -r`, where the printf
+// form was refused. And an unquoted body was read as typed rather than as bash
+// expands it, so `$PWD/research/canvas.md` and `${d}earch/canvas.md` spelled no
+// state path. On a line that runs xargs or parallel the body is now judged item
+// by item, and an unquoted body also as the text bash hands the command. Under
+// any other receiver the body keeps the path rule, so prose that mentions
+// research still passes.
+test('SQ-233: heredoc data that reaches the state through xargs or shell expansion is refused', () => {
+  const root = makeProject();
+  for (const [form, cmd] of [
+    ['xargs, the state directory on a line of its own', "xargs rm -r <<'EOF'\nnotes\nresearch\nEOF"],
+    ['xargs, the state directory beside another item', "xargs rm -r <<'EOF'\nnotes research\nEOF"],
+    ['xargs, a variable in front of the state path', 'xargs rm <<EOF\n$PWD/research/canvas.md\nEOF'],
+    ['xargs, an unknown variable completing the name', 'xargs rm <<EOF\n${d}earch/canvas.md\nEOF'],
+    ['xargs, a variable the line assigned', 'd=res; xargs rm <<EOF\n${d}earch/canvas.md\nEOF'],
+    ['xargs on a later command of the line', "cat <<'EOF' | xargs rm -r\nnotes\nresearch\nEOF"],
+    ['parallel', "parallel rm -r <<'EOF'\nnotes\nresearch\nEOF"],
+    // The forms the heredoc is held to, refused before this change.
+    ['printf piped into xargs', "printf '%s\\n' notes research | xargs rm -r"],
+    ['the argument word', 'rm -r research'],
+    ['the argument word with the assigned variable', 'd=res; xargs rm ${d}earch/canvas.md'],
+    ['a while-read loop', "while read f; do rm -r \"$f\"; done <<'EOF'\nresearch\nEOF"],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+    assert.match(out.permissionDecisionReason, /read-only/, form);
+  }
+  for (const [form, cmd] of [
+    ['prose and a vault path for another receiver', 'cockpit rueckmeldung <<\'EOF\'\n{"titel":"Reddit research done","vault":"vault/research/x.md"}\nEOF'],
+    ['prose beside a variable for another receiver', 'cockpit rueckmeldung <<EOF\n{"titel":"research for $USER","vault":null}\nEOF'],
+    ['the state directory under a read', "cat <<'EOF'\nresearch\nEOF"],
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, form);
+  }
+  // Without research state an item gets what an argument word gets, no more:
+  // the heredoc and its printf form are judged alike.
+  const bare = makeBareProject();
+  for (const [heredoc, piped, expected] of [
+    ["xargs rm -r <<'EOF'\nnotes\nresearch\nEOF", "printf '%s\\n' notes research | xargs rm -r", null],
+    ['xargs rm <<EOF\n$PWD/research/canvas.md\nEOF', 'printf \'%s\\n\' "$PWD/research/canvas.md" | xargs rm', 'deny'],
+  ]) {
+    const fromBody = run(bare, 'Bash', { command: heredoc });
+    const fromPipe = run(bare, 'Bash', { command: piped });
+    assert.equal(fromBody && fromBody.permissionDecision, expected, heredoc);
+    assert.equal(fromPipe && fromPipe.permissionDecision, expected, piped);
+  }
+});
+
 // SQ-67. SQ-55 reads a heredoc body as stdin data, which is right when the
 // receiving command is `cat` and wrong when it is a shell or interpreter that
 // reads its program from stdin: `bash <<EOF … EOF` runs the body, and quoting

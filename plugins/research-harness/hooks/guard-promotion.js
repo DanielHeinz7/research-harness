@@ -526,6 +526,83 @@ function readParenBody(src, from) {
   return { body, end: i, open: true };
 }
 
+// Reads the parameter a `$` at `at` opens in `src` — `${NAME}`, `$NAME` or a
+// special parameter — as the mark a word gets for it, and the index past it.
+// A `${…}` that is more than a name is an unknown, and a `$` that opens none
+// of them stands for itself.
+function parameterMark(src, at) {
+  const next = src[at + 1];
+  if (next === '{') {
+    let k = at + 2;
+    let name = '';
+    let level = 1;
+    while (k < src.length) {
+      const ch = src[k];
+      if (ch === '{') { level += 1; name += ch; k += 1; continue; }
+      if (ch === '}') {
+        level -= 1;
+        k += 1;
+        if (!level) break;
+        name += ch;
+        continue;
+      }
+      name += ch;
+      k += 1;
+    }
+    return { mark: /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? `${EXP_OPEN}${name}${EXP_CLOSE}` : EXP_UNKNOWN, end: k };
+  }
+  if (next !== undefined && /[A-Za-z_]/.test(next)) {
+    let k = at + 1;
+    while (k < src.length && /[A-Za-z0-9_]/.test(src[k])) k += 1;
+    return { mark: `${EXP_OPEN}${src.slice(at + 1, k)}${EXP_CLOSE}`, end: k };
+  }
+  if (next !== undefined && /[0-9@*#?$!-]/.test(next)) return { mark: EXP_UNKNOWN, end: at + 2 };
+  return { mark: '$', end: at + 1 };
+}
+
+// SQ-233: the text bash hands a command from the body of a heredoc whose
+// delimiter was not quoted. A backslash escapes `$`, a backtick, itself and a
+// newline, and nothing else; a parameter becomes the mark a word gets for it,
+// and a substitution its literal output where that is knowable (SQ-57) or an
+// unknown. The substitutions are lexed as commands by nestHeredocBody.
+function expandHeredocBody(body, depth) {
+  const output = (inner) => {
+    const literal = literalSubstitutionValue(inner, depth);
+    return literal === null ? EXP_UNKNOWN : literal;
+  };
+  let out = '';
+  let k = 0;
+  while (k < body.length) {
+    const ch = body[k];
+    if (ch === '\\' && /[$`\\\n]/.test(body[k + 1] || '')) {
+      if (body[k + 1] !== '\n') out += body[k + 1];
+      k += 2;
+    } else if (ch === '`') {
+      let inner = '';
+      k += 1;
+      while (k < body.length && body[k] !== '`') {
+        if (body[k] === '\\') { inner += body[k + 1] || ''; k += 2; continue; }
+        inner += body[k];
+        k += 1;
+      }
+      out += output(inner);
+      k += 1;
+    } else if (ch === '$' && body[k + 1] === '(') {
+      const read = readParenBody(body, k + 2);
+      out += output(read.body);
+      k = read.end;
+    } else if (ch === '$') {
+      const read = parameterMark(body, k);
+      out += read.mark;
+      k = read.end;
+    } else {
+      out += ch;
+      k += 1;
+    }
+  }
+  return out;
+}
+
 // Splits a command line into simple commands, each carrying its words and its
 // redirections. Commands nested in `$(...)` or backticks are real commands and
 // join the list; the word that held them keeps a mark that it is unknown.
@@ -620,8 +697,7 @@ function lexBash(text, depth) {
   }
 
   function readDollar(w) {
-    const next = text[i + 1];
-    if (next === '(') {
+    if (text[i + 1] === '(') {
       i += 2;
       const body = readSubstitution();
       const literal = literalSubstitutionValue(body, depth);
@@ -629,37 +705,9 @@ function lexBash(text, depth) {
       nest(body);
       return;
     }
-    if (next === '{') {
-      i += 2;
-      let name = '';
-      let level = 1;
-      while (i < text.length) {
-        const ch = text[i];
-        if (ch === '{') { level += 1; name += ch; i += 1; continue; }
-        if (ch === '}') {
-          level -= 1;
-          i += 1;
-          if (!level) break;
-          name += ch;
-          continue;
-        }
-        name += ch;
-        i += 1;
-      }
-      w.text += /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? `${EXP_OPEN}${name}${EXP_CLOSE}` : EXP_UNKNOWN;
-      return;
-    }
-    if (next !== undefined && /[A-Za-z_]/.test(next)) {
-      let j = i + 1;
-      let name = '';
-      while (j < text.length && /[A-Za-z0-9_]/.test(text[j])) { name += text[j]; j += 1; }
-      i = j;
-      w.text += `${EXP_OPEN}${name}${EXP_CLOSE}`;
-      return;
-    }
-    if (next !== undefined && /[0-9@*#?$!-]/.test(next)) { i += 2; w.text += EXP_UNKNOWN; return; }
-    w.text += '$';
-    i += 1;
+    const read = parameterMark(text, i);
+    w.text += read.mark;
+    i = read.end;
   }
 
   // The body of `$'…'`, decoded the way bash decodes it: the one-letter
@@ -820,6 +868,11 @@ function lexBash(text, depth) {
       // the verdict judges the paths it spells, as it judges a printf argument.
       heredoc.redirect.dataBody = { text: body, opaque: false, quoted: true };
       if (heredoc.quoted) continue;
+      // SQ-233: bash expands an unquoted body before the command reads it, so
+      // where that changes the text, the text the command is handed is carried
+      // as well, with the marks a word gets for what the guard cannot compute.
+      const expanded = expandHeredocBody(body, depth);
+      if (expanded !== body) heredoc.redirect.dataBody.expanded = { text: expanded, opaque: false, quoted: true };
       // A body the scan could not finish is a word the guard cannot read: the
       // redirect carries it so the verdict can judge it as one.
       if (!nestHeredocBody(body)) heredoc.redirect.unreadBody = { text: body, opaque: true };
@@ -1438,7 +1491,8 @@ function opaqueReachesState(text, stateNames, dirName) {
 // `**` there is a character, and a run names the state only by spelling it
 // (SQ-96: `sed -i '' 's|x|**/_raw/*|' .gitignore` was denied because `**`
 // matched `research`). The word itself and a `k=v` value stay patterns, since
-// the shell does expand those.
+// the shell does expand those, unless the word is `inert`: an item xargs reads
+// from a heredoc reaches its command unexpanded (SQ-233).
 function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText, stateRoot) {
   // A brace expansion or loop too large to compute (SQ-75) is unknown where
   // state is there to land on; where it is not, it is read on the names it
@@ -1448,7 +1502,7 @@ function wordTouchesState(w, base, stateParts, stateNames, hasState, inertText, 
   if (w.opaque) return opaqueReachesState(w.text, stateNames, stateParts[stateParts.length - 1]);
   if (base === null) return false;
   let unjudgeable = false;
-  const candidates = wordCandidates(w.text).map((text) => [text, false, false])
+  const candidates = wordCandidates(w.text).map((text) => [text, !!w.inert, false])
     .concat(pathFragments(w.text).map((text) => [text, !!inertText, true]));
   for (const [candidate, literal, fragment] of candidates) {
     const denotes = denotesState(candidate, base, stateParts, literal);
@@ -1487,6 +1541,55 @@ function runsProgramText(words) {
   if (verbAt < 0) return false;
   if (words[verbAt].opaque) return true;
   return words.slice(verbAt).some((w) => !w.opaque && PROGRAM_TEXT_COMMANDS.has(baseNameOf(w.text)));
+}
+
+// SQ-233: commands that make what they read on stdin the operands of a command
+// they run. On a line that names one, a heredoc body that is stdin data is a
+// list of operands, so each item in it is judged the way an argument word is,
+// and a bare `research` names the state directory. Elsewhere a body is text
+// the receiver reads, and only the paths it spells name the state (SQ-232).
+const STDIN_OPERAND_COMMANDS = new Set(['xargs', 'parallel']);
+
+// The items xargs reads from a body by default: blanks and newlines separate
+// them, quotes group characters and are dropped, and a backslash takes the next
+// character. Each whole trimmed line counts besides, as the item `-d`, `-0`,
+// `-L` and `-I` make of it. Neither xargs nor parallel expands a pattern in an
+// item, so each is `inert`: it names the state only by spelling it.
+function operandWords(text) {
+  const items = new Set(text.split('\n').map((line) => line.trim()));
+  let item = null;
+  let quote = null;
+  for (let k = 0; k < text.length; k += 1) {
+    const ch = text[k];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else item += ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      item = item || '';
+    } else if (ch === '\\') {
+      item = (item || '') + (text[k + 1] || '');
+      k += 1;
+    } else if (/[ \t\n]/.test(ch)) {
+      items.add(item);
+      item = null;
+    } else {
+      item = (item || '') + ch;
+    }
+  }
+  items.add(item);
+  return [...items].filter(Boolean).map((t) => ({ text: t, opaque: t.includes(EXP_OPEN), quoted: true, inert: true }));
+}
+
+// SQ-233: the words an unquoted body is judged as once bash has expanded it.
+// Its text stays under the literal rule a quoted body is judged by (SQ-232),
+// and every blank-separated token that still carries an expansion the guard
+// could not resolve is judged as the opaque word it is, on the names it spells.
+// A body whose loop values are too many to compute is one such word (SQ-75).
+function expansionWords(body) {
+  if (body.uncomputable) return [body];
+  const marked = body.text.split(/\s+/).filter((token) => token.includes(EXP_OPEN));
+  return [{ text: body.text, opaque: false, quoted: true }, ...marked.map((text) => ({ text, opaque: true, quoted: true }))];
 }
 
 // A redirection target built at runtime (`>> "$f.md"`, `>> "$(…)"`) is the
@@ -2252,6 +2355,11 @@ function bashVerdict(command, projectRoot) {
   let refusal = null;
   let allReadOnly = true;
   let loopDepth = 0;
+  // SQ-233: whether the line runs xargs or parallel, and each data body's text
+  // with the directory it is read from, judged as operands once the whole line
+  // is known (`cat <<EOF | xargs rm` names xargs after the body's command).
+  let operands = false;
+  const dataTexts = [];
 
   for (const sc of commands) {
     // SQ-106: a loop is read by its parts. The lexer hands `for f in W; do
@@ -2339,6 +2447,7 @@ function bashVerdict(command, projectRoot) {
     // Leading `NAME=value` words are assignments, not the command.
     const verbAt = sc.words.findIndex((w) => !ASSIGNMENT_RE.test(w.text));
     const argv = verbAt < 0 ? [] : sc.words.slice(verbAt);
+    if (argv.some((w) => !w.opaque && STDIN_OPERAND_COMMANDS.has(baseNameOf(w.text)))) operands = true;
 
     // SQ-71: only a project that holds state can have its state touched. Where
     // there is none, an unfollowable `cd`, an operand the guard cannot read and
@@ -2362,6 +2471,21 @@ function bashVerdict(command, projectRoot) {
         const verdict = wordTouchesState(redirect.dataBody, base, stateParts, stateNames, hasState, true, stateRoot);
         if (verdict === null && hasState) uncomputable = true;
         else if (verdict) touches = true;
+        // SQ-233: an unquoted body is also judged as the text bash expands it
+        // to, with the values this line assigned (a prefix assignment included,
+        // as bash expands the body after it) and one text per loop value.
+        let bodies = [redirect.dataBody];
+        const { expanded } = redirect.dataBody;
+        if (expanded) {
+          substitute(expanded, values);
+          bodies = expandWord(expanded, loops);
+          for (const body of bodies.flatMap(expansionWords)) {
+            const found = wordTouchesState(body, base, stateParts, stateNames, hasState, true, stateRoot);
+            if (found === null && hasState) uncomputable = true;
+            else if (found) touches = true;
+          }
+        }
+        for (const body of bodies) dataTexts.push({ text: body.text, at: base });
       }
       // A redirect target is a write position, so a pattern there the guard
       // cannot compute counts as touching: `readOnlyRefusal` below supplies the
@@ -2434,6 +2558,8 @@ function bashVerdict(command, projectRoot) {
     // h && cat h/…`) — the same reason `cd` above keeps mutating `base`.
     trackSymlink(argv, base, links);
   }
+  if (operands && dataTexts.some(({ text, at }) => operandWords(text)
+    .some((w) => wordTouchesState(w, at, stateParts, stateNames, hasState, true, stateRoot)))) touches = true;
 
   if (acceptAttempt) return ACCEPT_DENIAL;
   if (glossaryAttempt) return GLOSSARY_DENIAL;

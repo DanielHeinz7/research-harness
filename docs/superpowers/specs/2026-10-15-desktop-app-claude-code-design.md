@@ -1,6 +1,6 @@
 # Desktop app, sub-project 2: Claude Code in the agent column
 
-Status: draft for the owner's review, 2026-10-15. Built only after sub-project 1 has landed.
+Status: approved by the owner, 2026-10-15. Built only after sub-project 1 has landed.
 Decision record: vault `appdev/research-harness.md`, blocks of 2026-10-14 ("Desktop-App mit eigenem
 Agenten") and 2026-10-15. Builds on the approved shell spec
 `docs/superpowers/specs/2026-10-15-desktop-app-shell-design.md` (`990bbed`) and the direction

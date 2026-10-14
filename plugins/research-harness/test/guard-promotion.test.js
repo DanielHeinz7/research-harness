@@ -1276,6 +1276,50 @@ test('Bash: a substitution in an unquoted heredoc body is judged, a quoted one i
   assert.match(unread.permissionDecisionReason, /read-only/);
 });
 
+// SQ-232. A heredoc body that is stdin data was not judged at all: a quoted body
+// was skipped and an unquoted one only scanned for substitutions. `xargs rm
+// <<'EOF'` with the canvas path in its body removed the canvas, while `printf …
+// | xargs rm` and `xargs rm <<< …` were refused. The body is now judged the way
+// an inert word of a read-only verb is, on the paths it spells: a line that only
+// reads still passes, and a line with a command that is not read-only is refused.
+test('SQ-232: a heredoc body that is stdin data is judged on the paths it spells', () => {
+  const root = makeProject();
+  const body = '\nresearch/canvas.md\nEOF';
+  for (const [form, cmd] of [
+    ['xargs, quoted delimiter', `xargs rm <<'EOF'${body}`],
+    ['xargs, unquoted delimiter', `xargs rm <<EOF${body}`],
+    ['cat piped into xargs', `cat <<'EOF' | xargs rm${body}`],
+    ['a while-read loop', `while read f; do rm "$f"; done <<'EOF'${body}`],
+    ['an external command given a state path', 'cockpit rueckmeldung <<\'EOF\'\n{"vault":"research/x.md"}\nEOF'],
+    // An inline program may read its stdin, and `printf … | python3 -c …` was
+    // already refused, so SQ-69's data receivers are held the same way.
+    ['an inline program given the state path as data', "python3 -c 'print(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
+  ]) {
+    const out = run(root, 'Bash', { command: cmd });
+    assert.equal(out && out.permissionDecision, 'deny', form);
+    assert.match(out.permissionDecisionReason, /read-only/, form);
+  }
+  for (const [form, cmd] of [
+    ['only reads', `cat <<'EOF'${body}`],
+    ['a commit message naming the state', "git commit -F - <<'EOF'\nTighten research/canvas.md 1.2\nEOF"],
+    ['a path outside the state', 'cockpit rueckmeldung <<\'EOF\'\n{"vault":"vault/research/x.md"}\nEOF'],
+  ]) {
+    assert.equal(run(root, 'Bash', { command: cmd }), null, form);
+  }
+  // Without research state the body gets what an argument word gets, no more:
+  // the heredoc and its printf form are judged alike.
+  const bare = makeBareProject();
+  for (const [receiver, data, expected] of [
+    ['xargs rm', 'research/canvas.md', 'deny'],
+    ['cockpit rueckmeldung', '{"vault":"research/x.md"}', null],
+  ]) {
+    const heredoc = run(bare, 'Bash', { command: `${receiver} <<'EOF'\n${data}\nEOF` });
+    const piped = run(bare, 'Bash', { command: `printf '%s\\n' '${data}' | ${receiver}` });
+    assert.equal(heredoc && heredoc.permissionDecision, expected, `heredoc: ${data}`);
+    assert.equal(piped && piped.permissionDecision, expected, `printf: ${data}`);
+  }
+});
+
 // SQ-67. SQ-55 reads a heredoc body as stdin data, which is right when the
 // receiving command is `cat` and wrong when it is a shell or interpreter that
 // reads its program from stdin: `bash <<EOF … EOF` runs the body, and quoting
@@ -1349,13 +1393,16 @@ test('SQ-69: a flag\'s value is not a script file operand, so the heredoc body i
   // The inline-program spellings still make the body stdin data: a bundle with
   // the program in the next word (`node -pe PROG`), a program attached to the
   // flag letter (`python3 -c'PROG'`), and a shell's `-c` not last in the bundle.
+  // SQ-232: data that spells the state is refused under these receivers too, so
+  // the body names it only through a pattern. Read as the program, `res*` counts
+  // as the glob it may become and is denied; read as data, it is a string.
   for (const cmd of [
-    "python3 -c'print(1)' <<'EOF'\nrm research/canvas.md\nEOF",
-    "python3 -c 'print(1)' <<'EOF'\nrm research/canvas.md\nEOF",
-    "perl -e'print 1' <<'EOF'\nrm research/canvas.md\nEOF",
-    "node -pe '1+1' <<'EOF'\nrm research/canvas.md\nEOF",
-    "perl -ne 'print' <<'EOF'\nrm research/canvas.md\nEOF",
-    "bash -ce 'ls research' <<'EOF'\nrm research/canvas.md\nEOF",
+    "python3 -c'print(1)' <<'EOF'\nrm res*/canvas.md\nEOF",
+    "python3 -c 'print(1)' <<'EOF'\nrm res*/canvas.md\nEOF",
+    "perl -e'print 1' <<'EOF'\nrm res*/canvas.md\nEOF",
+    "node -pe '1+1' <<'EOF'\nrm res*/canvas.md\nEOF",
+    "perl -ne 'print' <<'EOF'\nrm res*/canvas.md\nEOF",
+    "bash -ce 'ls research' <<'EOF'\nrm res*/canvas.md\nEOF",
   ]) {
     assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
   }
@@ -1369,12 +1416,13 @@ test('SQ-69: a flag\'s value is not a script file operand, so the heredoc body i
     const out = run(root, 'Bash', { command: cmd });
     assert.equal(out && out.permissionDecision, 'deny', cmd);
   }
-  // The data receiver of SQ-55 and the read controls of SQ-67 are unchanged.
+  // The data receiver of SQ-55 and the read controls of SQ-67 are unchanged; the
+  // `sh -c` body names the state through a pattern, as above (SQ-232).
   for (const cmd of [
     "cat <<'EOF'\nrm research/canvas.md\nEOF\n",
     "python3 <<EOF\nprint('hi')\nEOF\n",
     'bash <<EOF\ncat research/canvas.md\nEOF\n',
-    "sh -c 'ls research' <<EOF\nrm research/canvas.md\nEOF\n",
+    "sh -c 'ls research' <<EOF\nrm res*/canvas.md\nEOF\n",
   ]) {
     assert.equal(run(root, 'Bash', { command: cmd }), null, cmd);
   }
@@ -1410,21 +1458,22 @@ test('SQ-70: the inline-program letters belong to one interpreter, not to all of
     assert.equal(out && out.permissionDecision, 'deny', form);
   }
   // The spelling each interpreter really accepts still makes the body stdin data.
+  // The body names the state through a pattern, as in SQ-69 (SQ-232).
   for (const [form, cmd] of [
-    ['perl -E carries the program', "perl -E 'say 1' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['perl -e attached', "perl -e'print 1' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['perl -ne bundle', "perl -ne 'print' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['perl -lne bundle', "perl -lne 'print' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['perl -ce compiles the program from -e', "perl -ce 'print 1' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['python3 -c', "python3 -c 'print(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['python3 -c attached', "python3 -c'print(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['python3 -Ic, program in the next word', "python3 -Ic 'print(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['node -pe', "node -pe 1 <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['node --eval', "node --eval 'console.log(1)' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['node --print', "node --print 1 <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['ruby -ne', "ruby -ne 'p 1' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['ruby -e attached', "ruby -e'puts 1' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['a shell cluster is unchanged', "bash -ce 'ls research' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['perl -E carries the program', "perl -E 'say 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['perl -e attached', "perl -e'print 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['perl -ne bundle', "perl -ne 'print' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['perl -lne bundle', "perl -lne 'print' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['perl -ce compiles the program from -e', "perl -ce 'print 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['python3 -c', "python3 -c 'print(1)' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['python3 -c attached', "python3 -c'print(1)' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['python3 -Ic, program in the next word', "python3 -Ic 'print(1)' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['node -pe', "node -pe 1 <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['node --eval', "node --eval 'console.log(1)' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['node --print', "node --print 1 <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['ruby -ne', "ruby -ne 'p 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['ruby -e attached', "ruby -e'puts 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['a shell cluster is unchanged', "bash -ce 'ls research' <<'EOF'\nrm res*/canvas.md\nEOF"],
   ]) {
     assert.equal(run(root, 'Bash', { command: cmd }), null, form);
   }
@@ -1453,11 +1502,11 @@ test('SQ-70: the inline-program letters belong to one interpreter, not to all of
   // argument the program never sees and the body stays data. Perl's and ruby's `-i`
   // is in-place editing and never reads stdin as code after `-e`.
   for (const [form, cmd] of [
-    ['python3 -c then -i is the program\'s argument', "python3 -c 'pass' -i <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['perl -i after -e is in-place editing', "perl -e 'print 1' -i <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['perl -i before -e', "perl -i -e 'print 1' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['ruby -i before -e', "ruby -i -e 'puts 1' <<'EOF'\nrm research/canvas.md\nEOF"],
-    ['ruby -ni bundle', "ruby -ni -e 'puts 1' <<'EOF'\nrm research/canvas.md\nEOF"],
+    ['python3 -c then -i is the program\'s argument', "python3 -c 'pass' -i <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['perl -i after -e is in-place editing', "perl -e 'print 1' -i <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['perl -i before -e', "perl -i -e 'print 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['ruby -i before -e', "ruby -i -e 'puts 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
+    ['ruby -ni bundle', "ruby -ni -e 'puts 1' <<'EOF'\nrm res*/canvas.md\nEOF"],
   ]) {
     assert.equal(run(root, 'Bash', { command: cmd }), null, form);
   }

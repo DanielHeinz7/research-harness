@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desktop App Mockup</title>
+<style>
+  :root {
+    --bg: #ebf2eb; --surface: #ffffff; --ink: #193c31; --ink-soft: #354f42;
+    --action: #154b38; --action-ink: #ffffff; --secondary: #dfeadd; --accent-surface: #dbedb0;
+    --line: #7d9688; --border: #cdddca; --suggestion-ink: #5c400e; --suggestion-tint: rgba(117,80,15,.1);
+    --font-ui: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+    --mono: "SF Mono", Menlo, Consolas, monospace;
+    --desk: #c9d3cc;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--desk); font-family: var(--font-ui); color: var(--ink); overflow: hidden; }
+
+  /* mockup controls (German, not part of the app) */
+  .controls { position: fixed; top: 0; left: 0; right: 0; height: 44px; display: flex; gap: 8px; align-items: center;
+    padding: 0 10px; background: #23302a; color: #e5f3e9; font-size: 12px; white-space: nowrap; z-index: 10; }
+  .controls b { margin-right: 6px; font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid #56705f; border-radius: 8px; overflow: hidden; }
+  .seg button { background: transparent; color: #e5f3e9; border: 0; padding: 5px 10px; font: inherit; cursor: pointer; }
+  .seg button.on { background: #b5edcf; color: #102b21; font-weight: 600; }
+  .controls .hint { margin-left: auto; opacity: .7; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+
+  /* desktop window, designed at 1440x860 and scaled to fit */
+  .stage { position: absolute; top: 44px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+  .win { width: 1440px; height: 860px; position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--bg); border-radius: 12px;
+    box-shadow: 0 30px 80px rgba(25,60,49,.35), 0 0 0 1px rgba(25,60,49,.2); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .titlebar { height: 38px; flex: none; display: flex; align-items: center; padding: 0 14px; background: #f6faf5;
+    border-bottom: 1px solid var(--border); font-size: 13px; color: var(--ink-soft); }
+  .lights { display: flex; gap: 8px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .lights i:nth-child(1) { background: #ff5f57; } .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .titlebar .t { flex: 1; text-align: center; margin-right: 52px; }
+  .titlebar .t strong { color: var(--ink); }
+  .body { flex: 1; display: grid; grid-template-columns: 232px 1fr 400px; min-height: 0; }
+
+  /* sidebar */
+  .side { background: #f6faf5; border-right: 1px solid var(--border); padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+  .proj { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+  .proj small { display: block; color: var(--ink-soft); font-size: 12px; }
+  .side h4 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--line); margin: 14px 6px 4px; }
+  .item { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 7px; cursor: default; }
+  .item:hover { background: var(--secondary); }
+  .item svg { width: 16px; height: 16px; flex: none; stroke: var(--action); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .badge { margin-left: auto; background: var(--accent-surface); color: var(--ink); font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+  .item.live { background: var(--action); color: var(--action-ink); }
+  .item.live svg { stroke: var(--action-ink); }
+  .note { font-size: 12px; color: var(--ink-soft); margin: 2px 8px 0 33px; line-height: 1.35; }
+  .side .foot { margin-top: auto; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12.5px; color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #2f9e62; flex: none; }
+
+  /* center: the real session view */
+  .center { min-width: 0; display: flex; }
+  .center iframe { border: 0; width: 100%; height: 100%; background: var(--bg); }
+
+  /* right pane, option 1 */
+  .pane { border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+  .pane-h { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .pane-h h3 { font-size: 15px; margin: 0; }
+  .pill { font-size: 11.5px; background: var(--secondary); color: var(--ink-soft); padding: 2px 8px; border-radius: 10px; }
+  .pane-h .pill:last-child { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .chat { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; font-size: 14px; line-height: 1.45; }
+  .me { align-self: flex-end; background: var(--action); color: var(--action-ink); padding: 9px 12px; border-radius: 12px 12px 3px 12px; max-width: 85%; }
+  .ag { max-width: 95%; }
+  .ag .who { font-size: 12px; font-weight: 700; color: var(--ink-soft); margin-bottom: 4px; }
+  .steps { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .step { font-size: 12.5px; color: var(--ink-soft); display: flex; gap: 7px; align-items: center; }
+  .step::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+  .step.w::before { background: var(--suggestion-ink); }
+  .msg { background: var(--bg); padding: 10px 12px; border-radius: 3px 12px 12px 12px; }
+  .msg .s { display: inline-block; background: var(--suggestion-tint); color: var(--suggestion-ink); font-size: 12px; font-weight: 700; padding: 0 6px; border-radius: 4px; }
+  .link { display: inline-block; margin-top: 8px; color: var(--action); font-weight: 600; font-size: 13.5px; text-decoration: underline; text-underline-offset: 3px; }
+  .guard { font-size: 12.5px; color: var(--ink-soft); background: #f6faf5; border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; display: flex; gap: 8px; }
+  .guard svg { width: 16px; height: 16px; flex: none; stroke: var(--ink-soft); fill: none; stroke-width: 1.8; }
+  .quick { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 10px; }
+  .chip { border: 1px solid var(--border); background: var(--surface); color: var(--action); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 16px; }
+  .composer { margin: 0 16px 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 8px 12px; display: flex; align-items: flex-end; gap: 8px; }
+  .composer span { flex: 1; color: #8aa093; font-size: 14px; padding-bottom: 6px; }
+  .send { background: var(--action); color: var(--action-ink); border: 0; border-radius: 8px; padding: 7px 14px; font: inherit; font-weight: 600; font-size: 13.5px; }
+  .usage { font-size: 11.5px; color: var(--line); padding: 0 16px 12px; }
+
+  /* right pane, option 2: embedded terminal */
+  .term { border-left: 1px solid var(--border); background: #14211b; color: #d9e6dd; display: flex; flex-direction: column; min-height: 0; }
+  .term-h { padding: 9px 14px; background: #1b2c24; border-bottom: 1px solid #2c4337; font-size: 12.5px; color: #a9c2b3; display: flex; gap: 10px; align-items: center; }
+  .term-h .tab { background: #14211b; color: #e5f3e9; padding: 3px 10px; border-radius: 6px 6px 0 0; border: 1px solid #2c4337; border-bottom: 0; margin-bottom: -10px; padding-bottom: 8px; }
+  .term pre { margin: 0; padding: 14px; font-family: var(--mono); font-size: 12px; line-height: 1.55; flex: 1; overflow: hidden; white-space: pre; }
+  .o { color: #e8935a; } .g { color: #8fd3a8; } .d { color: #7f988a; } .b { color: #e5f3e9; font-weight: 700; } .y { color: #f0d8a3; }
+
+  /* first-start overlay */
+  .veil { position: absolute; inset: 38px 0 0 0; background: rgba(25,60,49,.38); display: none; place-items: center; z-index: 5; }
+  .veil.on { display: grid; }
+  .dlg { width: 560px; background: var(--surface); border-radius: 14px; box-shadow: 0 24px 60px rgba(25,60,49,.35); padding: 26px 28px 22px; font-size: 14px; }
+  .dlg h2 { font-size: 20px; margin: 0 0 4px; }
+  .dlg .lead { color: var(--ink-soft); margin: 0 0 18px; line-height: 1.45; }
+  .opt { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; display: grid; grid-template-columns: 22px 1fr; gap: 4px 8px; }
+  .opt.sel { border-color: var(--action); box-shadow: 0 0 0 2px rgba(21,75,56,.15); }
+  .radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); margin-top: 2px; }
+  .sel .radio { border: 5px solid var(--action); }
+  .opt .lbl { font-weight: 700; }
+  .opt .sub { grid-column: 2; color: var(--ink-soft); font-size: 13px; line-height: 1.4; }
+  .field { grid-column: 2; margin-top: 6px; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; color: #8aa093; font-family: var(--mono); font-size: 12.5px; }
+  .fine { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; background: var(--bg); border-radius: 8px; padding: 10px 12px; margin: 6px 0 16px; }
+  .row { display: flex; justify-content: flex-end; gap: 8px; }
+  .btn2 { background: var(--secondary); color: var(--action); border: 0; border-radius: 8px; padding: 9px 16px; font: inherit; font-weight: 600; }
+  .btn1 { background: var(--action); color: var(--action-ink); border: 0; border-radius: 8px; padding: 9px 18px; font: inherit; font-weight: 600; }
+  .stepl { display: grid; grid-template-columns: 28px 1fr auto; gap: 4px 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .stepl:last-of-type { border-bottom: 0; margin-bottom: 8px; }
+  .num { width: 26px; height: 26px; border-radius: 50%; background: var(--secondary); color: var(--action); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .num.ok { background: var(--action); color: var(--action-ink); }
+  .stepl .sub { grid-column: 2; color: var(--ink-soft); font-size: 13px; }
+  .stepl .state { grid-row: 1 / span 2; grid-column: 3; }
+  .okt { color: #2f7a51; font-weight: 700; font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="controls">
+  <b>Mockup</b>
+  <div class="seg" id="seg-way">
+    <button data-way="1" class="on">Weg 1 · API</button>
+    <button data-way="2">Weg 2 · Claude Code</button>
+  </div>
+  <div class="seg" id="seg-first">
+    <button data-first="0" class="on">Arbeiten</button>
+    <button data-first="1">Erster Start</button>
+  </div>
+  <span class="hint">Mitte: echte Sitzungsansicht</span>
+</div>
+
+<div class="stage">
+<div class="win" id="win">
+  <div class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="t"><strong>research-harness</strong> — voice-uptake</div>
+  </div>
+  <div class="body">
+    <aside class="side">
+      <div class="proj"><div><strong>voice-uptake</strong><small>~/Papers/voice-uptake</small></div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#354f42" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+
+      <h4>Project</h4>
+      <div class="item"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>Open project…</div>
+      <div class="item"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Clone from link…</div>
+      <div class="item"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Get updates<span class="badge">2 new</span></div>
+      <div class="note">B. Supervisor added 2 entries. Merging keeps both logs sealed.</div>
+
+      <h4>Meeting</h4>
+      <div class="item live"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Session running · 0:24</div>
+      <div class="item"><svg viewBox="0 0 24 24"><path d="M5 5h14M5 10h14M5 15h9"/></svg>Agenda</div>
+      <div class="item"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg>Export minutes…</div>
+
+      <h4>People</h4>
+      <div class="item"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21c1-4 4-6 7-6s6 2 7 6M19 8v6M16 11h6"/></svg>Invite co-author…</div>
+      <div class="note">A. Researcher (you) · B. Supervisor</div>
+
+      <div class="foot" id="foot1"><span class="dot"></span>Model: Anthropic API key</div>
+      <div class="foot" id="foot2" hidden><span class="dot"></span>Claude Code 2.x · signed in</div>
+    </aside>
+
+    <main class="center"><iframe src="/plugins/research-harness/dashboard/canvas.html?fixture=/plugins/research-harness/test/fixtures/view-state-chosen.json" title="Session view"></iframe></main>
+
+    <!-- Weg 1 -->
+    <section class="pane" id="pane1">
+      <div class="pane-h"><h3>Agent</h3><span class="pill">Claude · API key</span><span class="pill"><span class="dot"></span>Ready</span></div>
+      <div class="chat">
+        <div class="me">Continue the canvas for field 3, the research question. Two suggestions at most.</div>
+        <div class="ag">
+          <div class="who">Agent</div>
+          <div class="steps">
+            <div class="step">Read the canvas and the construct glossary</div>
+            <div class="step">Read 3 literature notes</div>
+            <div class="step w">Wrote 2 suggestions to field 3</div>
+          </div>
+          <div class="msg">I added two statements to <b>3 Research Question</b>, both marked <span class="s">Suggestion</span>. The second one narrows the question to voice uptake in hierarchical teams; check whether that fits your chosen framing.
+            <br><span class="link">Open field 3 →</span></div>
+        </div>
+        <div class="me">Accept the first one.</div>
+        <div class="ag">
+          <div class="who">Agent</div>
+          <div class="msg">I can't accept statements. That step is yours: open field 3 and press <b>Accept…</b>, then write one sentence on why.</div>
+        </div>
+        <div class="guard"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span>The agent proposes. Accepting, choosing a framing, starting a session and handing over the project key stay with you.</span></div>
+      </div>
+      <div class="quick"><button class="chip">Continue canvas</button><button class="chip">Review canvas</button><button class="chip">Literature note…</button></div>
+      <div class="composer"><span>Ask the agent…</span><button class="send">Send</button></div>
+      <div class="usage">This session: 41,200 tokens (example figure)</div>
+    </section>
+
+    <!-- Weg 2 -->
+    <section class="term" id="pane2" hidden>
+      <div class="term-h"><span class="tab">claude</span><span>~/Papers/voice-uptake</span></div>
+<pre><span class="d">╭──────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="o">✻</span> <span class="b">Welcome to Claude Code</span>                     <span class="d">│</span>
+<span class="d">│</span>   <span class="d">/help for help, /status for your setup</span>     <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────╯</span>
+
+<span class="b">&gt;</span> /research-harness:canvas continue field 3,
+  two suggestions at most
+
+<span class="g">●</span> <span class="b">Read</span>(canvas.md)
+  <span class="d">⎿  Read 214 lines</span>
+<span class="g">●</span> <span class="b">Read</span>(literature/notes/*.md)
+  <span class="d">⎿  Read 3 files</span>
+<span class="g">●</span> <span class="b">Update</span>(canvas.md)
+  <span class="d">⎿  Added 2 [proposed] statements to 3</span>
+
+<span class="g">●</span> I added two statements to 3 Research
+  Question, both <span class="y">[proposed]</span>. The second narrows
+  the question to voice uptake in hierarchical
+  teams.
+
+<span class="b">&gt;</span> accept the first one
+
+<span class="g">●</span> <span class="b">Bash</span>(research-harness accept 3 …)
+  <span class="y">⎿  Denied by research-harness: accept is a
+     human step. Use the session view.</span>
+
+<span class="g">●</span> I can't accept statements. Open field 3 in the
+  session view and press Accept….
+
+<span class="d">╭──────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="b">&gt;</span> ▌                                          <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────╯</span>
+  <span class="d">? for shortcuts</span>                  <span class="d">Claude Pro</span></pre>
+    </section>
+  </div>
+
+  <!-- Erster Start, Weg 1 -->
+  <div class="veil" id="first1">
+    <div class="dlg">
+      <h2>Connect a model</h2>
+      <p class="lead">The agent needs model access once. You can change this later under Settings.</p>
+      <div class="opt sel"><span class="radio"></span><span class="lbl">Anthropic API key</span>
+        <span class="sub">From the Claude Console. <u>Get a key ↗</u></span>
+        <span class="field">Paste your key</span></div>
+      <div class="opt"><span class="radio"></span><span class="lbl">Your institution's gateway</span>
+        <span class="sub">A URL and token from your IT department.</span></div>
+      <div class="opt"><span class="radio"></span><span class="lbl">Amazon Bedrock or Google Vertex</span>
+        <span class="sub">Uses your cloud account's sign-in.</span></div>
+      <div class="fine">Stored in the macOS Keychain, never in the project. Usage is billed per token to the account behind the key. A Claude Pro plan does not cover it; Max and Team plans include monthly API credits.</div>
+      <div class="row"><button class="btn2">Test connection</button><button class="btn1">Continue</button></div>
+    </div>
+  </div>
+
+  <!-- Erster Start, Weg 2 -->
+  <div class="veil" id="first2">
+    <div class="dlg">
+      <h2>Set up Claude Code</h2>
+      <p class="lead">The agent runs in Claude Code, signed in with your own Claude plan. This app only hosts it.</p>
+      <div class="stepl"><span class="num">1</span><strong>Install Claude Code</strong><span class="state"><button class="btn1">Install</button></span>
+        <span class="sub">Not found on this Mac.</span></div>
+      <div class="stepl"><span class="num">2</span><strong>Sign in with Claude</strong><span class="state"><button class="btn2">Sign in ↗</button></span>
+        <span class="sub">Opens your browser. Pro, Max or Team plan.</span></div>
+      <div class="stepl"><span class="num ok">✓</span><strong>research-harness plugin</strong><span class="state"><span class="okt">0.5.0</span></span>
+        <span class="sub">Bundled with the app.</span></div>
+      <div class="row"><button class="btn1">Open a project</button></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+  var way = '1', first = '0';
+  function render() {
+    document.getElementById('pane1').hidden = way !== '1';
+    document.getElementById('pane2').hidden = way !== '2';
+    document.getElementById('foot1').hidden = way !== '1';
+    document.getElementById('foot2').hidden = way !== '2';
+    document.getElementById('first1').classList.toggle('on', first === '1' && way === '1');
+    document.getElementById('first2').classList.toggle('on', first === '1' && way === '2');
+    document.querySelectorAll('#seg-way button').forEach(function (b) { b.classList.toggle('on', b.dataset.way === way); });
+    document.querySelectorAll('#seg-first button').forEach(function (b) { b.classList.toggle('on', b.dataset.first === first); });
+  }
+  document.getElementById('seg-way').addEventListener('click', function (e) { if (e.target.dataset.way) { way = e.target.dataset.way; render(); } });
+  document.getElementById('seg-first').addEventListener('click', function (e) { if (e.target.dataset.first) { first = e.target.dataset.first; render(); } });
+  function fit() {
+    var w = window.innerWidth - 16, h = window.innerHeight - 44 - 16;
+    var s = Math.min(1, w / 1440, h / 860);
+    var x = (window.innerWidth - 1440 * s) / 2, y = (window.innerHeight - 44 - 860 * s) / 2;
+    document.getElementById('win').style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit); fit(); render();
+</script>
+</body>
+</html>

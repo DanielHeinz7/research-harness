@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>research-harness: galley proof sketch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,400&display=swap">
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --ink-2: #474747;
+    --ink-3: #636363;
+    --line: #dadadd;
+    --line-strong: #bdbdc2;
+    --panel: #f5f5f7;
+    --white: #ffffff;
+    --red: #d2232a;
+    --red-tint: #fdf0f0;
+    --blue: #0b5cad;
+    --blue-tint: #e7f0f9;
+    --sans: "Hanken Grotesk", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { overflow: hidden; }
+  body {
+    width: 1440px;
+    height: 900px;
+    overflow: hidden;
+    background: var(--white);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.4;
+    display: grid;
+    grid-template-rows: 40px 1fr;
+    -webkit-font-smoothing: antialiased;
+  }
+  p, h1, h2, h3, ul, ol, figure, blockquote { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
+  svg.i { width: 16px; height: 16px; flex: none; display: block; }
+  ::selection { background: var(--blue-tint); color: var(--ink); }
+
+  /* ---------- controls ---------- */
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 34px; padding: 0 12px;
+    border: 1px solid var(--line-strong); border-radius: 6px;
+    background: var(--white); color: var(--ink);
+    font-size: 15px; font-weight: 500; line-height: 1;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #efeff1; }
+  .btn:active { background: #e5e5e8; }
+  .btn[disabled] { color: var(--ink-3); border-color: var(--line); background: var(--panel); cursor: not-allowed; }
+  .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn-primary:hover { background: #094d91; }
+  .btn-next { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn-next:hover { background: #b81d23; }
+  .btn-query { color: var(--red); border-color: var(--red); background: var(--white); }
+  .btn-query:hover { background: var(--red-tint); }
+  :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+  a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+
+  /* ---------- title bar ---------- */
+  .titlebar {
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(#f2f2f4, #e8e8eb);
+    border-bottom: 1px solid #cfcfd4;
+    font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+  }
+  .lights { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,.18); }
+  .lights i:nth-child(1) { background: #ff5f57; }
+  .lights i:nth-child(2) { background: #febc2e; }
+  .lights i:nth-child(3) { background: #28c840; }
+
+  /* ---------- frame ---------- */
+  .app { display: grid; grid-template-columns: 208px 912px 320px; min-height: 0; }
+
+  /* ---------- left rail ---------- */
+  .rail {
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 18px 14px 14px;
+    display: flex; flex-direction: column; gap: 20px;
+    font-size: 14px;
+    min-height: 0;
+  }
+  .rail h2 { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-bottom: 8px; letter-spacing: 0.01em; }
+  .rail .btn { width: 100%; justify-content: flex-start; font-size: 14px; min-height: 32px; margin-top: 6px; }
+  .proj-name { font-weight: 600; font-size: 16px; }
+  .path { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); margin-top: 2px; word-break: break-all; }
+  .badge {
+    margin-left: auto;
+    background: var(--blue); color: #fff;
+    border-radius: 999px; padding: 2px 8px;
+    font-size: 12.5px; font-weight: 600; line-height: 1.3;
+  }
+  .rail .note { color: var(--ink-2); margin-top: 6px; line-height: 1.35; }
+  .live { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 3px #dcdcdf; }
+  .who { margin-top: 8px; color: var(--ink-2); line-height: 1.35; }
+  .rail-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 12px; display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+
+  /* ---------- centre ---------- */
+  .centre { display: grid; grid-template-rows: 50px 50px 1fr; min-width: 0; min-height: 0; background: var(--white); }
+  .tabs { display: flex; align-items: flex-end; gap: 4px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+  .tab {
+    appearance: none; background: none; border: 0;
+    padding: 0 14px; height: 46px;
+    font-size: 16px; font-weight: 500; color: var(--ink-2);
+    border-bottom: 3px solid transparent; margin-bottom: -1px;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .tab:hover { color: var(--ink); background: #f3f3f5; }
+  .tab[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--blue); }
+  .tab .count {
+    background: #e7e7ea; color: var(--ink); border-radius: 999px;
+    font-size: 13px; font-weight: 600; padding: 1px 8px;
+  }
+
+  .index { display: flex; align-items: center; gap: 6px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+  .index-label { font-size: 14px; color: var(--ink-3); margin-right: 8px; }
+  .chip {
+    position: relative;
+    min-width: 40px; height: 32px; padding: 0 8px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    border: 1px solid var(--line-strong); border-radius: 6px;
+    background: var(--white); color: var(--ink); text-decoration: none;
+    font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .chip:hover { background: #efeff1; }
+  .chip.empty { border-style: dashed; color: var(--ink-3); font-weight: 500; }
+  .chip[aria-current="true"] { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .chip .i { width: 12px; height: 12px; }
+  .chip .pip { width: 8px; height: 8px; background: var(--red); transform: rotate(45deg); }
+  .chip[aria-current="true"] .pip { background: #fff; }
+  .index-now { margin-left: 10px; font-size: 14px; color: var(--ink-2); }
+
+  .scroll { overflow: hidden auto; display: grid; grid-template-columns: 572px 340px; min-height: 0; position: relative; }
+  .sheet { padding: 8px 24px 20px 28px; position: relative; }
+  .lane { background: var(--panel); border-left: 1px solid var(--line); padding: 14px 16px 24px; min-height: 100%; }
+
+  /* ---------- the set column ---------- */
+  .field { padding-top: 14px; }
+  .field h2 { display: flex; align-items: baseline; gap: 10px; font-size: 19px; font-weight: 600; letter-spacing: -0.005em; padding-bottom: 6px; border-bottom: 1px solid var(--ink); }
+  .field h2 .fnum { font-variant-numeric: tabular-nums; min-width: 14px; }
+  .st { display: grid; grid-template-columns: 40px 1fr; column-gap: 8px; padding-top: 12px; }
+  .sid { font-size: 13.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; padding-top: 3px; text-align: right; }
+  .status { display: flex; align-items: center; gap: 7px; font-size: 14.5px; font-weight: 600; line-height: 1; margin-bottom: 4px; }
+  .status .owner { font-weight: 400; color: var(--ink-3); }
+  .stext { font-family: var(--serif); font-size: 18px; line-height: 1.45; font-optical-sizing: auto; max-width: 31em; }
+  .st.draft .stext { font-style: italic; color: #333; }
+  .setnote {
+    margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line-strong);
+    font-size: 16px; line-height: 1.4; color: var(--ink-2);
+  }
+  .setnote b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .setnote q { font-family: var(--serif); font-size: 17px; color: var(--ink); quotes: "\201C" "\201D"; }
+  .quiet { display: grid; grid-template-columns: 40px 1fr; column-gap: 8px; padding-top: 10px; color: var(--ink-3); font-size: 15px; }
+  .quiet .sid { padding-top: 0; }
+
+  .ask { padding-top: 12px; }
+  .ask-head { display: grid; grid-template-columns: 40px 1fr; column-gap: 8px; color: var(--ink-2); font-size: 15px; }
+  .ask-head .sid { padding-top: 0; }
+  .slots { margin-left: 48px; margin-top: 4px; }
+  .slot { position: relative; height: 40px; display: flex; align-items: flex-end; padding-bottom: 7px; border-bottom: 1.5px dashed var(--red); font-size: 15px; color: var(--ink-3); }
+  .anchor { position: absolute; right: -4px; bottom: -5.75px; width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+
+  /* ---------- margin queries ---------- */
+  .lane-head { font-size: 14px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; min-height: 22px; }
+  .lane-head b { color: var(--ink); font-weight: 600; }
+  .query {
+    background: var(--white); border: 1px solid var(--red); border-radius: 6px;
+    padding: 10px 12px 12px;
+    box-shadow: 0 1px 2px rgba(26,26,26,.08);
+  }
+  .query .status { color: var(--red); margin-bottom: 6px; }
+  .query .status .owner { color: var(--ink-3); }
+  .qtext { font-size: 16px; line-height: 1.4; color: var(--ink); }
+  .qacts { display: flex; gap: 6px; margin-top: 9px; }
+  .qacts .btn { font-size: 14px; padding: 0 9px; min-height: 34px; }
+  .lane-note { font-size: 14px; line-height: 1.4; color: var(--ink-2); margin-top: 6px; }
+  .leaders { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+
+  /* ---------- agent panel ---------- */
+  .agent { border-left: 1px solid var(--line); display: grid; grid-template-rows: 50px 1fr auto; min-height: 0; background: var(--white); }
+  .agent-head { display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: 14.5px; color: var(--ink-2); white-space: nowrap; }
+  .agent-head b { color: var(--ink); font-weight: 600; font-size: 16px; }
+  .ready { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-weight: 600; color: var(--ink); }
+  .ready i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); }
+  .thread { padding: 14px 16px 6px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; font-size: 15px; line-height: 1.45; min-height: 0; }
+  .who-l { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-bottom: 3px; }
+  .you .bubble { background: var(--blue-tint); border-radius: 8px; padding: 8px 11px; color: var(--ink); }
+  .agent-msg .bubble { padding: 0; }
+  .acts { display: flex; flex-direction: column; gap: 5px; font-size: 14px; color: var(--ink-2); padding: 2px 0; }
+  .acts li { display: flex; align-items: center; gap: 8px; }
+  .acts .i { width: 14px; height: 14px; color: var(--ink-2); }
+  .guard { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; color: var(--ink-2); line-height: 1.4; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+  .guard .i { margin-top: 2px; }
+  .composer { padding: 12px 16px 14px; border-top: 1px solid var(--line); }
+  .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .quick .btn { font-size: 14px; min-height: 32px; padding: 0 8px; font-weight: 500; }
+  .send { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 10px; }
+  .input {
+    height: 36px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 6px;
+    font: inherit; font-size: 15px; color: var(--ink); background: var(--white); min-width: 0;
+  }
+  .input::placeholder { color: var(--ink-3); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-decided" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="3" fill="#1a1a1a"/><path d="M4.5 8.3l2.4 2.4 4.7-5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-said" viewBox="0 0 16 16"><path d="M2.5 2.5h11a1 1 0 011 1v6.2a1 1 0 01-1 1H7.2L4 14v-3.3H2.5a1 1 0 01-1-1V3.5a1 1 0 011-1z" fill="#fff" stroke="#1a1a1a" stroke-width="1.5" stroke-linejoin="round"/><path d="M4.6 5.6h6.8M4.6 8h4.2" stroke="#1a1a1a" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-draft" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/><path d="M8 1.8a6.2 6.2 0 010 12.4z" fill="#1a1a1a"/></symbol>
+    <symbol id="i-suggest" viewBox="0 0 16 16"><path d="M8 1.2l6.8 6.8L8 14.8 1.2 8z" fill="#fff" stroke="#d2232a" stroke-width="1.6" stroke-linejoin="round"/><path d="M6.6 6.4a1.5 1.5 0 112.1 1.4c-.5.3-.7.6-.7 1.1" fill="none" stroke="#d2232a" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11" r=".9" fill="#d2232a"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.4l3.2 3.2L13 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="2.5" y="7" width="11" height="7.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 16 16"><circle cx="5" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 8h6.5M12 8v2.5M14.5 8v1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<header class="titlebar">
+  <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+  research-harness — voice-uptake
+</header>
+
+<div class="app">
+
+  <!-- ===== left rail ===== -->
+  <nav class="rail" aria-label="Project, meeting and people">
+    <section aria-labelledby="r-project">
+      <h2 id="r-project">Project</h2>
+      <p class="proj-name">voice-uptake</p>
+      <p class="path">~/Papers/voice-uptake</p>
+      <button class="btn" type="button">Open project…</button>
+      <button class="btn" type="button">Clone from link…</button>
+      <button class="btn" type="button">Get updates <span class="badge">2 new</span></button>
+      <p class="note">B. Supervisor added 2 entries.</p>
+    </section>
+
+    <section aria-labelledby="r-meeting">
+      <h2 id="r-meeting">Meeting</h2>
+      <p class="live"><i aria-hidden="true"></i>Session running · 0:24</p>
+      <button class="btn" type="button">Agenda</button>
+      <button class="btn" type="button">Export minutes…</button>
+    </section>
+
+    <section aria-labelledby="r-people">
+      <h2 id="r-people">People</h2>
+      <button class="btn" type="button" style="margin-top:0">Invite co-author…</button>
+      <p class="who">A. Researcher (you) · B. Supervisor</p>
+    </section>
+
+    <p class="rail-foot"><svg class="i" aria-hidden="true"><use href="#i-key"/></svg>Model: Anthropic API key</p>
+  </nav>
+
+  <!-- ===== centre ===== -->
+  <main class="centre">
+    <div class="tabs" role="tablist" aria-label="View">
+      <button class="tab" role="tab" aria-selected="true" type="button">Poster</button>
+      <button class="tab" role="tab" aria-selected="false" type="button">To talk about <span class="count">19</span></button>
+      <button class="tab" role="tab" aria-selected="false" type="button">History</button>
+    </div>
+
+    <nav class="index" aria-label="Fields">
+      <span class="index-label">Fields</span>
+      <a class="chip" href="#f1" aria-label="1 Puzzle, decided"><span>1</span><svg class="i" aria-hidden="true"><use href="#i-check"/></svg></a>
+      <a class="chip" href="#f2" aria-label="2 Audience and Prior Research">2</a>
+      <a class="chip" href="#f3" aria-current="true" aria-label="3 Research Question, 2 suggestions waiting"><span>3</span><i class="pip" aria-hidden="true"></i></a>
+      <a class="chip" href="#f4" aria-label="4 Theoretical Constructs and Relationships">4</a>
+      <a class="chip" href="#f5" aria-label="5 Research Setting">5</a>
+      <a class="chip" href="#f6" aria-label="6 Research Design and Analysis">6</a>
+      <a class="chip empty" href="#f7" aria-label="7 Findings, empty">7</a>
+      <a class="chip empty" href="#f8" aria-label="8 Contributions, empty">8</a>
+      <a class="chip empty" href="#f9" aria-label="9 Boundary Conditions and Limitations, empty">9</a>
+      <span class="index-now">3 Research Question</span>
+    </nav>
+
+    <div class="scroll" id="scroll">
+      <div class="sheet" id="sheet">
+
+        <article class="field" id="f1">
+          <h2><span class="fnum">1</span>Puzzle</h2>
+
+          <div class="st said">
+            <span class="sid">1.1</span>
+            <div>
+              <p class="status"><svg class="i" aria-hidden="true"><use href="#i-said"/></svg>Said by the authors</p>
+              <p class="stext">When do members’ suggestions in organizational meetings receive serious consideration rather than polite acknowledgement?</p>
+            </div>
+          </div>
+
+          <div class="st decided">
+            <span class="sid">1.2</span>
+            <div>
+              <p class="status"><svg class="i" aria-hidden="true"><use href="#i-decided"/></svg>Decided</p>
+              <p class="stext">Speaking frequency is well documented; whether a proposal is taken up is not.</p>
+              <p class="setnote"><b>2 Oct 2026 · A. Researcher</b> — <q>The gap is uptake, not voice.</q></p>
+            </div>
+          </div>
+
+          <div class="st draft">
+            <span class="sid">1.3</span>
+            <div>
+              <p class="status"><svg class="i" aria-hidden="true"><use href="#i-draft"/></svg>Draft</p>
+              <p class="stext">Teams lose good ideas without anyone deciding to drop them.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="field" id="f2">
+          <h2><span class="fnum">2</span>Audience and Prior Research</h2>
+          <div class="st draft">
+            <span class="sid">2.4</span>
+            <div>
+              <p class="status"><svg class="i" aria-hidden="true"><use href="#i-draft"/></svg>Draft</p>
+              <p class="stext">Work on voice treats speaking as influence and overlooks who is permitted to be heard.</p>
+            </div>
+          </div>
+          <p class="quiet"><span class="sid">2.1–3</span><span>No statements yet</span></p>
+        </article>
+
+        <article class="field" id="f3">
+          <h2><span class="fnum">3</span>Research Question</h2>
+          <div class="ask">
+            <p class="ask-head"><span class="sid">3.1</span><span>Nothing set yet. Two suggestions wait in the margin.</span></p>
+            <div class="slots">
+              <div class="slot" id="slot1">Suggestion 1 would be set here<i class="anchor" id="anc1"></i></div>
+              <div class="slot" id="slot2">Suggestion 2 would be set here<i class="anchor" id="anc2"></i></div>
+            </div>
+          </div>
+          <p class="quiet"><span class="sid">3.2–3</span><span>No statements yet</span></p>
+        </article>
+
+        <article class="field" id="f4">
+          <h2><span class="fnum">4</span>Theoretical Constructs and Relationships</h2>
+          <div class="st draft">
+            <span class="sid">4.1</span>
+            <div>
+              <p class="status"><svg class="i" aria-hidden="true"><use href="#i-draft"/></svg>Draft</p>
+              <p class="stext">Rank, deference and uptake.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="field" id="f5">
+          <h2><span class="fnum">5</span>Research Setting</h2>
+          <div class="st draft">
+            <span class="sid">5.1</span>
+            <div>
+              <p class="status"><svg class="i" aria-hidden="true"><use href="#i-draft"/></svg>Draft</p>
+              <p class="stext">Twelve recorded meetings of one product team over a quarter.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="field" id="f6">
+          <h2><span class="fnum">6</span>Research Design and Analysis</h2>
+          <div class="ask">
+            <p class="ask-head"><span class="sid">6.1</span><span>Nothing set yet. One suggestion waits in the margin.</span></p>
+            <div class="slots">
+              <div class="slot" id="slot3">Suggestion would be set here<i class="anchor" id="anc3"></i></div>
+            </div>
+          </div>
+        </article>
+
+        <svg class="leaders" id="leaders" aria-hidden="true"></svg>
+      </div>
+
+      <aside class="lane" id="lane" aria-label="Margin: queries from the agent">
+        <p class="lane-head"><b>In the margin</b> · 2 queries from Claude</p>
+        <p class="lane-note">Claude’s suggestions wait here until you decide. Once you accept one, it moves into the column with your sentence.</p>
+
+        <section class="query" id="q1" aria-label="Suggestion 1 for 3.1" style="margin-top: 333px;">
+          <p class="status"><svg class="i" aria-hidden="true"><use href="#i-suggest"/></svg>Suggestion 1 <span class="owner">· Claude</span></p>
+          <p class="qtext">How does a speaker’s rank shape whether a proposal is taken up?</p>
+          <div class="qacts">
+            <button class="btn btn-next" type="button">Accept…</button>
+            <button class="btn" type="button">Mark as said</button>
+            <button class="btn" type="button">Comment</button>
+          </div>
+        </section>
+
+        <section class="query" id="q2" aria-label="Suggestion 2 for 3.1" style="margin-top: 14px;">
+          <p class="status"><svg class="i" aria-hidden="true"><use href="#i-suggest"/></svg>Suggestion 2 <span class="owner">· Claude</span></p>
+          <p class="qtext">In hierarchical teams, under which conditions do managers act on voice from junior members?</p>
+          <div class="qacts">
+            <button class="btn btn-query" type="button">Accept…</button>
+            <button class="btn" type="button">Mark as said</button>
+            <button class="btn" type="button">Comment</button>
+          </div>
+        </section>
+
+        <section class="query" id="q3" aria-label="Suggestion for 6.1" style="margin-top: 250px;">
+          <p class="status"><svg class="i" aria-hidden="true"><use href="#i-suggest"/></svg>Suggestion <span class="owner">· Claude</span></p>
+          <p class="qtext">Code every proposal for its proposer’s rank and for whether the next speaker built on it.</p>
+          <div class="qacts">
+            <button class="btn btn-query" type="button">Accept…</button>
+            <button class="btn" type="button">Mark as said</button>
+            <button class="btn" type="button">Comment</button>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <!-- ===== agent panel ===== -->
+  <aside class="agent" aria-label="Agent">
+    <header class="agent-head"><b>Agent</b> · Claude · API key <span class="ready"><i aria-hidden="true"></i>Ready</span></header>
+
+    <div class="thread">
+      <div class="you">
+        <p class="who-l">You</p>
+        <p class="bubble">Continue the canvas for field 3, the research question. Two suggestions at most.</p>
+      </div>
+
+      <ul class="acts" aria-label="Agent activity">
+        <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Read the canvas and the construct glossary</li>
+        <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Read 3 literature notes</li>
+        <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Wrote 2 suggestions to field 3</li>
+      </ul>
+
+      <div class="agent-msg">
+        <p class="who-l">Claude</p>
+        <p class="bubble">I added two statements to 3 Research Question, both marked Suggestion. The second one narrows the question to voice uptake in hierarchical teams; check whether that fits your chosen framing. <a href="#f3">Open field 3 →</a></p>
+      </div>
+
+      <div class="you">
+        <p class="who-l">You</p>
+        <p class="bubble">Accept the first one.</p>
+      </div>
+
+      <div class="agent-msg">
+        <p class="who-l">Claude</p>
+        <p class="bubble">I can’t accept statements. That step is yours: open field 3 and press Accept…, then write one sentence on why.</p>
+      </div>
+    </div>
+
+    <div>
+      <p class="guard"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg>The agent proposes. Accepting, choosing a framing, starting a session and handing over the project key stay with you.</p>
+      <div class="composer">
+        <div class="quick">
+          <button class="btn" type="button">Continue canvas</button>
+          <button class="btn" type="button">Review canvas</button>
+          <button class="btn" type="button">Literature note…</button>
+          <button class="btn" type="button">Ask the agent…</button>
+        </div>
+        <div class="send">
+          <input class="input" type="text" placeholder="Message the agent" aria-label="Message the agent">
+          <button class="btn btn-primary" type="button">Send</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  // Leader lines: each margin query is tied to the point in the column where it would be set.
+  function drawLeaders() {
+    var sheet = document.getElementById('sheet');
+    var svg = document.getElementById('leaders');
+    var sr = sheet.getBoundingClientRect();
+    var pairs = [['anc1', 'q1'], ['anc2', 'q2'], ['anc3', 'q3']];
+    var out = '';
+    pairs.forEach(function (p) {
+      var a = document.getElementById(p[0]).getBoundingClientRect();
+      var q = document.getElementById(p[1]).getBoundingClientRect();
+      var x1 = a.left + a.width / 2 - sr.left, y1 = a.top + a.height / 2 - sr.top;
+      var x2 = q.left - sr.left;
+      var y2 = Math.min(Math.max(a.top + a.height / 2, q.top + 16), q.bottom - 16) - sr.top;
+      var xm = x1 + 16;
+      out += '<path d="M' + x1 + ' ' + y1 + ' H' + xm + ' L' + (x2 - 10) + ' ' + y2 + ' H' + x2 +
+             '" fill="none" stroke="#d2232a" stroke-width="1.25" stroke-linejoin="round"/>';
+    });
+    svg.innerHTML = out;
+  }
+  drawLeaders();
+  document.fonts && document.fonts.ready.then(drawLeaders);
+  window.addEventListener('resize', drawLeaders);
+</script>
+</body>
+</html>

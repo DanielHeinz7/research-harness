@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Airport wayfinding sketch</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Semi+Condensed:wght@500;600;700&amp;display=swap">
+<style>
+  :root {
+    --yellow: #ffcc00;
+    --ink: #0b0b0b;
+    --paper: #ffffff;
+    --grey-50: #f4f4f4;
+    --grey-200: #e6e6e6;
+    --grey-300: #cfcfcf;
+    --grey-600: #595959;
+    --grey-700: #404040;
+    --sign: "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+    --body: "Barlow", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); }
+  body {
+    width: 1440px;
+    height: 900px;
+    overflow: hidden;
+    font: 400 16px/1.4 var(--body);
+    color: var(--ink);
+    caret-color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--ink); color: var(--paper); }
+  * { scrollbar-width: thin; scrollbar-color: #8a8a8a var(--grey-50); }
+
+  /* One focus style for every control: black ring, yellow halo in the gap. */
+  :focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--yellow);
+  }
+
+  .ico { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ico-sm { width: 16px; height: 16px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* Standard controls */
+  .btn {
+    font: 500 16px/1 var(--body);
+    height: 40px;
+    padding: 0 14px;
+    border: 2px solid var(--ink);
+    border-radius: 4px;
+    background: var(--paper);
+    color: var(--ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--grey-200); }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-primary:hover { background: #2b2b2b; }
+  .btn-sm { height: 34px; font-size: 15px; padding: 0 10px; border-width: 1.5px; }
+  .input {
+    font: 400 16px/1 var(--body);
+    height: 40px;
+    border: 2px solid var(--ink);
+    border-radius: 4px;
+    padding: 0 10px;
+    background: var(--paper);
+    color: var(--ink);
+    min-width: 0;
+  }
+  .input::placeholder { color: var(--grey-600); opacity: 1; }
+
+  /* Window */
+  .window { width: 1440px; height: 900px; display: grid; grid-template-rows: 38px minmax(0, 1fr); }
+  .titlebar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    background: #e8e8e8;
+    border-bottom: 1px solid #c2c2c2;
+  }
+  .dots { display: flex; gap: 8px; }
+  .dots i { display: block; width: 12px; height: 12px; border-radius: 50%; }
+  .dots i:nth-child(1) { background: #ff5f57; }
+  .dots i:nth-child(2) { background: #febc2e; }
+  .dots i:nth-child(3) { background: #28c840; }
+  .titlebar h1 {
+    position: absolute; left: 0; right: 0; margin: 0;
+    text-align: center; pointer-events: none;
+    font: 500 14px/1 var(--body); color: #3a3a3a;
+  }
+
+  .app { display: grid; grid-template-columns: 216px minmax(0, 1fr) 352px; min-height: 0; }
+
+  /* Left rail */
+  .rail {
+    background: var(--grey-50);
+    border-right: 1px solid var(--grey-300);
+    padding: 14px 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-size: 15px;
+    line-height: 1.35;
+    min-height: 0;
+  }
+  .rail h2 {
+    margin: 0 0 8px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid var(--ink);
+    font: 700 19px/1.2 var(--sign);
+  }
+  .rail .stack { display: flex; flex-direction: column; gap: 8px; }
+  .rail .btn { width: 100%; }
+  .rail .btn-split { justify-content: space-between; }
+  .proj-name { margin: 0; font: 700 20px/1.2 var(--sign); }
+  .proj-path { margin: 0; font-size: 14px; color: var(--grey-700); overflow-wrap: anywhere; }
+  .badge { background: var(--ink); color: var(--paper); border-radius: 11px; height: 22px; padding: 0 9px; font: 600 14px/22px var(--body); }
+  .note { margin: 0; font-size: 14px; color: var(--grey-700); }
+  .session { margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .session b { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .rail-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--grey-300); font-size: 14px; color: var(--grey-700); }
+
+  /* Centre */
+  .centre { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+
+  /* Signature move: the decision band */
+  .band {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; align-items: center; gap: 14px;
+    height: 56px;
+    padding: 9px 16px;
+    background: var(--yellow);
+    color: var(--ink);
+    border-bottom: 2px solid var(--ink);
+  }
+  .band-arrow { width: 38px; height: 38px; background: var(--ink); color: var(--paper); border-radius: 3px; display: grid; place-items: center; }
+  .band-arrow .ico { width: 26px; height: 26px; stroke-width: 2.4; }
+  .band-text { margin: 0; flex: 1; font: 700 29px/1 var(--sign); }
+  .band .btn { height: 38px; font-size: 17px; font-weight: 600; }
+
+  .tabbar { display: flex; align-items: flex-end; border-bottom: 1px solid var(--grey-300); padding: 0 16px; }
+  .tabs { display: flex; gap: 4px; }
+  .tab {
+    font: 600 17px/1 var(--body);
+    height: 44px;
+    padding: 0 14px;
+    background: none; border: 0; border-bottom: 4px solid transparent;
+    color: var(--grey-700);
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .count { min-width: 26px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--grey-200); color: var(--ink); font: 600 15px/22px var(--body); text-align: center; font-variant-numeric: tabular-nums; }
+  .key { list-style: none; margin: 0 0 12px auto; padding: 0; display: flex; gap: 14px; font-size: 16px; color: var(--grey-700); }
+  .key li { display: flex; align-items: center; gap: 6px; }
+  .key .ico { width: 18px; height: 18px; }
+
+  /* Field gates: the nine fields as signs */
+  .gates { display: flex; gap: 6px; padding: 8px 16px 6px; border-bottom: 1px solid var(--grey-300); }
+  .gate-link { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--ink); text-decoration: none; }
+  .sign {
+    position: relative;
+    width: 100%; height: 40px;
+    display: grid; place-items: center;
+    background: var(--ink); color: var(--paper);
+    border-radius: 3px;
+    font: 700 31px/1 var(--sign);
+  }
+  .sign-empty { background: var(--paper); color: var(--ink); border: 2px dashed var(--ink); }
+  .gate-label { font: 600 16px/20px var(--sign); border-bottom: 3px solid transparent; }
+  .gate-link[aria-current="location"] .gate-label { border-bottom-color: var(--ink); }
+  .gate-count {
+    position: absolute; top: -7px; right: -5px;
+    display: flex; align-items: center; gap: 2px;
+    height: 22px; padding: 0 6px;
+    background: var(--paper); color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 11px;
+    font: 700 15px/1 var(--body);
+  }
+  .gate-count .ico { width: 12px; height: 12px; stroke-width: 2.4; }
+
+  /* Field list (internal scroll region) */
+  .fields { overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .field { border: 1px solid var(--grey-300); border-radius: 4px; background: var(--paper); flex: none; }
+  .field > summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; gap: 14px;
+    padding: 6px 12px 6px 6px;
+  }
+  .field > summary::-webkit-details-marker { display: none; }
+  .field > summary:hover { background: var(--grey-50); }
+  .field .chev { transition: transform 120ms ease-out; color: var(--grey-700); }
+  .field[open] .chev { transform: rotate(90deg); }
+  .field-sign { flex: none; width: 48px; height: 48px; display: grid; place-items: center; background: var(--ink); color: var(--paper); border-radius: 3px; font: 700 36px/1 var(--sign); }
+  .field-sign-empty { background: var(--paper); color: var(--ink); border: 2px dashed var(--ink); }
+  .field-title { flex: 1; min-width: 0; }
+  .field-title h2 { margin: 0; font: 700 21px/1.1 var(--sign); }
+  .field-title p { margin: 2px 0 0; font-size: 16px; line-height: 1.2; color: var(--grey-700); }
+  .tally { display: flex; gap: 6px; }
+  .field-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  /* Status: words + icon + line style. Never colour. */
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border-radius: 4px; font: 600 16px/1 var(--body); color: var(--ink); background: var(--paper); white-space: nowrap; }
+  .chip .ico { width: 17px; height: 17px; }
+  .chip-decided { border: 2px solid var(--ink); }
+  .chip-said { border: 1px solid var(--grey-600); }
+  .chip-draft { border: 1.5px dashed var(--grey-600); }
+  .chip-suggestion { border: 2px dotted var(--grey-700); background: var(--grey-50); }
+  .chip-empty { border: 1.5px dashed var(--grey-600); color: var(--grey-700); font-weight: 500; }
+
+  .stmt { border-radius: 4px; padding: 9px 14px 11px; display: flex; flex-direction: column; gap: 5px; }
+  .stmt-meta { display: flex; align-items: center; gap: 8px; font: 700 17px/1.2 var(--sign); }
+  .stmt-meta .ico { width: 20px; height: 20px; }
+  .stmt-meta span.dim { font: 400 16px/1.2 var(--body); color: var(--grey-700); }
+  .stmt-text { margin: 0; font-size: 18px; line-height: 1.38; text-wrap: pretty; }
+  .stmt-why { margin: 0; font-size: 16px; line-height: 1.35; color: var(--grey-700); }
+  .stmt-why q { color: var(--ink); font-weight: 500; }
+  .stmt-actions { display: flex; gap: 8px; margin-top: 3px; }
+  .stmt-decided { border: 2px solid var(--ink); background: var(--paper); }
+  .stmt-suggestion { border: 2px dotted var(--grey-700); background: var(--grey-50); }
+
+  .more { border-radius: 4px; }
+  .more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 4px; font: 600 16px/1 var(--body); }
+  .more > summary::-webkit-details-marker { display: none; }
+  .more > summary .ico { transition: transform 120ms ease-out; }
+  .more[open] > summary .ico { transform: rotate(90deg); }
+  .more > summary:hover { text-decoration: underline; }
+
+  /* Agent panel */
+  .agent { border-left: 1px solid var(--grey-300); background: var(--paper); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
+  .agent-head { margin: 0; display: flex; align-items: center; gap: 8px; height: 50px; padding: 0 16px; border-bottom: 2px solid var(--ink); font: 700 19px/1 var(--sign); }
+  .thread { overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.4; min-height: 0; }
+  .msg { display: flex; flex-direction: column; gap: 4px; }
+  .who { display: flex; align-items: center; gap: 6px; font: 700 15px/1 var(--sign); }
+  .who .ico { width: 16px; height: 16px; }
+  .bubble { margin: 0; padding: 8px 12px; border-radius: 6px; }
+  .msg-you .bubble { background: var(--grey-200); }
+  .msg-agent .bubble { border: 1.5px solid var(--grey-300); }
+  .activity { list-style: none; margin: 0; padding: 0 0 0 2px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--grey-700); }
+  .activity li { display: flex; align-items: center; gap: 8px; }
+  .activity .ico { width: 15px; height: 15px; color: var(--ink); stroke-width: 2.4; }
+  .bubble a { display: inline-block; margin-top: 6px; color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
+  .boundary { margin: 0; padding-top: 10px; border-top: 1px solid var(--grey-300); display: flex; gap: 8px; font-size: 14px; line-height: 1.4; color: var(--grey-700); }
+  .boundary .ico { width: 18px; height: 18px; color: var(--ink); margin-top: 1px; }
+  .boundary b { color: var(--ink); font-weight: 600; }
+  .composer { border-top: 1px solid var(--grey-300); padding: 10px 16px 12px; background: var(--grey-50); display: flex; flex-direction: column; gap: 8px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .compose-row { display: flex; gap: 8px; }
+  .compose-row .input { flex: 1; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-decided" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" fill="currentColor" stroke="none"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#fff" stroke-width="2.6" fill="none"/></symbol>
+  <symbol id="i-said" viewBox="0 0 24 24"><path d="M3.5 5h17v11.5H10l-5 4v-4h-1.5z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+  <symbol id="i-draft" viewBox="0 0 24 24"><path d="M4 20l1-4.5L16.5 4l3.5 3.5L8.5 19z"/><path d="M14 6.5l3.5 3.5"/></symbol>
+  <symbol id="i-suggestion" viewBox="0 0 24 24"><path d="M12 2.5l9.5 9.5-9.5 9.5L2.5 12z"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-empty" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="3.2 3.2"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+  <symbol id="i-ready" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M7.5 12.5l3 3L16.5 9"/></symbol>
+  <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4.5" fill="currentColor"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/></symbol>
+</svg>
+
+<div class="window">
+
+  <div class="titlebar">
+    <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1>research-harness — voice-uptake</h1>
+  </div>
+
+  <div class="app">
+
+    <!-- Left rail -->
+    <nav class="rail" aria-label="Project, meeting and people">
+      <section>
+        <h2>Project</h2>
+        <div class="stack">
+          <p class="proj-name">voice-uptake</p>
+          <p class="proj-path">~/Papers/voice-uptake</p>
+          <button type="button" class="btn btn-sm">Open project…</button>
+          <button type="button" class="btn btn-sm">Clone from link…</button>
+          <button type="button" class="btn btn-sm btn-split">Get updates <span class="badge">2 new</span></button>
+          <p class="note">B. Supervisor added 2 entries.</p>
+        </div>
+      </section>
+      <section>
+        <h2>Meeting</h2>
+        <div class="stack">
+          <p class="session"><svg class="ico" aria-hidden="true"><use href="#i-live"/></svg>Session running · <b>0:24</b></p>
+          <button type="button" class="btn btn-sm">Agenda</button>
+          <button type="button" class="btn btn-sm">Export minutes…</button>
+        </div>
+      </section>
+      <section>
+        <h2>People</h2>
+        <div class="stack">
+          <button type="button" class="btn btn-sm">Invite co-author…</button>
+          <p class="session"><svg class="ico" aria-hidden="true"><use href="#i-person"/></svg><span><span style="white-space:nowrap">A. Researcher (you) ·</span> <span style="white-space:nowrap">B. Supervisor</span></span></p>
+        </div>
+      </section>
+      <p class="rail-foot">Model: Anthropic API key</p>
+    </nav>
+
+    <!-- Centre -->
+    <main class="centre">
+      <div class="band" role="status">
+        <span class="band-arrow" aria-hidden="true"><svg class="ico"><use href="#i-arrow-down"/></svg></span>
+        <p class="band-text">Field 3 · 2 suggestions to decide</p>
+        <button type="button" class="btn btn-primary">Go to field 3 <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+      </div>
+
+      <div class="tabbar">
+        <div class="tabs" role="tablist" aria-label="View">
+          <button type="button" class="tab" role="tab" aria-selected="true">Poster</button>
+          <button type="button" class="tab" role="tab" aria-selected="false">To talk about <span class="count">19</span></button>
+          <button type="button" class="tab" role="tab" aria-selected="false">History</button>
+        </div>
+        <ul class="key" aria-label="Statement status key">
+          <li><svg class="ico" aria-hidden="true"><use href="#i-decided"/></svg>Decided</li>
+          <li><svg class="ico" aria-hidden="true"><use href="#i-said"/></svg>Said by the authors</li>
+          <li><svg class="ico" aria-hidden="true"><use href="#i-draft"/></svg>Draft</li>
+          <li><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Suggestion</li>
+        </ul>
+      </div>
+
+      <nav class="gates" aria-label="Fields">
+        <a class="gate-link" href="#field-1" aria-label="Field 1, Puzzle"><span class="sign">1</span><span class="gate-label">Puzzle</span></a>
+        <a class="gate-link" href="#field-2" aria-label="Field 2, Audience and Prior Research"><span class="sign">2</span><span class="gate-label">Audience</span></a>
+        <a class="gate-link" href="#field-3" aria-current="location" aria-label="Field 3, Research Question, 2 suggestions to decide"><span class="sign">3<span class="gate-count" aria-hidden="true"><svg class="ico"><use href="#i-suggestion"/></svg>2</span></span><span class="gate-label">Question</span></a>
+        <a class="gate-link" href="#field-4" aria-label="Field 4, Theoretical Constructs and Relationships"><span class="sign">4</span><span class="gate-label">Constructs</span></a>
+        <a class="gate-link" href="#field-5" aria-label="Field 5, Research Setting"><span class="sign">5</span><span class="gate-label">Setting</span></a>
+        <a class="gate-link" href="#field-6" aria-label="Field 6, Research Design and Analysis"><span class="sign">6</span><span class="gate-label">Design</span></a>
+        <a class="gate-link" href="#field-7" aria-label="Field 7, Findings, empty"><span class="sign sign-empty">7</span><span class="gate-label">Findings</span></a>
+        <a class="gate-link" href="#field-8" aria-label="Field 8, Contributions, empty"><span class="sign sign-empty">8</span><span class="gate-label">Impact</span></a>
+        <a class="gate-link" href="#field-9" aria-label="Field 9, Boundary Conditions and Limitations, empty"><span class="sign sign-empty">9</span><span class="gate-label">Limits</span></a>
+      </nav>
+
+      <div class="fields" tabindex="0" role="region" aria-label="The nine fields of voice-uptake">
+
+        <details class="field" id="field-1" open>
+          <summary>
+            <span class="field-sign" aria-hidden="true">1</span>
+            <div class="field-title"><h2>What puzzles us?</h2><p>Puzzle</p></div>
+            <span class="tally">
+              <span class="chip chip-decided"><svg class="ico" aria-hidden="true"><use href="#i-decided"/></svg>1 Decided</span>
+              <span class="chip chip-suggestion"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>2 Suggestions</span>
+            </span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="field-body">
+            <article class="stmt stmt-decided">
+              <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-decided"/></svg>Decided <span class="dim">· 2 Oct 2026 · A. Researcher</span></div>
+              <p class="stmt-text">Speaking frequency is well documented; whether a proposal is taken up is not.</p>
+              <p class="stmt-why">In the author’s words: <q>The gap is uptake, not voice.</q></p>
+            </article>
+            <details class="more">
+              <summary><svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevron"/></svg>2 more Suggestions</summary>
+              <div class="field-body" style="padding:6px 0 0">
+                <article class="stmt stmt-suggestion">
+                  <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Suggestion <span class="dim">· From the agent</span></div>
+                  <p class="stmt-text">When do members’ suggestions in organizational meetings receive serious consideration rather than polite acknowledgement?</p>
+                  <div class="stmt-actions"><button type="button" class="btn btn-primary">Accept…</button><button type="button" class="btn">Mark as said</button><button type="button" class="btn">Comment</button></div>
+                </article>
+                <article class="stmt stmt-suggestion">
+                  <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Suggestion <span class="dim">· From the agent</span></div>
+                  <p class="stmt-text">Teams lose good ideas without anyone deciding to drop them.</p>
+                  <div class="stmt-actions"><button type="button" class="btn btn-primary">Accept…</button><button type="button" class="btn">Mark as said</button><button type="button" class="btn">Comment</button></div>
+                </article>
+              </div>
+            </details>
+          </div>
+        </details>
+
+        <details class="field" id="field-2">
+          <summary>
+            <span class="field-sign" aria-hidden="true">2</span>
+            <div class="field-title"><h2>Who cares, and what do they already know?</h2><p>Audience and Prior Research</p></div>
+            <span class="tally"><span class="chip chip-suggestion"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>1 Suggestion</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+        </details>
+
+        <details class="field" id="field-3" open>
+          <summary>
+            <span class="field-sign" aria-hidden="true">3</span>
+            <div class="field-title"><h2>What exactly do we ask?</h2><p>Research Question</p></div>
+            <span class="tally"><span class="chip chip-suggestion"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>2 Suggestions</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="field-body">
+            <article class="stmt stmt-suggestion">
+              <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Suggestion <span class="dim">· From the agent · awaiting your decision</span></div>
+              <p class="stmt-text">How does a speaker’s rank shape whether a proposal is taken up?</p>
+              <div class="stmt-actions"><button type="button" class="btn btn-primary">Accept…</button><button type="button" class="btn">Mark as said</button><button type="button" class="btn">Comment</button></div>
+            </article>
+            <article class="stmt stmt-suggestion">
+              <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Suggestion <span class="dim">· From the agent · awaiting your decision</span></div>
+              <p class="stmt-text">In hierarchical teams, under which conditions do managers act on voice from junior members?</p>
+              <div class="stmt-actions"><button type="button" class="btn btn-primary">Accept…</button><button type="button" class="btn">Mark as said</button><button type="button" class="btn">Comment</button></div>
+            </article>
+          </div>
+        </details>
+
+        <details class="field" id="field-4">
+          <summary>
+            <span class="field-sign" aria-hidden="true">4</span>
+            <div class="field-title"><h2>What is it made of?</h2><p>Theoretical Constructs and Relationships</p></div>
+            <span class="tally"><span class="chip chip-draft"><svg class="ico" aria-hidden="true"><use href="#i-draft"/></svg>1 Draft</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="field-body">
+            <article class="stmt">
+              <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-draft"/></svg>Draft</div>
+              <p class="stmt-text">Rank, deference and uptake.</p>
+            </article>
+          </div>
+        </details>
+
+        <details class="field" id="field-5">
+          <summary>
+            <span class="field-sign" aria-hidden="true">5</span>
+            <div class="field-title"><h2>Where do we look?</h2><p>Research Setting</p></div>
+            <span class="tally"><span class="chip chip-draft"><svg class="ico" aria-hidden="true"><use href="#i-draft"/></svg>1 Draft</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="field-body">
+            <article class="stmt">
+              <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-draft"/></svg>Draft</div>
+              <p class="stmt-text">Twelve recorded meetings of one product team over a quarter.</p>
+            </article>
+          </div>
+        </details>
+
+        <details class="field" id="field-6">
+          <summary>
+            <span class="field-sign" aria-hidden="true">6</span>
+            <div class="field-title"><h2>How do we look?</h2><p>Research Design and Analysis</p></div>
+            <span class="tally"><span class="chip chip-suggestion"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>1 Suggestion</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="field-body">
+            <article class="stmt stmt-suggestion">
+              <div class="stmt-meta"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Suggestion <span class="dim">· From the agent</span></div>
+              <p class="stmt-text">Code every proposal for its proposer’s rank and for whether the next speaker built on it.</p>
+              <div class="stmt-actions"><button type="button" class="btn btn-primary">Accept…</button><button type="button" class="btn">Mark as said</button><button type="button" class="btn">Comment</button></div>
+            </article>
+          </div>
+        </details>
+
+        <details class="field" id="field-7">
+          <summary>
+            <span class="field-sign field-sign-empty" aria-hidden="true">7</span>
+            <div class="field-title"><h2>What did we find?</h2><p>Findings</p></div>
+            <span class="tally"><span class="chip chip-empty"><svg class="ico" aria-hidden="true"><use href="#i-empty"/></svg>Empty</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+        </details>
+
+        <details class="field" id="field-8">
+          <summary>
+            <span class="field-sign field-sign-empty" aria-hidden="true">8</span>
+            <div class="field-title"><h2>What does it change?</h2><p>Contributions</p></div>
+            <span class="tally"><span class="chip chip-empty"><svg class="ico" aria-hidden="true"><use href="#i-empty"/></svg>Empty</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+        </details>
+
+        <details class="field" id="field-9">
+          <summary>
+            <span class="field-sign field-sign-empty" aria-hidden="true">9</span>
+            <div class="field-title"><h2>Where does it stop?</h2><p>Boundary Conditions and Limitations</p></div>
+            <span class="tally"><span class="chip chip-empty"><svg class="ico" aria-hidden="true"><use href="#i-empty"/></svg>Empty</span></span>
+            <svg class="ico chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </summary>
+        </details>
+
+      </div>
+    </main>
+
+    <!-- Agent panel -->
+    <aside class="agent" aria-label="Agent">
+      <h2 class="agent-head"><svg class="ico" aria-hidden="true"><use href="#i-ready"/></svg>Agent · Claude · API key · Ready</h2>
+
+      <div class="thread">
+        <div class="msg msg-you">
+          <span class="who">You</span>
+          <p class="bubble">Continue the canvas for field 3, the research question. Two suggestions at most.</p>
+        </div>
+
+        <ul class="activity" aria-label="Agent activity">
+          <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Read the canvas and the construct glossary</li>
+          <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Read 3 literature notes</li>
+          <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Wrote 2 suggestions to field 3</li>
+        </ul>
+
+        <div class="msg msg-agent">
+          <span class="who"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Agent</span>
+          <p class="bubble">I added two statements to 3 Research Question, both marked Suggestion. The second one narrows the question to voice uptake in hierarchical teams; check whether that fits your chosen framing.<br><a href="#field-3">Open field 3 →</a></p>
+        </div>
+
+        <div class="msg msg-you">
+          <span class="who">You</span>
+          <p class="bubble">Accept the first one.</p>
+        </div>
+
+        <div class="msg msg-agent">
+          <span class="who"><svg class="ico" aria-hidden="true"><use href="#i-suggestion"/></svg>Agent</span>
+          <p class="bubble">I can’t accept statements. That step is yours: open field 3 and press Accept…, then write one sentence on why.</p>
+        </div>
+
+        <p class="boundary"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span><b>The agent proposes.</b> Accepting, choosing a framing, starting a session and handing over the project key stay with you.</span></p>
+      </div>
+
+      <div class="composer">
+        <div class="quick">
+          <button type="button" class="btn btn-sm">Continue canvas</button>
+          <button type="button" class="btn btn-sm">Review canvas</button>
+          <button type="button" class="btn btn-sm">Literature note…</button>
+          <button type="button" class="btn btn-sm">Ask the agent…</button>
+        </div>
+        <div class="compose-row">
+          <input class="input" type="text" aria-label="Message to the agent" placeholder="Message the agent">
+          <button type="button" class="btn btn-primary">Send</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -247,7 +247,30 @@
         {
           "id": "6.1",
           "text": "What data, from where, collected how?",
-          "statements": [],
+          "statements": [
+            {
+              "text": "The data are the de-identified transcripts of 13 semi-structured interviews with software engineers who use an AI assistant every day.",
+              "marker": "proposed",
+              "tags": [
+                "unverified"
+              ],
+              "raw": "The data are the de-identified transcripts of 13 semi-structured interviews with software engineers who use an AI assistant every day. [proposed, unverified]",
+              "line": 89,
+              "hidden": null,
+              "hash": "1ef9bc67"
+            },
+            {
+              "text": "Each account of how a participant checks the assistant's output is read against the interview guide's validation questions before any theme is formed.",
+              "marker": "proposed",
+              "tags": [
+                "unverified"
+              ],
+              "raw": "Each account of how a participant checks the assistant's output is read against the interview guide's validation questions before any theme is formed. [proposed, unverified]",
+              "line": 91,
+              "hidden": null,
+              "hash": "b384c1dd"
+            }
+          ],
           "line": 87,
           "openChecks": []
         },
@@ -268,8 +291,8 @@
       ],
       "line": 85,
       "status": {
-        "status": "empty",
-        "open": 0
+        "status": "open",
+        "open": 2
       }
     },
     {
@@ -413,8 +436,8 @@
         "open": 0
       },
       "6": {
-        "status": "empty",
-        "open": 0
+        "status": "open",
+        "open": 2
       },
       "7": {
         "status": "open",
@@ -433,10 +456,10 @@
       2,
       4,
       5,
-      6,
       8
     ],
     "open": [
+      6,
       7,
       9
     ],
@@ -667,12 +690,6 @@
         "question": "Where do we look?",
         "questionId": "5.3",
         "text": "What would a more suitable setting be, and why are you not there?"
-      },
-      {
-        "number": 6,
-        "question": "How do we look?",
-        "questionId": "6.1",
-        "text": "What data, from where, collected how?"
       },
       {
         "number": 6,

@@ -17,6 +17,15 @@ walkthrough's own steps — `examples/ai-assistants-interviews/recorded.js` plus
 fixture path of the view (`?fixture=`) and fails when a schema change would leave
 a screenshot on the view's error path.
 
+The session view's galley-proof layout is built and captured against this one
+file, so it holds every status word at least once (Decided on 1.1, Said by the
+authors on 3.1, Draft on 7.1, Suggestion on 9.1), several empty fields, and one
+field with two open suggestions: two `[proposed, unverified]` statements on `6.1`
+(about the 13 interviews and how they are read), added to the generated state
+with their text hashes and the counts that follow from them (the field's status,
+`review.statuses`, `review.open`, `review.empty`, and `6.1` leaving
+`agenda.gaps`). `test/showcase-state.test.js` fails if one of those goes missing.
+
 The state carries no glossary: `canvasState` calls `mechanicalReview` without the
 glossary text, so no glossary entry reaches the view, and the view renders none.
 

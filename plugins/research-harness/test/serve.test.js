@@ -488,3 +488,39 @@ test('viewState carries the agenda and the human questions, computed by agendaOf
 test.after(() => {
   for (const dir of [...roots, stateDir]) fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// The view's fonts are served from dashboard/fonts/ by name: the three files it
+// references and no other path, with the headers every other answer carries.
+test('GET /fonts/<file>.woff2 serves only the allowlisted font files, with the same headers as the rest', async (t) => {
+  const srv = await start({ root: keyedProject(), pluginRoot });
+  t.after(() => srv.close());
+  const host = { Host: `127.0.0.1:${srv.port}` };
+  const raw = (urlPath, headers = host) => new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port: srv.port, path: urlPath, headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+    }).on('error', reject);
+  });
+  const fontDir = path.join(pluginRoot, 'dashboard', 'fonts');
+  const served = ['hanken-grotesk-latin-wght-normal.woff2', 'source-serif-4-latin-wght-normal.woff2', 'source-serif-4-latin-wght-italic.woff2'];
+  for (const name of served) {
+    const got = await raw(`/fonts/${name}`);
+    assert.equal(got.status, 200, name);
+    assert.equal(got.headers['content-type'], 'font/woff2');
+    assert.equal(got.headers['cache-control'], 'no-store');
+    assert.equal(got.headers['x-content-type-options'], 'nosniff');
+    assert.equal(got.headers['referrer-policy'], 'no-referrer');
+    assert.equal(Number(got.headers['content-length']), got.body.length);
+    assert.deepEqual(got.body, fs.readFileSync(path.join(fontDir, name)), `${name} arrives byte for byte`);
+    assert.equal(got.body.subarray(0, 4).toString('latin1'), 'wOF2');
+  }
+  // Present on disk but not allowlisted, traversal, other methods, a foreign Host.
+  for (const urlPath of ['/fonts/OFL-HankenGrotesk.txt', '/fonts/', '/fonts', '/fonts/missing.woff2',
+    '/fonts/..%2Fcanvas.html', '/fonts/../canvas.html', '/fonts/%2e%2e/bin/canvas-serve.js', '/fonts/hanken-grotesk-latin-wght-normal.woff2/x']) {
+    assert.equal((await raw(urlPath)).status, 404, urlPath);
+  }
+  assert.equal((await raw(`/fonts/${served[0]}`, { Host: 'evil.example' })).status, 403, 'the Host check covers fonts');
+  assert.equal((await request(srv.port, { method: 'POST', urlPath: `/fonts/${served[0]}`, headers: { ...host, 'Content-Type': 'application/json', 'X-Harness-Token': srv.token }, body: '{}' })).status, 404);
+  assert.deepEqual(fs.readdirSync(fontDir).filter((f) => f.endsWith('.woff2')).sort(), [...served].sort(), 'every shipped font file is on the list, and no other');
+});

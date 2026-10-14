@@ -110,16 +110,24 @@ function viewState(root, pluginRoot) {
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
-  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  const bytes = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
   res.writeHead(status, {
     'Content-Type': type,
-    'Content-Length': Buffer.byteLength(text),
+    'Content-Length': bytes.length,
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
   });
-  res.end(text);
+  res.end(bytes);
 }
+
+// The fonts the view ships (dashboard/fonts/): the page may fetch exactly
+// these files from that directory and nothing else.
+const FONTS = new Set([
+  'hanken-grotesk-latin-wght-normal.woff2',
+  'source-serif-4-latin-wght-normal.woff2',
+  'source-serif-4-latin-wght-italic.woff2',
+]);
 
 function statusOf(result) {
   if (result.ok) return 200;
@@ -208,6 +216,14 @@ function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}
         html = PLACEHOLDER;
       }
       return send(res, 200, html, 'text/html; charset=utf-8');
+    }
+    const font = req.method === 'GET' && /^\/fonts\/([a-z0-9-]+\.woff2)$/.exec(url);
+    if (font && FONTS.has(font[1])) {
+      try {
+        return send(res, 200, fs.readFileSync(path.join(pluginRoot, 'dashboard', 'fonts', font[1])), 'font/woff2');
+      } catch (_) {
+        return send(res, 404, { ok: false, error: 'not found' });
+      }
     }
     if (req.method === 'GET' && url === '/api/state') {
       const view = viewState(root, pluginRoot);

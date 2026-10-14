@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>research-harness — voice-uptake · Zettelkasten sketch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800;900&display=swap">
+<style>
+:root {
+  --ground: #f4f5f1;
+  --ink: #1d2b45;
+  --paper: #ffffff;
+  --rust: #c8431f;     /* focus and links only */
+  --blue: #2456a6;     /* Motivation, fields 1-3 */
+  --green: #2e7a46;    /* Method, fields 4-6 */
+  --violet: #5b2bb5;   /* Contribution, fields 7-9 */
+  --graphite: #3f4756;
+  --graphite-2: #566073;
+  --hairline: #cdd2c8;
+  --rail-text: #d6dcea;
+  --rail-line: rgba(255, 255, 255, .34);
+  --tint-blue: #e2e9f4;
+  --tint-green: #e0eee5;
+  --tint-violet: #e9e3f6;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  width: 1440px; height: 900px; overflow: hidden;
+  background: var(--ground); color: var(--ink);
+  font-family: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px; line-height: 1.4;
+  accent-color: var(--ink); caret-color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: var(--ink); color: #fff; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--rust); outline-offset: 2px; }
+.rail :focus-visible { outline-color: #fff; }
+svg.i { width: 1.15em; height: 1.15em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- window ---------- */
+.window { width: 1440px; height: 900px; display: flex; flex-direction: column; }
+.titlebar {
+  height: 38px; flex: none; display: flex; align-items: center; position: relative;
+  background: #e8eaee; border-bottom: 1px solid #c9cdd6; padding: 0 14px;
+}
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; border: 1px solid rgba(0, 0, 0, .14); }
+.lights i:nth-child(1) { background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+.titlebar h1 { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #3b4150; pointer-events: none; }
+.app { flex: 1; min-height: 0; display: grid; grid-template-columns: 208px minmax(0, 1fr) 352px; }
+
+/* ---------- index rail ---------- */
+.rail { background: var(--ink); color: #fff; padding: 18px 12px 14px; display: flex; flex-direction: column; font-size: 14px; overflow: hidden; }
+.rail section { padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, .16); }
+.rail h2 { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: #fff; }
+.proj-name { font-size: 22px; font-weight: 800; line-height: 1.1; margin: 0; letter-spacing: -.01em; }
+.proj-path { color: var(--rail-text); margin: 2px 0 10px; font-size: 14px; }
+.rbtn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  min-height: 36px; padding: 0 10px; margin: 0 0 6px; text-align: left;
+  background: rgba(255, 255, 255, .07); color: #fff; border: 1px solid var(--rail-line); border-radius: 6px;
+  font-size: 15px; font-weight: 600;
+}
+.rbtn:hover { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .6); }
+.badge { background: #fff; color: var(--ink); font-size: 13px; font-weight: 800; border-radius: 10px; padding: 1px 8px; }
+.note { margin: 2px 0 0; color: var(--rail-text); font-size: 14px; line-height: 1.35; }
+.live { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+.live .ring { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; display: grid; place-items: center; flex: none; }
+.live .ring::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+.people { list-style: none; margin: 10px 0 0; padding: 0; }
+.people li { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 15px; }
+.av { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid #fff; display: grid; place-items: center; font-size: 11px; font-weight: 800; flex: none; }
+.model { margin-top: auto; display: flex; align-items: center; gap: 6px; color: var(--rail-text); font-size: 13.5px; padding-top: 4px; white-space: nowrap; }
+
+/* ---------- centre ---------- */
+.centre { min-width: 0; display: flex; flex-direction: column; padding: 0 12px 16px; }
+.toolbar { height: 54px; flex: none; display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 1px solid var(--hairline); }
+.views { display: flex; gap: 22px; }
+.views button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 2px 11px; margin-bottom: -1px; font-size: 17px; font-weight: 600; color: var(--graphite); display: flex; gap: 8px; align-items: center; }
+.views button:hover { color: var(--ink); }
+.views button[aria-selected="true"] { color: var(--ink); font-weight: 800; border-bottom-color: var(--ink); }
+.views .count { background: var(--ink); color: #fff; border-radius: 10px; font-size: 13px; font-weight: 800; padding: 0 8px; line-height: 20px; }
+.present { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; margin-bottom: 8px; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 6px; font-size: 15px; font-weight: 700; }
+.present:hover { background: var(--ink); color: #fff; }
+
+/* guide-card row */
+.drawer { margin-top: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; flex: none; }
+.group { display: flex; flex-direction: column; min-width: 0; --hue: var(--blue); --tint: var(--tint-blue); }
+.group.m2 { --hue: var(--green); --tint: var(--tint-green); }
+.group.m3 { --hue: var(--violet); --tint: var(--tint-violet); }
+.glabel { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; font-weight: 800; color: var(--ink); padding: 0 2px 4px; }
+.glabel span { font-weight: 600; color: var(--graphite); font-size: 13px; }
+.tabs { display: flex; gap: 3px; align-items: flex-end; height: 138px; }
+.tab {
+  --h: calc(84px + var(--n) * 14px);
+  flex: 1 1 0; min-width: 0; height: var(--h);
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+  padding: 6px 4px 7px; background: var(--tint);
+  border: 1px solid color-mix(in srgb, var(--hue) 40%, #fff); border-bottom: 0;
+  border-top: 6px solid var(--hue); border-radius: 9px 9px 0 0; color: var(--ink);
+}
+.tab:hover { background: color-mix(in srgb, var(--hue) 22%, #fff); }
+.tab .num { font-size: 31px; font-weight: 900; line-height: 1; color: var(--hue); letter-spacing: -.02em; }
+.tab .lbl { font-size: 12px; font-weight: 650; letter-spacing: -.012em; line-height: 1.12; margin-top: 4px; }
+.tab .cnt { margin-top: auto; font-size: 12px; font-weight: 600; color: var(--graphite); display: flex; align-items: center; gap: 4px; }
+.tab[aria-selected="true"] { background: var(--hue); color: #fff; border-color: var(--hue); margin-bottom: -4px; height: calc(var(--h) + 4px); position: relative; z-index: 2; }
+.tab[aria-selected="true"] .num { color: #fff; }
+.tab[aria-selected="true"] .cnt { color: #fff; }
+.tab[aria-selected="true"] :focus-visible { outline-color: #fff; }
+.tab.empty { background: transparent; border-style: dashed; border-top-style: solid; }
+.tab.empty .cnt { color: var(--graphite-2); font-weight: 500; }
+.chip-pip { width: 9px; height: 9px; border-radius: 2px; background: currentColor; display: inline-block; }
+
+/* field panel */
+.panel { flex: 1; min-height: 0; background: var(--paper); border: 1px solid var(--hairline); border-radius: 0 0 10px 10px; padding: 18px 18px 12px; overflow: hidden; display: flex; flex-direction: column; position: relative; z-index: 1; }
+.panel::before { content: ""; position: absolute; left: -1px; right: -1px; top: -1px; height: 4px; background: var(--blue); }
+.phead { display: flex; align-items: center; gap: 16px; flex: none; }
+.pnum { font-size: 92px; font-weight: 900; line-height: .86; color: var(--blue); letter-spacing: -.05em; }
+.ptitle h2 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.015em; line-height: 1.1; }
+.ptitle p { margin: 2px 0 0; font-size: 16px; color: var(--graphite); }
+.waiting { margin-left: auto; align-self: center; display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; border: 1.5px dashed var(--graphite); background: #fbfbf9; border-radius: 6px; padding: 8px 12px; }
+.pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; flex: none; }
+
+/* cards */
+.card { border-radius: 6px; display: flex; flex-direction: column; min-width: 0; }
+.ch { display: flex; align-items: center; gap: 10px; padding: 7px 12px 6px; }
+.cn { font-size: 21px; font-weight: 900; letter-spacing: -.01em; line-height: 1; }
+.cs { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 800; }
+.cw { margin-left: auto; font-size: 14px; font-weight: 500; color: var(--graphite); }
+.cb { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.cb p { margin: 0; font-size: 18px; line-height: 1.38; }
+.actions { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+.btn { height: 38px; padding: 0 13px; border-radius: 6px; border: 1.5px solid var(--ink); background: var(--paper); color: var(--ink); font-size: 15px; font-weight: 700; }
+.btn:hover { background: #e9ecf3; }
+.btn.primary { background: var(--ink); color: #fff; }
+.btn.primary:hover { background: #2b3d60; }
+
+/* Suggestion = pencil card */
+.pencil { background: #fbfbf9; border: 1.5px dashed var(--graphite); color: var(--graphite); }
+.pencil .ch { border-bottom: 2px dashed var(--graphite); color: var(--graphite); }
+.pencil .cn { color: var(--graphite); }
+.pencil .cb p { font-weight: 400; color: var(--graphite); }
+/* Decided = stamped card */
+.decided { background: var(--paper); border: 2px solid var(--ink); }
+.decided .ch { border-bottom: 3px solid var(--ink); }
+.decided .cb p { font-weight: 650; }
+.stamp { display: grid; grid-template-columns: auto 1fr; border: 2px solid var(--ink); background: var(--paper); border-radius: 3px; margin-top: auto; }
+.stamp .sh { grid-column: 1 / -1; display: flex; align-items: stretch; background: var(--ink); color: #fff; font-size: 14px; font-weight: 800; }
+.stamp .sh > span { display: flex; align-items: center; gap: 6px; padding: 4px 10px; }
+.stamp .sh > span + span { border-left: 1px solid rgba(255, 255, 255, .45); }
+.stamp .why { grid-column: 1 / -1; margin: 0; padding: 7px 10px 8px; font-size: 16px; line-height: 1.35; font-weight: 600; color: var(--ink); }
+.stamp .why b { font-weight: 800; }
+/* Draft */
+.draft { background: var(--paper); border: 2px dotted var(--graphite); }
+.draft .ch { border-bottom: 2px dotted var(--graphite); }
+.draft .cb p { font-size: 17px; }
+/* new mark */
+.newmark { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 12px; padding: 1px 9px 1px 7px; color: var(--ink); white-space: nowrap; }
+.newmark::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
+
+.elsewhere { margin-top: 16px; flex: none; }
+.elsewhere h3 { margin: 0 0 8px; display: flex; align-items: baseline; gap: 10px; font-size: 18px; font-weight: 800; }
+.elsewhere h3 span { font-size: 14px; font-weight: 500; color: var(--graphite); }
+.egrid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.stack .cb { padding-top: 8px; padding-bottom: 10px; }
+
+.key { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 18px; font-size: 14px; font-weight: 600; color: var(--graphite); border-top: 1px solid var(--hairline); flex: none; }
+.key b { color: var(--ink); font-weight: 800; }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key svg { color: var(--ink); }
+.swatch { width: 26px; height: 16px; border-radius: 3px; background: var(--paper); display: inline-block; }
+.sw-d { border: 2px solid var(--ink); }
+.sw-s { border: 1px solid var(--ink); }
+.sw-t { border: 2px dotted var(--graphite); }
+.sw-p { border: 1.5px dashed var(--graphite); background: #fbfbf9; }
+
+/* ---------- agent ---------- */
+.agent { background: var(--paper); border-left: 1px solid var(--hairline); display: flex; flex-direction: column; min-height: 0; font-size: 15px; }
+.ahead { padding: 12px 16px 10px; border-bottom: 1px solid var(--hairline); flex: none; }
+.ahead h2 { margin: 0; font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; white-space: nowrap; line-height: 1.2; }
+.ahead h2 .sep { font-weight: 500; color: var(--graphite); }
+.ready { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; font-size: 14px; border: 1.5px solid var(--ink); border-radius: 12px; padding: 0 9px 0 7px; }
+.thread { flex: 1; min-height: 0; overflow: hidden; padding: 8px 16px 6px; display: flex; flex-direction: column; gap: 6px; }
+.msg { border-radius: 6px; padding: 7px 11px 9px; }
+.msg .who { font-size: 13px; font-weight: 800; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
+.msg p { margin: 0; line-height: 1.38; }
+.you { border: 1.5px solid var(--ink); background: var(--paper); align-self: stretch; }
+.bot { border: 1.5px dashed var(--graphite); background: #fbfbf9; color: var(--graphite); }
+.bot .who { border-bottom: 1.5px dashed var(--graphite); padding-bottom: 3px; margin-bottom: 5px; }
+.bot p { color: #323a49; }
+.steps { list-style: none; margin: 0; padding: 0 2px 0 4px; display: flex; flex-direction: column; gap: 3px; font-size: 14px; color: var(--graphite); }
+.steps li { display: flex; align-items: center; gap: 7px; }
+.steps svg { color: var(--ink); }
+.link { color: var(--rust); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px; }
+.refs { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 14px; font-weight: 600; flex-wrap: wrap; }
+.refs a { font-weight: 800; border: 1px dashed var(--graphite); border-radius: 4px; padding: 0 6px; color: var(--graphite); text-decoration: none; background: var(--paper); }
+.rule { margin: 4px 16px 0; padding: 8px 10px; display: flex; gap: 8px; align-items: flex-start; border: 1.5px solid var(--ink); border-radius: 6px; font-size: 14px; line-height: 1.35; font-weight: 600; flex: none; }
+.rule svg { margin-top: 1px; }
+.composer { padding: 10px 16px 14px; flex: none; }
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.quick button { height: 34px; border: 1.5px solid var(--ink); background: var(--paper); border-radius: 6px; font-size: 14px; font-weight: 700; padding: 0 8px; }
+.quick button:hover { background: #e9ecf3; }
+.send-row { display: flex; gap: 8px; }
+.send-row input { flex: 1; min-width: 0; height: 40px; border: 1.5px solid var(--ink); border-radius: 6px; padding: 0 10px; font-size: 15px; background: var(--paper); }
+.send-row input::placeholder { color: #566073; opacity: 1; }
+.send-row .btn { height: 40px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></symbol>
+    <symbol id="i-stamp" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M7.5 12.5 11 16 16.5 8.5"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l1-4.2L16.3 4.5a2.1 2.1 0 0 1 3 3L8 18.8z"/><path d="M14.3 6.5l3 3"/></symbol>
+    <symbol id="i-speech" viewBox="0 0 24 24"><path d="M4 5h16v11H11l-5 4v-4H4z"/></symbol>
+    <symbol id="i-draft" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-present" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2.5 2.5"/></symbol>
+    <symbol id="i-ready" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5 11 15.5 16.5 9"/></symbol>
+  </defs>
+</svg>
+
+<div class="window">
+  <header class="titlebar">
+    <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1>research-harness — voice-uptake</h1>
+  </header>
+
+  <div class="app">
+    <!-- ===== index rail ===== -->
+    <aside class="rail" aria-label="Project and session">
+      <section aria-labelledby="r-project">
+        <h2 id="r-project">Project</h2>
+        <p class="proj-name">voice-uptake</p>
+        <p class="proj-path">~/Papers/voice-uptake</p>
+        <button class="rbtn" type="button">Open project…</button>
+        <button class="rbtn" type="button">Clone from link…</button>
+        <button class="rbtn" type="button"><span>Get updates</span><span class="badge">2 new</span></button>
+        <p class="note">B. Supervisor added 2 entries.</p>
+      </section>
+      <section aria-labelledby="r-meeting">
+        <h2 id="r-meeting">Meeting</h2>
+        <p class="live"><span class="ring" aria-hidden="true"></span>Session running · 0:24</p>
+        <button class="rbtn" type="button">Agenda</button>
+        <button class="rbtn" type="button">Export minutes…</button>
+      </section>
+      <section aria-labelledby="r-people" style="border-bottom:0;margin-bottom:0;padding-bottom:0">
+        <h2 id="r-people">People</h2>
+        <button class="rbtn" type="button">Invite co-author…</button>
+        <ul class="people" aria-label="A. Researcher (you) · B. Supervisor">
+          <li><span class="av" aria-hidden="true">AR</span>A. Researcher (you)</li>
+          <li><span class="av" aria-hidden="true">BS</span>B. Supervisor</li>
+        </ul>
+      </section>
+      <div class="model"><svg class="i" aria-hidden="true"><use href="#i-key"/></svg>Model: Anthropic API key</div>
+    </aside>
+
+    <!-- ===== centre ===== -->
+    <main class="centre">
+      <div class="toolbar">
+        <div class="views" role="tablist" aria-label="View">
+          <button role="tab" aria-selected="true" type="button">Poster</button>
+          <button role="tab" aria-selected="false" type="button" tabindex="-1">To talk about <span class="count" aria-label="18 items">18</span></button>
+          <button role="tab" aria-selected="false" type="button" tabindex="-1">History</button>
+        </div>
+        <button class="present" type="button"><svg class="i" aria-hidden="true"><use href="#i-present"/></svg>Present</button>
+      </div>
+
+      <div class="drawer" role="tablist" aria-label="Fields of the paper">
+        <div class="group m1">
+          <div class="glabel">Motivation <span>fields 1–3</span></div>
+          <div class="tabs">
+            <button class="tab" role="tab" aria-selected="false" style="--n:3" type="button" aria-label="1 Puzzle, 3 cards"><span class="num">1</span><span class="lbl">Puzzle</span><span class="cnt">3 cards</span></button>
+            <button class="tab" role="tab" aria-selected="false" style="--n:1" type="button" aria-label="2 Audience and Prior Research, 1 card"><span class="num">2</span><span class="lbl">Audience</span><span class="cnt">1 card</span></button>
+            <button class="tab" role="tab" aria-selected="true" style="--n:2" type="button" aria-label="3 Research Question, 2 cards"><span class="num">3</span><span class="lbl">Research Question</span><span class="cnt">2 cards</span></button>
+          </div>
+        </div>
+        <div class="group m2">
+          <div class="glabel">Method <span>fields 4–6</span></div>
+          <div class="tabs">
+            <button class="tab" role="tab" aria-selected="false" style="--n:1" type="button" aria-label="4 Theoretical Constructs and Relationships, 1 card"><span class="num">4</span><span class="lbl">Constructs</span><span class="cnt">1 card</span></button>
+            <button class="tab" role="tab" aria-selected="false" style="--n:1" type="button" aria-label="5 Research Setting, 1 card"><span class="num">5</span><span class="lbl">Setting</span><span class="cnt">1 card</span></button>
+            <button class="tab" role="tab" aria-selected="false" style="--n:1" type="button" aria-label="6 Research Design and Analysis, 1 card"><span class="num">6</span><span class="lbl">Design</span><span class="cnt">1 card</span></button>
+          </div>
+        </div>
+        <div class="group m3">
+          <div class="glabel">Contribution <span>fields 7–9</span></div>
+          <div class="tabs">
+            <button class="tab empty" role="tab" aria-selected="false" style="--n:0" type="button" aria-label="7 Findings, empty"><span class="num">7</span><span class="lbl">Findings</span><span class="cnt">empty</span></button>
+            <button class="tab empty" role="tab" aria-selected="false" style="--n:0" type="button" aria-label="8 Contributions, empty"><span class="num">8</span><span class="lbl">Contributions</span><span class="cnt">empty</span></button>
+            <button class="tab empty" role="tab" aria-selected="false" style="--n:0" type="button" aria-label="9 Boundary Conditions and Limitations, empty"><span class="num">9</span><span class="lbl">Boundaries</span><span class="cnt">empty</span></button>
+          </div>
+        </div>
+      </div>
+
+      <section class="panel" role="tabpanel" aria-label="Field 3, Research Question">
+        <div class="phead">
+          <div class="pnum" aria-hidden="true">3</div>
+          <div class="ptitle">
+            <h2>Research Question</h2>
+            <p>What exactly do we ask?</p>
+          </div>
+          <div class="waiting"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg>2 Suggestions wait for your decision</div>
+        </div>
+
+        <div class="pgrid">
+          <article class="card pencil" aria-label="Suggestion 3.4">
+            <div class="ch"><span class="cn">3.4</span><span class="cs"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg>Suggestion</span><span class="cw">Claude</span></div>
+            <div class="cb">
+              <p>How do managers decide whether to act on voice raised by employees?</p>
+              <div class="actions">
+                <button class="btn primary" type="button">Accept…</button>
+                <button class="btn" type="button">Mark as said</button>
+                <button class="btn" type="button">Comment</button>
+              </div>
+            </div>
+          </article>
+          <article class="card pencil" aria-label="Suggestion 3.5">
+            <div class="ch"><span class="cn">3.5</span><span class="cs"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg>Suggestion</span><span class="cw">Claude</span></div>
+            <div class="cb">
+              <p>In hierarchical teams, under which conditions do managers act on voice from junior members?</p>
+              <div class="actions">
+                <button class="btn primary" type="button">Accept…</button>
+                <button class="btn" type="button">Mark as said</button>
+                <button class="btn" type="button">Comment</button>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="elsewhere">
+          <h3>Elsewhere on the poster <span>fields 1, 4 and 5</span></h3>
+          <div class="egrid">
+            <article class="card decided" aria-label="Decided 1.2">
+              <div class="ch"><span class="cn">1.2</span><span class="cs"><svg class="i" aria-hidden="true"><use href="#i-stamp"/></svg>Decided</span></div>
+              <div class="cb">
+                <p>Speaking frequency is well documented; whether a proposal is taken up is not.</p>
+                <div class="stamp">
+                  <div class="sh"><span><svg class="i" aria-hidden="true"><use href="#i-stamp"/></svg>DECIDED</span><span>2 Oct 2026</span><span>AR</span></div>
+                  <p class="why">“The gap is uptake, not voice.”</p>
+                </div>
+              </div>
+            </article>
+            <div class="stack">
+              <article class="card draft" aria-label="Draft 4.1">
+                <div class="ch"><span class="cn">4.1</span><span class="cs"><svg class="i" aria-hidden="true"><use href="#i-draft"/></svg>Draft</span><span class="newmark">New · B. Supervisor · just now</span></div>
+                <div class="cb"><p>Rank, deference and uptake.</p></div>
+              </article>
+              <article class="card draft" aria-label="Draft 5.1">
+                <div class="ch"><span class="cn">5.1</span><span class="cs"><svg class="i" aria-hidden="true"><use href="#i-draft"/></svg>Draft</span></div>
+                <div class="cb"><p>Twelve recorded meetings of one product team over a quarter.</p></div>
+              </article>
+            </div>
+          </div>
+        </div>
+
+        <div class="key" aria-label="Status key">
+          <b>Status</b>
+          <span><i class="swatch sw-d"></i><svg class="i" aria-hidden="true"><use href="#i-stamp"/></svg>Decided</span>
+          <span><i class="swatch sw-s"></i><svg class="i" aria-hidden="true"><use href="#i-speech"/></svg>Said by the authors</span>
+          <span><i class="swatch sw-t"></i><svg class="i" aria-hidden="true"><use href="#i-draft"/></svg>Draft</span>
+          <span><i class="swatch sw-p"></i><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg>Suggestion</span>
+        </div>
+      </section>
+    </main>
+
+    <!-- ===== agent ===== -->
+    <aside class="agent" aria-label="Agent">
+      <div class="ahead">
+        <h2>Agent <span class="sep">·</span> Claude <span class="sep">·</span> API key <span class="sep">·</span> <span class="ready"><svg class="i" aria-hidden="true"><use href="#i-ready"/></svg>Ready</span></h2>
+      </div>
+      <div class="thread">
+        <div class="msg you"><div class="who">You</div><p>Continue the canvas for field 3, the research question. Two suggestions at most.</p></div>
+        <ul class="steps" aria-label="Agent activity">
+          <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Read the canvas and the construct glossary</li>
+          <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Read 3 literature notes</li>
+          <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Wrote 2 suggestions to field 3</li>
+        </ul>
+        <div class="msg bot">
+          <div class="who"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg>Agent</div>
+          <p>I added two statements to 3 Research Question, both marked Suggestion. The second one narrows the question to voice uptake in hierarchical teams; check whether that fits your chosen framing.</p>
+          <div class="refs"><a href="#">3.4</a><a href="#">3.5</a><a class="link" href="#" style="border:0;background:none;padding:0;color:var(--rust);margin-left:6px">Open field 3 →</a></div>
+        </div>
+        <div class="msg you"><div class="who">You</div><p>Accept the first one.</p></div>
+        <div class="msg bot">
+          <div class="who"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg>Agent</div>
+          <p>I can't accept statements. That step is yours: open field 3 and press <strong>Accept…</strong>, then write one sentence on why.</p>
+        </div>
+      </div>
+      <div class="rule"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg><span>The agent proposes. Accepting, choosing a framing, starting a session and handing over the project key stay with you.</span></div>
+      <div class="composer">
+        <div class="quick">
+          <button type="button">Continue canvas</button>
+          <button type="button">Review canvas</button>
+          <button type="button">Literature note…</button>
+          <button type="button">Ask the agent…</button>
+        </div>
+        <div class="send-row">
+          <label class="sr" for="msg">Message to the agent</label>
+          <input id="msg" type="text" placeholder="Write to the agent about field 3">
+          <button class="btn primary" type="button">Send</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

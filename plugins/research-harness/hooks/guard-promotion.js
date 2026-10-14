@@ -771,7 +771,8 @@ function lexBash(text, depth) {
 
   // A heredoc body runs to the line that holds its delimiter alone. The body of
   // an unquoted delimiter is expanded by bash before the command runs, so it is
-  // scanned for substitutions; any other body is literal data and is skipped.
+  // scanned for substitutions. Any other body is literal data and is not lexed;
+  // the verdict still judges the paths a data body spells (SQ-232).
   function consumeHeredocs() {
     while (heredocs.length) {
       const heredoc = heredocs.shift();
@@ -813,6 +814,11 @@ function lexBash(text, depth) {
         if (!heredoc.quoted) nestHeredocBody(body);
         continue;
       }
+      // SQ-232: any other body is stdin data, and data can still name a file:
+      // `xargs rm <<'EOF'` removes the paths its body lists, as `printf … |
+      // xargs rm` does. Whatever the quoting, the redirect carries the body so
+      // the verdict judges the paths it spells, as it judges a printf argument.
+      heredoc.redirect.dataBody = { text: body, opaque: false, quoted: true };
       if (heredoc.quoted) continue;
       // A body the scan could not finish is a word the guard cannot read: the
       // redirect carries it so the verdict can judge it as one.
@@ -2348,6 +2354,15 @@ function bashVerdict(command, projectRoot) {
     }
     for (const redirect of sc.redirects) {
       if (redirect.unreadBody && wordTouchesState(redirect.unreadBody, base, stateParts, stateNames, hasState, false, stateRoot)) touches = true;
+      // SQ-232: a heredoc body that is stdin data counts the way an inert word
+      // of a read-only verb does: its slash-bearing runs name the state only by
+      // spelling it, since bash never globs a body. Only a line that also runs a
+      // command that is not read-only is refused for it.
+      if (redirect.dataBody) {
+        const verdict = wordTouchesState(redirect.dataBody, base, stateParts, stateNames, hasState, true, stateRoot);
+        if (verdict === null && hasState) uncomputable = true;
+        else if (verdict) touches = true;
+      }
       // A redirect target is a write position, so a pattern there the guard
       // cannot compute counts as touching: `readOnlyRefusal` below supplies the
       // reason.

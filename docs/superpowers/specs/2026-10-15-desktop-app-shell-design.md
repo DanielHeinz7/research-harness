@@ -146,6 +146,48 @@ agent. New project… explains the three modes (brainstorming, seed, import) in 
 The shell meets the same bar as the session view: WCAG 2.2 AA, keyboard operation, visible focus in
 light and dark, reflow, type that grows with the window.
 
+### 4.1 The first author shares a project (added 2026-10-15)
+
+An agent ran the five human steps on the packaged app (two people, each with an empty home folder,
+a local bare repository as the shared copy). All five work, but three gaps stop a person who has no
+terminal and no developer tools:
+
+1. The person who creates a project has no place in the app to give their name. Start session then
+   answers with a terminal command (`research-harness name`).
+2. New project makes no git repository, and nothing in the app connects a project to a shared copy.
+   Get updates and Send then show git's own text ("fatal: not a git repository").
+3. Join this project… appears only when the decision log already holds a sealed entry. A co-author
+   who clones a project that was shared right after New project sees no Join, so they get no key
+   and no name.
+
+The fix, decided by the owner on 2026-10-15:
+
+- **Name.** New project… has a field "Your name", prefilled with the name this computer already has
+  (the plugin's stored name, else git's `user.name`). Start session… shows the same field when this
+  computer has no name. Both write it with the code path `research-harness name` uses
+  (`identity.writeName`). Join keeps its own name field. No message in the shell ever tells the
+  person to run a command.
+- **A project is a git repository from the start.** New project runs `git init` with the bundled git
+  and commits the research files once. A project opened with Open project… that is not a repository
+  gets the same on Share (below), never silently on open.
+- **Share with co-authors….** While a project has no shared copy (no `origin`), the sidebar shows
+  Share with co-authors… in place of Get updates and Send my changes. The dialog says, in plain
+  words: create an empty private repository on GitHub or your institute's GitLab, copy its https
+  link, paste it here; the app uploads the project there, and co-authors then use Clone from link….
+  The app adds the link as `origin` and pushes, with the same link rules and credential path as
+  clone (§3.4). It refuses a repository that already holds commits and says why. The outcome names
+  the next step: Invite co-author… for the key file.
+- **Join whenever the key is missing.** Join this project… appears whenever this computer has no key
+  for the project, also when the decision log is still empty. Before joining, every action that
+  writes an entry says "Join this project first" with one sentence on where the key file comes from;
+  it never creates a second key. Two logs that grew from the same empty log already merge (SQ-249).
+- **No raw git text as the message.** Every git failure gets a sentence in plain words with the next
+  step; git's own line may follow as a detail.
+
+Out of scope here: creating the repository on GitHub from the app (the person does that on the
+host's website), and ending a running session (open until the independent visual evaluation,
+SQ-278, has reported).
+
 ## 5. Errors
 
 Every route answers `{ ok, code, error }` as the project routes do today. The shell shows the error

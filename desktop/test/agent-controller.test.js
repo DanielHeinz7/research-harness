@@ -13,6 +13,15 @@ function fakeSession() {
   return { pid: 1, written: [], onData: (cb) => ev.on('data', cb), onExit: (cb) => ev.on('exit', cb), write(d) { this.written.push(d); }, resize() {}, kill() { this.killed = true; }, emitData: (d) => ev.emit('data', d), exit: (code) => ev.emit('exit', code, 0) };
 }
 
+async function waitUntil(what, ok, ms = 3000) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (ok()) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`the state did not reach ${what}`);
+}
+
 function setup(over = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-ctl-'));
   const bundled = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-plugin-'));
@@ -78,6 +87,20 @@ test('start: the spec argv in the project folder, a fresh marker path, the guard
   assert.deepEqual(readAgentStore(dataDir).started, ['/papers/a']);
 });
 
+test('a marker that arrives after the timeout turns the warning into Guard on', async () => {
+  const { ctl, spawned, bundled } = setup();
+  await ctl.setProject('/papers/a');
+  await ctl.run('start');
+  const marker = spawned[0].opts.env.RESEARCH_HARNESS_APP_MARKER;
+  await waitUntil('the unconfirmed guard line', () => ctl.state().guard.warn === true);
+  assert.equal(ctl.state().guard.text, "Guard not confirmed. The agent's writes may not be checked in this session.");
+  assert.match(ctl.state().guard.detail, /trust this folder/);
+  fs.writeFileSync(marker, JSON.stringify({ pluginRoot: bundled, version: '0.5.0', pid: 9 }));
+  await ctl.markerSettled();
+  assert.equal(ctl.state().guard.text, 'Guard on · research-harness 0.5.0');
+  assert.equal(ctl.state().guard.warn, false);
+});
+
 test('a marker from the previous session does not confirm the next one', async () => {
   const { ctl, spawned, bundled } = setup();
   await ctl.setProject('/papers/a');
@@ -90,8 +113,10 @@ test('a marker from the previous session does not confirm the next one', async (
   const second = spawned[1].opts.env.RESEARCH_HARNESS_APP_MARKER;
   assert.notEqual(second, first);
   assert.equal(fs.existsSync(first), false, 'the old marker is removed');
+  spawned[1].exit(0);
   await ctl.markerSettled();
   assert.equal(ctl.state().guard.warn, true);
+  assert.equal(ctl.state().guard.detail, 'The session did not start.');
 });
 
 test('continue is offered only for a folder the app started a session in, and passes --continue', async () => {
@@ -104,6 +129,7 @@ test('continue is offered only for a folder the app started a session in, and pa
   assert.equal(ctl.state().canContinue, true);
   await ctl.run('continue');
   assert.ok(spawned[1].opts.args.includes('--continue'));
+  spawned[1].exit(0);
 });
 
 test('one session at a time: starting again ends the running one', async () => {
@@ -113,6 +139,7 @@ test('one session at a time: starting again ends the running one', async () => {
   await ctl.run('new');
   assert.equal(spawned[0].killed, true);
   assert.equal(spawned.length, 2);
+  spawned[1].exit(0);
 });
 
 test('install, sign-in and update run in the pty; a failed step keeps its output and says so', async () => {

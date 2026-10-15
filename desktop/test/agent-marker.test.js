@@ -41,11 +41,32 @@ test('waits for the marker, and stops early when the session ended', async () =>
   assert.ok(Date.now() - started < 1000);
 });
 
+test('a marker that arrives after the timeout still counts, and the timeout is reported once', async () => {
+  const d = dir();
+  const file = path.join(d, 'm.json');
+  let told = 0;
+  setTimeout(() => fs.writeFileSync(file, JSON.stringify({ pluginRoot: d, version: '0.5.0', pid: 1 })), 200);
+  const marker = await waitForMarker(file, { timeoutMs: 50, intervalMs: 20, onTimeout: () => { told += 1; } });
+  assert.deepEqual(marker, { pluginRoot: d, version: '0.5.0' });
+  assert.equal(told, 1);
+});
+
+test('after the timeout the watch keeps going until the session exits', async () => {
+  const d = dir();
+  let exited = false;
+  const watching = waitForMarker(path.join(d, 'never.json'), { timeoutMs: 30, intervalMs: 20, exited: () => exited });
+  const settled = await Promise.race([watching.then(() => 'settled'), new Promise((r) => setTimeout(() => r('watching'), 150))]);
+  assert.equal(settled, 'watching', 'the timeout alone does not end the watch');
+  exited = true;
+  assert.equal(await watching, null);
+});
+
 test('the guard lines say what the spec says', () => {
   assert.deepEqual(guardLine({ kind: 'bundled', version: '0.5.0' }, {}), { text: 'Guard on · research-harness 0.5.0', detail: null, warn: false });
   assert.deepEqual(guardLine({ kind: 'other', version: '0.4.2' }, {}), { text: 'Guard on · research-harness 0.4.2 from your Claude Code settings', detail: null, warn: false });
   const missing = guardLine({ kind: 'missing', version: null }, { exited: false });
   assert.equal(missing.text, "Guard not confirmed. The agent's writes may not be checked in this session.");
+  assert.match(missing.detail, /^Claude Code may be asking whether to trust this folder; the answer goes in the terminal below\./);
   assert.match(missing.detail, /organisation's settings may turn hooks off.*The app cannot stop Claude Code/);
   assert.match(guardLine({ kind: 'missing', version: null }, { exited: true }).detail, /The session did not start/);
 });

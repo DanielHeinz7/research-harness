@@ -243,8 +243,7 @@ README offers no download.
 What to do on the day an account exists, in order, with who does each step: the Account Holder
 creates a Developer ID Application certificate; its private key goes into the release Mac's login
 keychain; `xcrun notarytool store-credentials`; fill in `distribution.json`; `npm run dist`; test a
-downloaded copy (see 6, owner check); release. It also says that a Developer ID certificate lasts five
-years and that apps signed with a timestamp keep opening after it expires.
+downloaded copy (see 6, owner check); release. It also says what happens when the certificate expires, quoting Apple's page.
 
 ## 5. Errors
 

@@ -54,9 +54,7 @@ async function twoPeopleSharingOneProject() {
   const a = await makeProject('shared', 'Shared');
   assert.equal((await runCli(a, ['name', 'A. Author'])).ok, true);
   assert.equal((await runCli(a, ['log', 'DISCOVERY', '1.1', '--body', 'Shared finding'])).ok, true);
-  sh(a, 'init', '-b', 'main');
-  sh(a, 'add', '.');
-  sh(a, '-c', 'user.name=A. Author', '-c', 'user.email=a@example.invalid', 'commit', '-m', 'Start the project');
+  assert.equal((await appGit.commit(a, ['research'], 'Start the project', 'A. Author')).ok, true);
   const remote = path.join(tmp(), 'remote.git');
   sh(path.dirname(remote), 'init', '--bare', '-b', 'main', 'remote.git');
   sh(a, 'remote', 'add', 'origin', remote);
@@ -149,8 +147,13 @@ test('an open project: sidebar with name, folder, Meeting and People, and the se
   for (const name of ['Project', 'Meeting', 'People']) {
     assert.equal(await page.getByRole('heading', { level: 2, name, exact: true }).count(), 1, `${name} section`);
   }
-  for (const name of ['Get updates', 'Send my changes…', 'Open project…', 'Clone from link…', 'New project…', 'Start session…', 'Agenda', 'Export minutes…', 'Invite co-author…']) {
+  // A project made in the app has no shared copy yet: Share stands in for
+  // Get updates and Send my changes.
+  for (const name of ['Share with co-authors…', 'Open project…', 'Clone from link…', 'New project…', 'Start session…', 'Agenda', 'Export minutes…', 'Invite co-author…']) {
     assert.equal(await page.getByRole('button', { name: new RegExp(`^${name}`) }).count(), 1, name);
+  }
+  for (const name of ['Get updates', 'Send my changes…']) {
+    assert.equal(await page.getByRole('button', { name: new RegExp(`^${name}`) }).count(), 0, `${name} waits for a shared copy`);
   }
   assert.equal(await page.locator('#btn-join').isVisible(), false, 'this machine holds the key: no Join');
   const view = sessionView(page);
@@ -288,6 +291,7 @@ test('the whole flow from a browser tab: new project, session, agenda, minutes, 
   await page.getByLabel('Folder to create it in').fill(parent);
   await page.getByLabel('Name of the new folder').fill('paper-one');
   await page.getByLabel('Working title of the paper').fill('Why proposals get dropped');
+  await page.getByLabel('Your name').fill('F. Author');
   await page.locator('#dlg').getByRole('radio', { name: /^Seed/ }).check();
   await page.locator('#dlg').getByRole('button', { name: 'Create project' }).click();
   await page.waitForFunction(() => document.getElementById('proj-name').textContent.length > 0);
@@ -361,7 +365,7 @@ for (const colorScheme of ['light', 'dark']) {
       await page.keyboard.press('Tab');
       order.push(await page.evaluate(() => document.activeElement.id));
     }
-    const expected = ['skip-link', 'btn-update', 'btn-send', 'btn-open', 'btn-clone', 'btn-new', 'btn-session', 'btn-agenda', 'btn-minutes', 'btn-invite'];
+    const expected = ['skip-link', 'btn-share', 'btn-open', 'btn-clone', 'btn-new', 'btn-session', 'btn-agenda', 'btn-minutes', 'btn-invite'];
     assert.deepEqual(order.slice(0, expected.length), expected, 'Tab walks the sidebar in reading order');
 
     const ratios = await focusContrastRatios(page);
@@ -405,7 +409,231 @@ test('first-start page reflows at 320 px in light and dark', { skip, timeout: 12
   for (const item of ratios) assert.ok(item.ratio >= 3, `${item.label}: focus contrast >= 3:1 (${item.ratio.toFixed(2)})`);
 });
 
-test('a second window with a used code says so and offers no controls', { skip, timeout: 120000 }, async (t) => {
+// -- The first author shares a project (spec 4.1) ----------------------------
+
+// A computer with an empty home folder: no name, no keys. The server runs in
+// this process, so the state directory it reads is the one set here.
+function freshComputer(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-computer-'));
+  roots.push(dir);
+  process.env.RESEARCH_HARNESS_STATE_DIR = dir;
+  t.after(() => { process.env.RESEARCH_HARNESS_STATE_DIR = stateDir; });
+  return dir;
+}
+
+function bareRemote(withCommit = false) {
+  const dir = tmp();
+  sh(dir, 'init', '--bare', '-b', 'main', 'remote.git');
+  const url = `file://${path.join(dir, 'remote.git')}`;
+  if (withCommit) {
+    sh(dir, 'clone', url, 'seed');
+    fs.writeFileSync(path.join(dir, 'seed', 'README.md'), 'files of someone else\n');
+    sh(path.join(dir, 'seed'), 'add', '.');
+    sh(path.join(dir, 'seed'), '-c', 'user.name=S', '-c', 'user.email=s@example.invalid', 'commit', '-m', 'readme');
+    sh(path.join(dir, 'seed'), 'push', 'origin', 'main');
+  }
+  return { url, path: path.join(dir, 'remote.git') };
+}
+
+const nameOnThisComputer = (root) => require('../hooks/lib/identity').readName(root).name;
+
+test('New project… asks for your name and writes it; the outcome names the next step', { skip, timeout: 180000 }, async (t) => {
+  freshComputer(t);
+  const srv = await startApp(t);
+  const page = await openPage(t, srv);
+  const parent = tmp();
+  await page.getByRole('button', { name: 'New project…' }).click();
+  const dialog = page.locator('#dlg');
+  assert.match(await dialog.textContent(), /git repository/, 'the dialog says the folder becomes a repository');
+  const name = page.getByLabel('Your name');
+  assert.equal(await name.inputValue(), '', 'this computer has no name yet');
+  await page.getByLabel('Folder to create it in').fill(parent);
+  await page.getByLabel('Name of the new folder').fill('first-paper');
+  await dialog.getByRole('button', { name: 'Create project' }).click();
+  assert.equal(await name.getAttribute('aria-invalid'), 'true', 'a missing name is named, not skipped');
+  assert.match(await page.locator('#dlg-error').textContent(), /Enter your name/);
+  await name.fill('F. Newcomer');
+  await dialog.getByRole('button', { name: 'Create project' }).click();
+  await page.waitForFunction(() => /Created the project/.test(document.getElementById('out-project').textContent));
+  const root = path.join(parent, 'first-paper');
+  assert.equal(nameOnThisComputer(root), 'F. Newcomer');
+  assert.equal(sh(root, 'rev-list', '--count', 'HEAD').trim(), '1', 'one commit of the research files');
+  const outcome = await page.locator('#out-project').textContent();
+  assert.match(outcome, /Share with co-authors…/);
+  assert.match(outcome, /Start session…/);
+  assert.doesNotMatch(outcome, /research-harness [a-z]/);
+
+  // The name is known now: Start session… does not ask again.
+  await page.getByRole('button', { name: 'Start session…' }).click();
+  assert.equal(await page.getByLabel('Your name').count(), 0);
+  await page.getByLabel('What is the occasion?').fill('Supervision');
+  await page.locator('#dlg').getByRole('button', { name: 'Start session' }).click();
+  await page.locator('#live').waitFor();
+
+  // The next project's dialog starts with the name this computer has.
+  await page.getByRole('button', { name: 'New project…' }).click();
+  assert.equal(await page.getByLabel('Your name').inputValue(), 'F. Newcomer');
+});
+
+test('Start session… asks for a name where this computer has none, and an earlier error clears on the next try', { skip, timeout: 180000 }, async (t) => {
+  freshComputer(t);
+  const root = await makeProject();
+  const srv = await startApp(t, { open: root });
+  const page = await openPage(t, srv);
+  await page.getByRole('button', { name: 'Start session…' }).click();
+  const dialog = page.locator('#dlg');
+  const name = page.getByLabel('Your name');
+  assert.equal(await name.isVisible(), true);
+  await dialog.getByRole('button', { name: 'Start session' }).click();
+  assert.equal(await page.getByLabel('What is the occasion?').getAttribute('aria-invalid'), 'true');
+  assert.match(await page.locator('#dlg-error').textContent(), /Name the occasion/);
+
+  await page.getByLabel('What is the occasion?').fill('Supervision');
+  await name.fill('G. Author');
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route('**/api/app/session', async (route) => { await held; await route.continue(); });
+  await dialog.getByRole('button', { name: /^(Start session|Working…)$/ }).click();
+  await page.waitForFunction(() => /Working/.test(document.querySelector('#dlg button[type="submit"]').textContent));
+  assert.equal((await page.locator('#dlg-error').textContent()).trim(), '', 'the earlier error is gone while the new request runs');
+  assert.equal(await page.getByLabel('What is the occasion?').getAttribute('aria-invalid'), null);
+  release();
+  await page.locator('#live').waitFor();
+  assert.equal(nameOnThisComputer(root), 'G. Author');
+  assert.match(fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8'), /SESSION · Supervision/);
+});
+
+test('Share with co-authors… explains the steps, refuses a non-empty repository, shares into an empty one, and Invite shows the link', { skip, timeout: 240000 }, async (t) => {
+  freshComputer(t);
+  const root = await makeProject();
+  assert.equal((await runCli(root, ['name', 'A. Author'])).ok, true);
+  const srv = await startApp(t, { open: root });
+  const page = await openPage(t, srv);
+  const share = page.getByRole('button', { name: 'Share with co-authors…' });
+  await share.waitFor();
+  assert.equal(await page.getByRole('button', { name: /^Get updates/ }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Send my changes…' }).count(), 0);
+  await share.click();
+  const dialog = page.locator('#dlg');
+  const text = await dialog.textContent();
+  assert.match(text, /empty private repository on GitHub/);
+  assert.match(text, /institute’s GitLab/);
+  assert.match(text, /https link/);
+  assert.match(text, /Clone from link…/);
+  assert.match(text, /key that seals your entries stays on this computer/);
+  assert.equal(await page.evaluate(() => document.activeElement.name), 'url', 'the dialog opens on its field');
+  await dialog.getByRole('button', { name: 'Share project' }).click();
+  assert.equal(await page.getByLabel('Link of the empty repository').getAttribute('aria-invalid'), 'true');
+
+  // A repository that already holds files: refused in the dialog, nothing changed.
+  const full = bareRemote(true);
+  const heads = sh(full.path, 'for-each-ref');
+  await page.getByLabel('Link of the empty repository').fill(full.url);
+  await dialog.getByRole('button', { name: 'Share project' }).click();
+  await page.waitForFunction(() => /already holds files/.test(document.getElementById('dlg-error').textContent));
+  assert.match(await page.locator('#dlg-error').textContent(), /nothing was changed/);
+  assert.equal(await page.getByLabel('Link of the empty repository').getAttribute('aria-invalid'), 'true');
+  assert.equal(sh(root, 'remote').trim(), '');
+  assert.equal(sh(full.path, 'for-each-ref'), heads);
+
+  // An empty one: shared, and the outcome names the next step.
+  const empty = bareRemote();
+  await page.getByLabel('Link of the empty repository').fill(empty.url);
+  await dialog.getByRole('button', { name: 'Share project' }).click();
+  await page.waitForFunction(() => /Shared\./.test(document.getElementById('out-share').textContent));
+  const outcome = await page.locator('#out-share').textContent();
+  assert.match(outcome, /Invite co-author…/);
+  assert.ok(outcome.includes(empty.url), 'the outcome shows the link');
+  assert.equal(sh(empty.path, 'rev-list', '--count', 'main').trim(), '1');
+  assert.equal(await share.isVisible(), false);
+  assert.equal(await page.getByRole('button', { name: /^Get updates/ }).isVisible(), true);
+  assert.equal(await page.getByRole('button', { name: 'Send my changes…' }).isVisible(), true);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'proj-name', 'focus goes where the project begins');
+  await page.getByRole('button', { name: 'Send my changes…' }).click();
+  assert.doesNotMatch(await dialog.textContent(), /cloned from/, 'a project shared from here was not cloned');
+  assert.match(await dialog.textContent(), /Uploads them to the shared copy,/);
+  await page.keyboard.press('Escape');
+
+  // Invite: the co-author needs the link and the key file.
+  await page.getByRole('button', { name: 'Invite co-author…' }).click();
+  assert.match(await dialog.textContent(), /two things/);
+  assert.equal((await page.locator('#invite-link-line .link').textContent()).trim(), empty.url, 'the link from origin is shown');
+  const keyFile = path.join(tmp(), 'first.seal.key');
+  await page.getByLabel('Save the key file as').fill(keyFile);
+  await dialog.getByRole('button', { name: 'Save key file' }).click();
+  await page.waitForFunction(() => /Saved the key file/.test(document.getElementById('out-people').textContent));
+  const invited = await page.locator('#out-people').textContent();
+  assert.ok(invited.includes(empty.url) && /key file/.test(invited), 'the outcome repeats the link and the key file');
+  assert.ok(fs.existsSync(keyFile));
+});
+
+test('a co-author who clones a project with an empty log sees Join at the top, and joins before working', { skip, timeout: 240000 }, async (t) => {
+  freshComputer(t);
+  const ctxA = context(tmp());
+  assert.equal((await routes.init({ parent: tmp(), folder: 'shared', mode: 'brainstorming', title: 'Shared', name: 'A. Author' }, ctxA)).ok, true);
+  const remote = bareRemote();
+  assert.equal((await routes.share({ url: remote.url }, ctxA)).ok, true);
+  const keyFile = path.join(tmp(), 'a.seal.key');
+  assert.equal((await routes.invite({ out: keyFile }, ctxA)).ok, true);
+
+  freshComputer(t);
+  const cloned = await routes.clone({ url: remote.url, parent: tmp(), folder: 'shared' }, context(tmp()));
+  assert.equal(cloned.ok, true, cloned.error);
+  const b = cloned.current;
+  const srv = await startApp(t, { open: b });
+  const page = await openPage(t, srv);
+  const line = page.locator('#join-line');
+  await line.waitFor();
+  assert.match(await line.textContent(), /has not joined this project yet/);
+  assert.equal(await page.evaluate(() => document.getElementById('sidebar').firstElementChild.id), 'join-line', 'the first thing in the sidebar');
+  const [lineBox, nameBox] = await Promise.all([line.boundingBox(), page.locator('#proj-name').boundingBox()]);
+  assert.ok(lineBox.y < nameBox.y, 'above the project name, not below the fold');
+  assert.equal(await page.getByRole('button', { name: 'Invite co-author…' }).count(), 0, 'no key to hand on');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-join', 'Tab reaches Join right after the skip link');
+
+  // Before joining, an entry-writing action says why, in words and not as a command.
+  await page.getByRole('button', { name: 'Start session…' }).click();
+  await page.getByLabel('What is the occasion?').fill('Supervision');
+  await page.getByLabel('Your name').fill('B. Supervisor');
+  await page.locator('#dlg').getByRole('button', { name: 'Start session' }).click();
+  await page.waitForFunction(() => /Join this project first/.test(document.getElementById('dlg-error').textContent));
+  const refusal = await page.locator('#dlg-error').textContent();
+  assert.match(refusal, /key file/);
+  assert.doesNotMatch(refusal, /research-harness [a-z]|Do not run init/);
+  assert.equal(fs.existsSync(require('../hooks/lib/seal').keyPath(b)), false, 'no key was created');
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: 'Join this project…' }).click();
+  await page.getByLabel('Key file you received').fill(keyFile);
+  await page.getByLabel('Your name').fill('B. Supervisor');
+  await page.locator('#dlg').getByRole('button', { name: 'Join project' }).click();
+  await page.waitForFunction(() => /You joined/.test(document.getElementById('out-people').textContent));
+  assert.equal(await line.isVisible(), false);
+  assert.equal(await page.getByRole('button', { name: 'Invite co-author…' }).isVisible(), true);
+
+  await page.getByRole('button', { name: 'Start session…' }).click();
+  assert.equal(await page.getByLabel('Your name').count(), 0, 'joining gave this computer its name');
+  await page.getByLabel('What is the occasion?').fill('Supervision');
+  await page.locator('#dlg').getByRole('button', { name: 'Start session' }).click();
+  await page.locator('#live').waitFor();
+  await page.getByRole('button', { name: 'Send my changes…' }).click();
+  await page.locator('#dlg').getByRole('button', { name: 'Send changes' }).click();
+  await page.waitForFunction(() => /Sent\./.test(document.getElementById('out-send').textContent));
+  assert.match(sh(remote.path, 'show', 'main:research/decisions.md'), /SESSION · Supervision/, 'the shared copy holds the entry');
+});
+
+test('Clone from link… leads with the https link a co-author sent', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t);
+  const page = await openPage(t, srv);
+  await page.getByRole('button', { name: 'Clone from link…' }).click();
+  const hint = await page.locator('#dlg label[for="f-url"] .hint').textContent();
+  assert.match(hint, /^The https link your co-author sent you\./);
+  assert.match(hint, /ssh:\/\/.*git@host:path/, 'the other forms are still named, after the first');
+});
+
+test('a second window with a used code says so and offers no controls',{ skip, timeout: 120000 }, async (t) => {
   const srv = await startApp(t);
   const page = await openPage(t, srv);
   await page.getByRole('heading', { name: 'Start with a paper project' }).waitFor();

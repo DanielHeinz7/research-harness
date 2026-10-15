@@ -1,10 +1,13 @@
 'use strict';
-// Git for the desktop app's human steps: clone, get updates, send. Runs the
+// Git for the desktop app's human steps: set up, share, clone, get updates,
+// send. Every failure comes back as a sentence with the next step; git's own
+// line follows as a detail, never as the message. Runs the
 // git the app bundles (RESEARCH_HARNESS_GIT) or git from PATH, never through
 // a shell, and only over the transports in RESEARCH_HARNESS_GIT_PROTOCOLS
 // (https and ssh unless a test widens it). Every function resolves.
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const LINK_RE = /^(?:https:\/\/|ssh:\/\/|[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.-]*:)[^\s]+$/;
@@ -26,13 +29,14 @@ function git(cwd, args) {
     try {
       childProcess.execFile(gitBinary(), args, {
         cwd,
-        env: { ...process.env, GIT_ALLOW_PROTOCOL: protocols(), GIT_TERMINAL_PROMPT: '0' },
+        // English messages whatever the system language: the sentences below match them.
+        env: { ...process.env, GIT_ALLOW_PROTOCOL: protocols(), GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', LANGUAGE: 'C' },
         maxBuffer: 4 * 1024 * 1024,
       }, (err, stdout, stderr) => {
         if (err && err.code === 'ENOENT') {
           // Node reports a missing working folder the same way as a missing program.
           resolve(typeof cwd === 'string' && fs.existsSync(cwd)
-            ? { ok: false, code: 'git-missing', error: `Git was not found (${gitBinary()}).` }
+            ? { ok: false, code: 'git-missing', error: `The program git was not found (${gitBinary()}), and this step needs it. The desktop app brings its own; in a browser, install git first.` }
             : { ok: false, code: 'git', error: `The folder ${cwd} does not exist.` });
           return;
         }
@@ -44,8 +48,48 @@ function git(cwd, args) {
   });
 }
 
+// What git says, in words a person can act on. The first pattern that fits
+// wins, so the specific ones come before the broad ones.
+const REASONS = [
+  [/not a git repository/i, 'This folder is not set up for sharing yet. Use Share with co-authors… first.'],
+  [/terminal prompts disabled|could not read (?:username|password)|authentication failed|invalid username or password|permission denied|access denied|http basic|error: 40[13]\b/i,
+    'The shared copy did not accept your login. Check that you may use this repository, then try again and give the login the app asks for.'],
+  [/repository .*not found|does not appear to be a git repository|error: 404\b/i,
+    'No repository was found at that link, or you may not use it. Check the link and your access to it.'],
+  [/could not resolve host|unable to access|could not read from remote|connection (?:refused|timed out|reset)|network is unreachable|timed out|failed to connect|\bssl\b|\btls\b/i,
+    'The app could not reach the shared copy. Check your internet connection and the link, then try again.'],
+  [/unrelated histories/i,
+    'This project and the shared copy were started separately, so they cannot be combined. Nothing was changed. Use Clone from link… to get the shared copy instead.'],
+  [/would be overwritten|your local changes|untracked working tree files/i,
+    'Some of your files outside the research folder would be overwritten by the update. Nothing was changed. Move those files elsewhere, then get updates again.'],
+  [/no tracking information|no upstream|no configured push destination|no remote repository|does not have any upstream/i,
+    'This project is not connected to a shared copy yet. Use Share with co-authors… first.'],
+  [/src refspec .* does not match|unknown revision|ambiguous argument 'HEAD'|bad default revision|does not have any commits yet/i,
+    'This project has no saved history yet. Use Share with co-authors… to start it.'],
+  [/already exists and is not an empty directory/i, 'The target folder already exists and is not empty. Choose another name.'],
+];
+
+// The line worth showing after the sentence: git's first fatal or error line, else its first line.
+function gitDetail(stderr) {
+  const lines = String(stderr).split('\n').map((l) => l.trim()).filter(Boolean);
+  const pick = lines.find((l) => /^(?:fatal|error):/i.test(l)) || lines[0] || '';
+  return pick.replace(/^(?:fatal|error):\s*/i, '').slice(0, 300);
+}
+
+function explain(stderr, what) {
+  const hit = REASONS.find(([re]) => re.test(stderr));
+  const sentence = hit ? hit[1] : `${what} did not work. Check your internet connection and the link, then try again.`;
+  const detail = gitDetail(stderr);
+  return detail ? `${sentence} (Git said: ${detail})` : sentence;
+}
+
 function failed(r, what) {
-  return r.code ? r : { ok: false, code: 'git', error: r.stderr.trim() || `${what} failed.` };
+  return r.code ? r : { ok: false, code: 'git', error: explain(r.stderr, what) };
+}
+
+// A link as a person may read it: no password or token in front of the host.
+function displayLink(url) {
+  return typeof url === 'string' ? url.replace(/^(https:\/\/)[^/@]*@/, '$1') : null;
 }
 
 function isLink(url) {
@@ -129,8 +173,14 @@ async function commit(root, paths, message, name) {
   return r.ok ? { ok: true, committed: true } : failed(r, 'Committing');
 }
 
-async function push(root) {
-  const r = await git(root, ['push']);
+async function push(root, { upstream = false } = {}) {
+  let args = ['push'];
+  if (upstream) {
+    const branch = await git(root, ['symbolic-ref', '--short', 'HEAD']);
+    if (!branch.ok) return failed(branch, 'Reading the project history');
+    args = ['push', '-u', 'origin', branch.stdout.trim()];
+  }
+  const r = await git(root, args);
   if (r.ok) return { ok: true };
   if (r.code) return r;
   if (/\[rejected\]|non-fast-forward|fetch first/.test(r.stderr)) {
@@ -139,4 +189,38 @@ async function push(root) {
   return failed(r, 'Sending');
 }
 
-module.exports = { isLink, clone, pull, abortMerge, commit, push, gitBinary };
+// A project is a repository from its first day: its own history, one commit
+// of the research files, on a branch named main.
+async function initRepo(root, paths, message, name) {
+  const r = await git(root, ['init', '-b', 'main']);
+  if (!r.ok) return failed(r, 'Setting up the project history');
+  return commit(root, paths, message, name);
+}
+
+function hasRepo(root) {
+  return fs.existsSync(path.join(root, '.git'));
+}
+
+// The shared copy this project sends to and gets from, or null.
+async function originOf(root) {
+  const r = await git(root, ['remote', 'get-url', 'origin']);
+  return r.ok && r.stdout.trim() ? r.stdout.trim() : null;
+}
+
+// Whether the repository behind a link holds nothing yet. Sharing into one
+// that has commits would mix two histories, so the caller refuses it.
+async function remoteIsEmpty(url) {
+  const r = await git(os.tmpdir(), ['ls-remote', '--', url]);
+  return r.ok ? { ok: true, empty: r.stdout.trim() === '' } : failed(r, 'Looking at the repository');
+}
+
+async function addOrigin(root, url) {
+  const r = await git(root, ['remote', 'add', 'origin', url]);
+  return r.ok ? { ok: true } : failed(r, 'Connecting the project to the shared copy');
+}
+
+async function removeOrigin(root) {
+  await git(root, ['remote', 'remove', 'origin']);
+}
+
+module.exports = { isLink, displayLink, explain, clone, pull, abortMerge, commit, push, initRepo, hasRepo, originOf, remoteIsEmpty, addOrigin, removeOrigin, gitBinary };

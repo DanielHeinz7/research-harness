@@ -2,6 +2,8 @@
 
 const crypto = require('node:crypto');
 
+const lineEndings = require('./line-endings');
+
 const MARKERS = ['proposed', 'tentative', 'stated', 'accepted'];
 const COMMITTED = new Set(['stated', 'accepted']);
 const EMPTY_PLACEHOLDER = '_(empty)_';
@@ -168,6 +170,8 @@ function parseCanvas(text) {
   const hidden = hiddenLines(lines);
   const hiddenAt = (index) => (index >= 0 && index < hidden.length ? hidden[index] : null);
   const result = { frontmatter: fm.data, elements: [], problems: [] };
+  const crlf = lineEndings.firstCrlfLine(text);
+  if (crlf) result.problems.push(lineEndings.crlfProblem(crlf));
   if (fm.unterminated) result.problems.push('frontmatter is not terminated');
 
   let element = null;

@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const { normalizeText } = require('./canvas');
 const decisions = require('./decisions');
+const lineEndings = require('./line-endings');
 const { projectStateDir } = require('./ledger');
 
 // The tamper-evident chain over decisions.md (§4.7). This is not the session
@@ -126,6 +127,13 @@ function result(status, reason, legacy, broken, verified) {
 // numbers whose seals recomputed, which is what gives an acceptance cover.
 function verifyChain(text, key) {
   const source = String(text || '');
+  // Checked before the empty-log shortcut: a header-only CRLF log is not
+  // "verified", because the first seal appended to it would anchor on CR bytes.
+  const crlf = lineEndings.firstCrlfLine(source);
+  if (crlf) {
+    const first = decisions.parseDecisions(source.replace(/\r\n/g, '\n')).entries[0];
+    return result('broken', null, [], { seq: first ? first.seq : 0, line: crlf, why: 'line-endings' }, new Set());
+  }
   const { entries } = decisions.parseDecisions(source);
   const verified = new Set();
   const firstSealed = entries.findIndex((e) => e.seal !== null);

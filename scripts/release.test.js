@@ -62,6 +62,7 @@ function fixture(t) {
   const ghLog = path.join(dir, "gh.log");
   const ghNotes = path.join(dir, "gh-notes.md");
   fs.writeFileSync(path.join(bin, "gh"), '#!/bin/sh\n[ -n "$FAKE_GH_FAIL" ] && { echo "gh broke" >&2; exit 1; }\necho "$@" >> "' + ghLog + '"\n'
+    + 'if [ "$1 $2" = "release download" ]; then prev=""; for a in "$@"; do [ "$prev" = "--dir" ] && dir="$a"; prev="$a"; done; cp "$FAKE_GH_SERVED"/* "$dir"/; echo "gh ok"; exit 0; fi\n'
     + 'prev=""; for a in "$@"; do [ "$prev" = "--notes-file" ] && cp "$a" "' + ghNotes + '"; prev="$a"; done\necho "gh ok"\n', { mode: 0o755 });
   sh(dir, "git", ["init", "--bare", "-b", "main", remote]);
   sh(repo, "git", ["init", "-b", "main"]);
@@ -72,6 +73,27 @@ function fixture(t) {
   sh(repo, "git", ["remote", "add", "origin", remote]);
   sh(repo, "git", ["push", "origin", "main"]);
   return { dir: dir, repo: repo, remote: remote, bin: bin, claudeLog: claudeLog, ghLog: ghLog, ghNotes: ghNotes };
+}
+
+const SIGNED = { signing: "developer-id", identity: "Developer ID Application: A. Researcher (AB12CD34EF)", teamId: "AB12CD34EF", notaryProfile: "research-harness-notary" };
+
+// Adds desktop/ with the switch and the stubs a desktop release calls:
+// security and xcrun answer the preflight, npm "builds" four release files.
+function withDesktop(fx, dist) {
+  const lib = path.join(fx.repo, "desktop", "lib");
+  fs.mkdirSync(lib, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, "..", "desktop", "lib", "distribution.js"), path.join(lib, "distribution.js"));
+  fs.writeFileSync(path.join(fx.repo, "desktop", "distribution.json"), JSON.stringify(dist) + "\n");
+  fs.appendFileSync(path.join(fx.repo, ".gitignore"), "desktop/dist/\n");
+  fx.npmLog = path.join(fx.dir, "npm.log");
+  fs.writeFileSync(path.join(fx.bin, "security"), '#!/bin/sh\n[ -n "$FAKE_NO_IDENTITY" ] && { echo "     0 valid identities found"; exit 0; }\necho \'  1) 0123ABCD "' + SIGNED.identity + '"\'\necho "     1 valid identities found"\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(fx.bin, "xcrun"), '#!/bin/sh\n[ -n "$FAKE_NO_PROFILE" ] && { echo "No Keychain password item found" >&2; exit 69; }\necho "No submission history."\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(fx.bin, "npm"), '#!/bin/sh\necho "$@" >> "' + fx.npmLog + '"\n[ "$1" = "ci" ] && exit 0\n[ -n "$FAKE_NPM_FAIL" ] && { echo "notarization rejected" >&2; exit 1; }\nmkdir -p dist/release\n'
+    + 'for n in research-harness-mac-arm64.dmg research-harness-mac-x64.dmg research-harness-0.3.7-mac-arm64.zip latest-mac.yml; do echo "$n" > "dist/release/$n"; done\n', { mode: 0o755 });
+  sh(fx.repo, "git", ["add", "-A"]);
+  sh(fx.repo, "git", ["commit", "-m", "desktop switch"]);
+  sh(fx.repo, "git", ["push", "origin", "main"]);
+  fx.served = path.join(fx.repo, "desktop", "dist", "release");
 }
 
 // The three checks as stubs; FAKE_FAIL names the one that fails, FAKE_DENIED
@@ -112,12 +134,12 @@ function snapshot(fx) {
   });
 }
 
-function refusal(name, setup, args, pattern) {
+function refusal(name, setup, args, pattern, env) {
   test("refuses " + name + ": exit 2, one line, nothing changed", function (t) {
     const fx = fixture(t);
     setup(fx);
     const before = snapshot(fx);
-    const r = release(fx, args || ["0.3.7", "s"]);
+    const r = release(fx, args || ["0.3.7", "s"], env);
     assert.strictEqual(r.status, 2, r.stdout + r.stderr);
     assert.strictEqual(r.stderr.trim().split("\n").length, 1, r.stderr);
     assert.match(r.stderr, pattern);
@@ -262,4 +284,59 @@ test("a failed push leaves the baseline alone", function (t) {
   assert.match(r.stderr, /git push origin main.*failed/);
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(fx.repo, "verification", "local", "release-baseline.json"), "utf8")).denied, 3);
   assert.ok(!fs.existsSync(fx.claudeLog), "the plugin was not updated");
+});
+
+test("an unsigned desktop app is not attached, and the release says so", function (t) {
+  const fx = fixture(t);
+  withDesktop(fx, { signing: "none" });
+  const r = release(fx, ["0.3.7", "s"]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /desktop app: not attached \(signing is none\)/);
+  assert.ok(!fs.existsSync(fx.npmLog), "npm did not run");
+  assert.doesNotMatch(fs.readFileSync(fx.ghLog, "utf8"), /\.dmg/);
+});
+
+refusal("a developer-id switch without its certificate", function (fx) { withDesktop(fx, SIGNED); }, null, /is not in this Mac's keychain/, { FAKE_NO_IDENTITY: "1" });
+refusal("a developer-id switch without its notarization profile", function (fx) { withDesktop(fx, SIGNED); }, null, /"research-harness-notary" does not work/, { FAKE_NO_PROFILE: "1" });
+
+test("a signed desktop app is built after the version commit, uploaded with the release and read back", function (t) {
+  const fx = fixture(t);
+  withDesktop(fx, SIGNED);
+  const r = release(fx, ["0.3.7", "s"], { FAKE_GH_SERVED: fx.served });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(fs.readFileSync(fx.npmLog, "utf8").trim().split("\n"), ["ci", "run dist"]);
+  const gh = fs.readFileSync(fx.ghLog, "utf8");
+  const create = gh.split("\n").find(function (l) { return l.startsWith("release create v0.3.7"); });
+  for (const n of ["research-harness-mac-arm64.dmg", "research-harness-mac-x64.dmg", "research-harness-0.3.7-mac-arm64.zip", "latest-mac.yml"]) {
+    assert.ok(create.includes(path.join("desktop", "dist", "release", n)), n + " is uploaded");
+  }
+  assert.match(gh, /release download v0\.3\.7 --pattern latest-mac\.yml --pattern \*\.dmg --dir /);
+  assert.match(r.stdout, /3 files match/);
+});
+
+test("a failed desktop build stops before the tag and the push", function (t) {
+  const fx = fixture(t);
+  withDesktop(fx, SIGNED);
+  const remoteBefore = sh(fx.repo, "git", ["--git-dir", fx.remote, "rev-parse", "main"]);
+  const r = release(fx, ["0.3.7", "s"], { FAKE_NPM_FAIL: "1" });
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /`npm run dist[^`]*` failed/);
+  assert.strictEqual(sh(fx.repo, "git", ["tag"]), "");
+  assert.strictEqual(sh(fx.repo, "git", ["--git-dir", fx.remote, "rev-parse", "main"]), remoteBefore);
+  assert.ok(!fs.existsSync(fx.ghLog), "gh did not run");
+});
+
+test("a file GitHub serves differently is reported with the command that fixes it", function (t) {
+  const fx = fixture(t);
+  withDesktop(fx, SIGNED);
+  const served = path.join(fx.dir, "served");
+  fs.mkdirSync(served);
+  for (const n of ["research-harness-mac-arm64.dmg", "research-harness-mac-x64.dmg", "latest-mac.yml"]) fs.writeFileSync(path.join(served, n), n + "\n");
+  fs.writeFileSync(path.join(served, "research-harness-mac-x64.dmg"), "cut off");
+  const r = release(fx, ["0.3.7", "s"], { FAKE_GH_SERVED: served });
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /research-harness-mac-x64\.dmg on GitHub differs/);
+  assert.match(r.stderr, /gh release upload v0\.3\.7 desktop\/dist\/release\/research-harness-mac-x64\.dmg --clobber/);
+  assert.ok(fs.existsSync(fx.claudeLog), "the plugin update ran before the read-back");
+  assert.ok(fs.existsSync(path.join(fx.repo, "verification", "local", "release-baseline.json")), "the baseline was recorded");
 });

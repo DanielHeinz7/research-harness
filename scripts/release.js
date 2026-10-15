@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 "use strict";
-// Releases the plugin: checks first, then the version bump, commit, tag,
-// push, GitHub release and plugin update.
+// Releases the plugin, and the desktop app once desktop/distribution.json says
+// developer-id: checks first, then the version bump, commit, the desktop build,
+// tag, push, GitHub release and plugin update.
 //
 //   node scripts/release.js <version> "<summary>" [--dry-run] [--trailer "<line>"] [--accept-denies]
 //
@@ -18,6 +19,7 @@
 // release commit, so the next release starts from an empty unreleased/.
 //
 // Exit codes: 0 done, 1 a check or a step failed, 2 refused before any check.
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -25,6 +27,9 @@ const cp = require("node:child_process");
 
 const REPO = path.resolve(__dirname, "..");
 const PLUGIN = path.join(REPO, "plugins", "research-harness");
+const DESKTOP = path.join(REPO, "desktop");
+const DIST_JSON = path.join(DESKTOP, "distribution.json");
+const APP_FILES = path.join(DESKTOP, "dist", "release");
 const MANIFESTS = [
   path.join(REPO, ".claude-plugin", "marketplace.json"),
   path.join(PLUGIN, ".claude-plugin", "plugin.json"),
@@ -168,6 +173,34 @@ function setVersions(version) {
   }
 }
 
+function appFiles() {
+  return fs.readdirSync(APP_FILES).sort().map(function (n) { return path.join(APP_FILES, n); });
+}
+
+function sha512(file) {
+  return crypto.createHash("sha512").update(fs.readFileSync(file)).digest("base64");
+}
+
+// Downloads what GitHub now serves for the release and compares it with what
+// was uploaded: the update feed and the two DMGs people download.
+function readBack(tag) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-release-readback-"));
+  try {
+    const r = run("gh", ["release", "download", tag, "--pattern", "latest-mac.yml", "--pattern", "*.dmg", "--dir", dir]);
+    if (r.status !== 0) return r;
+    const names = fs.readdirSync(APP_FILES).filter(function (n) { return n === "latest-mac.yml" || /\.dmg$/.test(n); });
+    for (const n of names) {
+      const there = path.join(dir, n);
+      if (!fs.existsSync(there) || sha512(there) !== sha512(path.join(APP_FILES, n))) {
+        return { status: 1, stdout: "", stderr: n + " on GitHub differs from desktop/dist/release/" + n + "; upload it again with gh release upload " + tag + " desktop/dist/release/" + n + " --clobber" };
+      }
+    }
+    return { status: 0, stdout: names.length + " files match", stderr: "" };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function main(argv) {
   const opt = parseArgs(argv);
 
@@ -189,6 +222,23 @@ function main(argv) {
   if (!notes) refuse("CHANGELOG.md has no section for " + opt.version + "; write the release notes under \"## " + opt.version + "\" first");
   const tag = "v" + opt.version;
   if (git(["rev-parse", "-q", "--verify", "refs/tags/" + tag]).status === 0) refuse("tag " + tag + " already exists");
+
+  // The desktop app rides along once signing is on (spec 4.4).
+  let app = false;
+  let appNote = null;
+  if (fs.existsSync(DIST_JSON)) {
+    const distribution = require(path.join(DESKTOP, "lib", "distribution.js"));
+    let dist = null;
+    try { dist = distribution.readDistribution(DIST_JSON); } catch (e) { refuse(e.message); }
+    if (dist.signing === "developer-id") {
+      const problems = distribution.preflight(dist);
+      if (problems.length) refuse(problems.join(" "));
+      app = true;
+    } else {
+      appNote = "desktop app: not attached (signing is " + dist.signing + ")";
+    }
+  }
+
   const corpus = newestHarvest();
   if (!corpus) refuse("no harvested corpus in verification/local/. Make one first: node verification/probes/probe-benign.js --harvest");
 
@@ -249,16 +299,20 @@ function main(argv) {
     } },
   ] : []).concat([
     { label: "git commit -m " + JSON.stringify(message[0]) + (opt.trailer ? " -m " + JSON.stringify(opt.trailer) : ""), do: function () { return git(commit); } },
+  ]).concat(app ? [
+    { label: "npm ci (in desktop/)", do: function () { return run("npm", ["ci"], { cwd: DESKTOP }); } },
+    { label: "npm run dist (in desktop/: build, sign, notarize, check)", do: function () { return run("npm", ["run", "dist"], { cwd: DESKTOP }); } },
+  ] : []).concat([
     { label: "git tag -a " + tag + " -m " + JSON.stringify("Release " + opt.version), do: function () { return git(["tag", "-a", tag, "-m", "Release " + opt.version]); } },
     { label: "git push origin main", do: function () { return git(["push", "origin", "main"]); } },
     { label: "git push origin " + tag, do: function () { return git(["push", "origin", tag]); } },
-    { label: "gh release create " + tag + " --verify-tag --title " + opt.version + " --notes-file <CHANGELOG.md section " + opt.version + "> --latest", do: function () {
+    { label: "gh release create " + tag + (app ? " <desktop/dist/release/*>" : "") + " --verify-tag --title " + opt.version + " --notes-file <CHANGELOG.md section " + opt.version + "> --latest", do: function () {
       // gh reads the notes from a file; it lives only as long as this call.
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-release-notes-"));
       const notesFile = path.join(dir, tag + ".md");
       try {
         fs.writeFileSync(notesFile, notes);
-        return run("gh", ["release", "create", tag, "--verify-tag", "--title", opt.version, "--notes-file", notesFile, "--latest"]);
+        return run("gh", ["release", "create", tag].concat(app ? appFiles() : [], ["--verify-tag", "--title", opt.version, "--notes-file", notesFile, "--latest"]));
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });
       }
@@ -269,10 +323,12 @@ function main(argv) {
   if (opt.dryRun) {
     process.stdout.write("dry run: " + opt.version + " passes every check; nothing was changed. Next would run:\n");
     for (const t of tasks) process.stdout.write("  " + t.label + "\n");
+    if (appNote) process.stdout.write(appNote + "\n");
     process.stdout.write("  then record " + denied + " DENYs in " + path.relative(REPO, BASELINE) + "\n");
     process.stdout.write("release notes for " + tag + ":\n" + notes);
     return 0;
   }
+  if (appNote) process.stdout.write(appNote + "\n");
   for (const t of tasks) {
     const r = step(t.label, t.do);
     const out = (r.stdout + r.stderr).trim();
@@ -285,6 +341,16 @@ function main(argv) {
   fs.mkdirSync(LOCAL, { recursive: true });
   fs.writeFileSync(BASELINE, JSON.stringify({ denied: denied, version: opt.version, date: new Date().toISOString() }, null, 2) + "\n");
   process.stdout.write("released " + opt.version + "; baseline " + denied + " DENYs\n");
+
+  if (app) {
+    const back = step("gh release download " + tag + " and compare with desktop/dist/release", function () { return readBack(tag); });
+    const said = (back.stdout + back.stderr).trim();
+    if (said) process.stdout.write(said + "\n");
+    if (back.status !== 0) {
+      process.stderr.write("release: the read-back failed; " + (back.stderr || "see above").trim() + "\n");
+      return 1;
+    }
+  }
   return 0;
 }
 

@@ -2510,7 +2510,7 @@ Expected after that: PASS.
 
 - [ ] **Step 4: Packaging for the unsigned build**
 
-`desktop/electron-builder.yml`:
+`desktop/electron-builder.yml` (keep whatever `productName` main has; sub-project 4 owns the name. If sub-project 4, Task 4 has already replaced the yml with `BASE` in `desktop/lib/distribution.js`, add the same three entries there; see the cross-plan notes in the sub-project 4 plan):
 
 ```yaml
 appId: org.research-harness.desktop

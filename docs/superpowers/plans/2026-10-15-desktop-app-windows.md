@@ -1045,7 +1045,7 @@ git commit -m "Windows zip: start file, README.txt and the plugin, built on the 
 - Consumes: Task 7 `buildWindowsZip`, `ASSET`.
 - Produces: `gh release create <tag> <zip> --verify-tag --title <version> --notes-file <file> --latest`; the zip is built after the version commit into a temp folder that is removed after `gh`, like the notes file. `--dry-run` lists the build step.
 
-Sub-project 4 also changes this step (its spec §4.4: DMGs, zips, `latest-mac.yml`). If it has landed, add the Windows zip to the same asset list, unconditionally; if not, add it alone and leave the list shape easy to extend.
+Sub-project 4 also changes this step (its spec §4.4: DMGs, zips, `latest-mac.yml`). If it has landed, add the Windows zip to the same asset list, unconditionally; if not, add it alone and leave the list shape easy to extend. On the board this task waits for sub-project 4, Task 5 (cross-plan note in the sub-project 4 plan, 2026-10-15).
 
 - [ ] **Step 1: Write the failing test.** In `release.test.js`, make the fixture copy `scripts/windows-zip.js`, `windows/` and a minimal `plugins/research-harness/bin/research-harness.js` into the fixture repo (read how `fixture()` builds the repo and extend it the same way). Change the full-release test's `gh` assertion to:
 

@@ -26,6 +26,18 @@
 - Code style: `desktop/` uses `'use strict'`, single quotes, arrow functions; `scripts/release.js` and its test use double quotes and `function`. English for code, UI, docs, commits.
 - No release fragment in `.release/unreleased/`: nothing here reaches a user until signing is on.
 - The app and its program are called `Research Harness` (`productName`, so `Research Harness.app/Contents/MacOS/Research Harness`); `research-harness` stays the CLI's name. The plugin's guard reads a program called `research-harness` as a CLI call and refuses non-reading commands in the same line. No change to the guard for this. `appId` and the DMG file names stay as they are.
+- **The name is not decided yet** (owner, 2026-10-15). `Research Harness` is a placeholder: no ticket writes a `productName` into code, tests or docs until the owner has named the app. Task 2 waits for that decision; the rule above (the program must not be called `research-harness`) holds whatever the name.
+
+## Cross-plan notes (lane Desktop-Bau, 2026-10-15)
+
+Sub-projects 2, 4 and 5 touch the same build and release files. Checked against the three plans; these orders and owners apply:
+
+- **Builder settings.** This plan owns them; sub-project 2, Task 11 (SQ-260) owns its own entries: `agent/**` in `files` (without `agent/shims/**`), the `agent/shims` → `shims` extra resource, and `node_modules/node-pty/**` in `asarUnpack`. Task 2's `BASE` mirrors `desktop/electron-builder.yml` as it stands on main when Task 2 runs, except the name. Task 4, which deletes the yml, waits for SQ-260, so those entries move into `BASE` and nothing is lost. SQ-260 leaves `productName` alone.
+- **Checks on a built app** (Tasks 3 and 4). Once SQ-260 has landed, `verifyApp` also covers `app.asar.unpacked/node_modules/node-pty/**/spawn-helper` and `pty.node` (signed, hardened runtime, the build's processor type) and `Contents/Resources/shims/node` and `git` (mode 755). Task 4 checks with `file` that each build carries the node-pty binary for its own processor.
+- **Electron fuses.** Nothing here changes them. Sub-project 2's node shim needs `RunAsNode` on (its spec §5.3).
+- **Entitlements.** `spawn-helper` gets `entitlementsInherit` like every other binary. Assumed, not checked: no further key is needed under the hardened runtime. The Finder start in SQ-260 Step 4, repeated on a Task 4 build, checks it.
+- **Shared files.** `desktop/main.js` and `preload.js` (Task 6) are also edited by sub-project 2 Tasks 8 and 9 (SQ-257, SQ-258); `dashboard/app.html` (Task 7) by sub-project 2 Task 8 and sub-project 5 Task 2. Task 6 waits for SQ-257 and SQ-258, Task 7 for SQ-257.
+- **`scripts/release.js`.** Task 5 here comes before sub-project 5, Task 8, which adds the Windows zip to the asset list this task builds. "No app file is uploaded while signing is none" means the macOS app; the Windows zip ships with every release (sub-project 5 spec).
 
 Test commands:
 - desktop: `cd desktop && npm test` (Playwright tests through `NODE_PATH=~/dh-appdev/dsi-pubs/node_modules`)

@@ -2,12 +2,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (err) { if (err.code !== 'MODULE_NOT_FOUND') throw err; }
-const skip = chromium ? false : 'Playwright is not installed; run `npm install && npm run setup:browsers` at the repository root.';
+// column.html loads xterm from desktop/node_modules; without it the page script throws before it registers its callbacks.
+const missingPackages = ['@xterm/xterm/lib/xterm.js', '@xterm/addon-fit/lib/addon-fit.js']
+  .map((p) => path.join(__dirname, '..', 'node_modules', p)).filter((p) => !fs.existsSync(p));
+const skip = !chromium ? 'Playwright is not installed; run `npm install && npm run setup:browsers` at the repository root.'
+  : missingPackages.length ? `The desktop packages are missing (${missingPackages.join(', ')}); run \`npm install\` in desktop/ to fetch them.`
+  : false;
 const PAGE = pathToFileURL(path.join(__dirname, '..', 'agent', 'column', 'column.html')).href;
 
 const BASE = { version: '2.1.300', plan: 'Claude Pro', guard: null, exit: null, project: '/papers/a', sessionProject: null, canContinue: false, screenReader: false, screenReaderMode: false, pluginVersion: '0.5.0', step: null, fontUrl: null };

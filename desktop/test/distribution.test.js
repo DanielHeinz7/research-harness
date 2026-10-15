@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { readDistribution, builderSettings, preflight, DistributionError, DIST_FILE } = require('../lib/distribution');
+const afterPack = require('../scripts/after-pack');
 
 const SIGNED = { signing: 'developer-id', identity: 'Developer ID Application: A. Researcher (AB12CD34EF)', teamId: 'AB12CD34EF', notaryProfile: 'research-harness-notary' };
 
@@ -105,4 +106,54 @@ test('preflight passes when certificate and profile are there', () => {
     ? { status: 0, stdout: `  1) ABC "${SIGNED.identity}"\n     1 valid identities found\n`, stderr: '' }
     : { status: 0, stdout: 'No submission history.\n', stderr: '' });
   assert.deepEqual(preflight(SIGNED, { run }), []);
+});
+
+// electron-builder 26 leaves dugite's `.dll` files out of the app on macOS, so
+// the packed app is missing what the credential manager loads. scripts/after-pack.js
+// copies them back from the installed package.
+function packedTree(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-after-pack-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const projectDir = path.join(dir, 'desktop');
+  const git = path.join(projectDir, 'node_modules', 'dugite', 'git');
+  const appOutDir = path.join(dir, 'dist', 'mac-arm64');
+  const resources = path.join(appOutDir, 'Placet.app', 'Contents', 'Resources');
+  return {
+    git,
+    packed: path.join(resources, 'app.asar.unpacked', 'node_modules', 'dugite', 'git'),
+    context: { appOutDir, packager: { projectDir, getResourcesDir: () => resources } },
+  };
+}
+
+test('the builder settings name the hook that puts dugite\'s dropped files back', () => {
+  const { config } = builderSettings({ signing: 'none' }, { version: '0.6.0', keep: [], outDir: '/o' });
+  assert.equal(config.afterPack, require.resolve('../scripts/after-pack'));
+});
+
+test('after-pack puts back what electron-builder left out, mode included, and leaves what it packed alone', async (t) => {
+  const { git, packed, context } = packedTree(t);
+  fs.mkdirSync(path.join(git, 'libexec', 'git-core'), { recursive: true });
+  fs.mkdirSync(path.join(packed, 'libexec', 'git-core'), { recursive: true });
+  fs.mkdirSync(path.join(git, 'bin'), { recursive: true });
+  fs.mkdirSync(path.join(packed, 'bin'), { recursive: true });
+  const dll = path.join(git, 'libexec', 'git-core', 'git-credential-manager.dll');
+  fs.writeFileSync(dll, 'Microsoft .NET assembly');
+  fs.chmodSync(dll, 0o444);                       // copyFileSync alone would leave 0644 here
+  fs.writeFileSync(path.join(git, 'libexec', 'git-core', 'git-credential-manager'), 'apphost');
+  fs.writeFileSync(path.join(packed, 'libexec', 'git-core', 'git-credential-manager'), 'apphost');
+  fs.writeFileSync(path.join(git, 'bin', 'git'), 'the installed one');
+  fs.writeFileSync(path.join(packed, 'bin', 'git'), 'the packed one');
+
+  await afterPack(context);
+
+  const copied = path.join(packed, 'libexec', 'git-core', 'git-credential-manager.dll');
+  assert.equal(fs.readFileSync(copied, 'utf8'), 'Microsoft .NET assembly');
+  assert.equal(fs.statSync(copied).mode & 0o777, 0o444);
+  assert.equal(fs.readFileSync(path.join(packed, 'bin', 'git'), 'utf8'), 'the packed one');
+});
+
+test('after-pack refuses when dugite is not unpacked', async (t) => {
+  const { git, context } = packedTree(t);
+  fs.mkdirSync(git, { recursive: true });
+  await assert.rejects(afterPack(context), /app\.asar\.unpacked.*does not exist/);
 });

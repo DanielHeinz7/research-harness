@@ -25,6 +25,9 @@ const BASE = {
   files: ['main.js', 'preload.js', 'server.js', 'git-path.js', 'package.json'],
   extraResources: [{ from: 'build/plugin', to: 'plugin' }, { from: 'askpass.sh', to: 'askpass.sh' }],
   asarUnpack: ['node_modules/dugite/**'],
+  // electron-builder 26 drops dugite's `.dll` files on macOS, and the credential
+  // manager does not start without them; see scripts/after-pack.js.
+  afterPack: path.join(ROOT, 'scripts', 'after-pack.js'),
 };
 
 class DistributionError extends Error {}

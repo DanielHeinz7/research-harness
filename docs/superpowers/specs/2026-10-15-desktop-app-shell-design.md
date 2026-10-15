@@ -160,7 +160,7 @@ terminal and no developer tools:
    who clones a project that was shared right after New project sees no Join, so they get no key
    and no name.
 
-The fix, decided by the owner on 2026-10-15:
+The fix, approved by the owner on 2026-10-15:
 
 - **Name.** New project… has a field "Your name", prefilled with the name this computer already has
   (the plugin's stored name, else git's `user.name`). Start session… shows the same field when this

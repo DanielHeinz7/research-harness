@@ -2,6 +2,39 @@
 
 Release notes for researchers using research-harness in Claude Code.
 
+## 0.6.0 (2026-10-15)
+
+The session view has a new look. It is now set like a galley proof. Statements are numbered like 3.4, and the open questions an agent raised stand in the margin beside the statement they ask about. This release also adds a construct glossary, a way to turn one paper into a literature note whose quotations are checked against the printed page, and an app mode for the session server. The app mode is groundwork for a desktop app, which is not part of this release and is not distributed yet.
+
+### Added
+
+- A construct glossary in `research/glossary.md`. `research-harness glossary show <id>` prints an entry with its payload and hash. After you read it, `research-harness glossary accept <id> --hash <shown hash> --explained "<your sentence>"` marks the entry `[accepted]` and seals a decision in the log. A proposal that changed since you looked refuses, and so does an entry whose origin does not resolve or whose element 4 dependencies are not accepted. The model may propose entries but never accepts one, and the guard denies it the command.
+- Canvas statements and manuscripts can cite glossary entries (`src: glossary.md#felt-safety`, `<!-- constructs: felt-safety -->`). `research-harness review` ends with a "Glossary mechanics" group that checks entry structure, declared coverage in the canvas and the manuscript, terms used without a link, and definitions that changed after acceptance. It names what depends on a changed entry and invalidates nothing. It also states that human judgment of the constructs was not performed. The `canvas` and `canvas-review` skills and both profiles describe the glossary, and the README has a short section on it.
+- A `literature-note` skill that drafts a literature note from one paper you select, through a local gateway. `scripts/extract-paper.py` turns the PDF into text with a checked printed-page map, and `scripts/verify-quotes.py` checks every quotation against the page the note claims. It rejects a quotation from another page, an invented word, an ellipsis or a page range, and a note with no quotations does not pass. The check covers wording only. The skill never accepts a claim, and the plugin reference has a walkthrough on an invented paper.
+- `research-harness serve --app [--app-data <dir>] [--no-open]` starts the session server in app mode. It starts without a paper project, opens the project of the folder it runs in if there is one, and prints the URL of the app page at `/app`. The page offers New project, Open project and Clone from link, and with a project open a sidebar with Get updates, Send my changes, Start session, Agenda, Export minutes and Invite co-author. Each dialog says what it will do before it does it. Recent projects are kept in `--app-data`, by default `~/.research-harness`. `serve` without `--app` works as before.
+- The session view shows each statement's status and who owns it, in the poster, the element view, To talk about, History and Framings. Text and spacing scale with the window, so the view reads on a projector, and light and dark colours have higher contrast.
+
+### Changed
+
+- **The guard now needs Claude Code 2.1.295 or newer.** It blocks the tool call when it times out, crashes or cannot start. Before, Claude Code ran the call unjudged in that case, and a slow Node start on a busy machine was enough. While the guard cannot answer, every tool call in every project is blocked. `SessionStart` still fails open.
+- The session view is set as a galley proof. What the authors said or decided stands in one numbered column. What an agent proposes waits in the margin as a query, tied to its statement by a leader line, until you accept it with a sentence of your own. Field chips show each field's number and, in a wide window, its name. A statement can be linked by its number (`#st-3.1`), and a statement changed since your last read carries a "New" mark. Present shows one field and its queries at projector scale. The poster prints on one A4 landscape page in three columns, and a fuller canvas runs on to a second page instead of being set smaller. Its margin has a "Go to the first query" link. Source Serif 4 and Hanken Grotesk ship with the plugin.
+- The session view no longer scrolls sideways down to 320 px. The tab bar wraps, the field list and the framing comparison stack, and every control is at least 24 by 24 pixels. On a narrow window the field rail sits below the selected view.
+- The agenda puts discussion items first and groups unanswered questions by field. The poster explains how to comment and decide, and read-only examples say that nothing can be saved. History leaves out intact record checks and describes changed or unchecked records in plain words.
+- Keyboard use and screen readers get more: view links identify the current page, headings follow the reading order, the skip link reaches the current content, and errors in the accept and framing-choice dialogs and in inline notes are tied to their field. Saving a note or marking a statement as said returns focus to the field.
+- `research-harness merge-log` now merges two logs that both started from the same empty log, as happens when a project is shared before anything is logged and both people then log. Before, it refused and Get updates reported a failed merge. Logs from another project, sealed under another key, or starting with an unsealed entry are still refused.
+
+### Fixed
+
+- The guard no longer lets data in a heredoc reach a command that removes research state. `xargs rm <<'EOF'` with `research/canvas.md` in the body, `cat <<'EOF' | xargs rm`, and a `while read` loop over a heredoc listing `research` are denied. Heredoc text is split the way `xargs` splits it, and an unquoted heredoc is judged as bash expands it, so `$PWD/research/canvas.md` counts. A `read` loop and `xargs -d` or `read -d` with another delimiter are judged item by item. Commands that only read, such as `git commit -F - <<'EOF'`, and paths outside the state still pass.
+- `research-harness merge-log` refuses before it touches `research/decisions.md` when our log carries no seal and theirs holds no entries. Before, it wrote the file and then failed its own check, leaving the file modified.
+- A glossary acceptance is checked against the full definition that was reviewed, so a short identifier that collides can no longer hide a changed entry. Acceptance checks for a concurrent edit before it writes, and a failed write restores the glossary without overwriting that edit. A glossary changed during acceptance now gives the usual one-line refusal instead of a stack trace. An id that two headings share is not treated as accepted. The `glossary-accept` skill explains how to recover from a marker that was never logged.
+
+### Under the hood
+
+- Internal modules for the coming desktop app: `hooks/lib/app-git.js` (clone, update, commit and send without a shell), `hooks/lib/app-cli.js` (runs the plugin CLI for one project), `hooks/lib/app-store.js` and `hooks/lib/app-api.js` (recent projects and the app's routes). Nothing outside `serve --app` calls them. Embedded in the app page, the session view takes its token and tab from the page by message and ignores other origins.
+- The README pictures come from a committed `docs/media/showcase-state.json` that a test keeps renderable, with `scripts/capture-session-view.js` to capture them, and the READMEs show five captures of the session view.
+- New tests for literal note paths in a notes-only research directory, and the suite now passes on a machine without a git `user.name`.
+
 ## 0.5.0 (2026-10-02)
 
 Two people, one canvas: a researcher and a supervisor can now run a session on the same canvas, from one machine or from two git clones. The README's new section "Two people, one canvas" walks through the setup.

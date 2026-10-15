@@ -716,17 +716,10 @@ test('Names: unknown and All filter without browser storage and an absent name l
 });
 
 // Browser checks use live session routes: fixture mode suppresses statement actions.
-let keyboardChromium;
-try { ({ chromium: keyboardChromium } = require('playwright')); } catch (err) {
-  if (err.code !== 'MODULE_NOT_FOUND') throw err;
-}
+const { chromium: keyboardChromium, launchChromium, focusContrastRatios } = require('./helpers/a11y');
 for (const colorScheme of ['light', 'dark']) {
   test('live keyboard navigation, dialog errors and return focus in ' + colorScheme, { skip: !keyboardChromium, timeout: 120000 }, async (t) => {
-    let browser;
-    try { browser = await keyboardChromium.launch(); } catch (err) {
-      if (!/Executable doesn't exist/.test(err.message)) throw err;
-      browser = await keyboardChromium.launch({ channel: 'chromium' });
-    }
+    const browser = await launchChromium();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 320, height: 720 }, colorScheme });
     const writes = [];
@@ -843,19 +836,7 @@ for (const colorScheme of ['light', 'dark']) {
     // The focus ring surrounds each control on its containing surface, not its fill.
     await page.evaluate(() => { document.querySelector('#notice').hidden = false; });
     await page.keyboard.press('Tab');
-    const ratios = await page.evaluate(() => {
-      const luminance = (rgb) => rgb.map((c) => c / 255).map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).reduce((n, c, i) => n + c * [0.2126, 0.7152, 0.0722][i], 0);
-      const rgb = (color) => color.match(/[\d.]+/g).slice(0, 3).map(Number);
-      return [...document.querySelectorAll('a,button,summary,input,textarea,[tabindex]')].filter((node) => node.getClientRects().length && !node.disabled).map((node) => {
-        node.focus();
-        let parent = node.parentElement;
-        while (parent && getComputedStyle(parent).backgroundColor === 'rgba(0, 0, 0, 0)') parent = parent.parentElement;
-        const css = getComputedStyle(node);
-        const foreground = luminance(rgb(css.outlineColor));
-        const background = luminance(rgb(getComputedStyle(parent).backgroundColor));
-        return { label: node.textContent.trim().slice(0, 40), ratio: (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05) };
-      });
-    });
+    const ratios = await focusContrastRatios(page);
     for (const item of ratios) assert.ok(item.ratio >= 3, item.label + ': focus contrast >= 3:1 (' + item.ratio.toFixed(2) + ')');
     t.diagnostic('lowest visible-control focus contrast ' + Math.min(...ratios.map((item) => item.ratio)).toFixed(2) + ':1');
   });
@@ -913,13 +894,9 @@ test('a statement number is addressable by fragment and survives the code redemp
 // Embedded in the app's shell, the view takes its token and its tab from the
 // shell by message. Only its own parent, from its own origin, may speak to it.
 async function embeddedViewPage(t, shellScript) {
-  let browser;
-  try { browser = await keyboardChromium.launch(); } catch (err) {
-    if (!/Executable doesn't exist/.test(err.message)) throw err;
-    browser = await keyboardChromium.launch({ channel: 'chromium' });
-  }
+  const browser = await launchChromium();
   t.after(() => browser.close());
-  const context = await browser.newContext({ viewport: { width: 1000, height: 800 } });
+  const context =await browser.newContext({ viewport: { width: 1000, height: 800 } });
   const page = await context.newPage();
   const seen = { writes: [], stateReads: 0, sessions: 0 };
   page.on('pageerror', (err) => t.diagnostic('pageerror: ' + err.message));

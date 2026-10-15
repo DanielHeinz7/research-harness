@@ -103,6 +103,8 @@ async function openPage(t, srv, { viewport = { width: 1440, height: 900 }, color
         onAgentLookup: (cb) => { window.__agent.lookup = cb; },
         onAgentReveal: (cb) => { window.__agent.reveal = cb; },
         onAgentFocusView: (cb) => { window.__agent.focusView = cb; },
+        onUpdate: (callback) => { window.__sendUpdate = callback; },
+        restartToUpdate: async () => { window.__restarted = (window.__restarted || 0) + 1; },
       };
     });
   }
@@ -820,4 +822,43 @@ test('a second window with a used code says so and offers no controls',{ skip, t
   await page.getByRole('alert').waitFor();
   assert.match(await page.getByRole('alert').textContent(), /already opened elsewhere/);
   assert.equal(await page.getByRole('button').count(), 0);
+});
+
+for (const colorScheme of ['light', 'dark']) {
+  test(`a ready update shows on the start page with a Restart now button (${colorScheme})`, { skip, timeout: 120000 }, async (t) => {
+    const srv = await startApp(t);
+    const page = await openPage(t, srv, { host: true, colorScheme });
+    await page.getByRole('button', { name: 'New project…' }).first().waitFor();
+    assert.equal(await page.locator('#out-app-start').textContent(), '');
+    assert.equal(await page.locator('#start-restart').isVisible(), false);
+    await page.evaluate(() => window.__sendUpdate({ state: 'ready', version: '9.9.9' }));
+    await page.locator('#out-app-start', { hasText: 'Version 9.9.9 is ready. It installs when you quit Placet.' }).waitFor();
+    const ratios = await focusContrastRatios(page);
+    const restart = ratios.find((item) => /Restart now/.test(item.label));
+    assert.ok(restart && restart.ratio >= 3, `Restart now: focus contrast >= 3:1 (${restart && restart.ratio.toFixed(2)})`);
+    await page.locator('#start-restart').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => window.__restarted), 1);
+  });
+}
+
+test('in the sidebar: a failed check by hand says why and offers no restart', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t, { open: await makeProject() });
+  const page = await openPage(t, srv, { host: true });
+  await page.locator('#proj-name').waitFor();
+  assert.equal(await page.locator('#app-group').isVisible(), false);
+  await page.evaluate(() => window.__sendUpdate({ state: 'error', message: 'No connection to GitHub. Check again when you are online.' }));
+  await page.locator('#out-app', { hasText: 'No connection to GitHub.' }).waitFor();
+  assert.equal(await page.locator('#app-group').isVisible(), true);
+  assert.equal(await page.locator('#btn-restart').isVisible(), false);
+  assert.equal(await page.locator('#out-app').getAttribute('data-kind'), 'problem');
+});
+
+test('in a browser tab there is no update line at all', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t);
+  const page = await openPage(t, srv);
+  await page.getByRole('button', { name: 'New project…' }).first().waitFor();
+  assert.equal(await page.evaluate(() => typeof window.__sendUpdate), 'undefined');
+  assert.equal(await page.locator('#app-group').isVisible(), false);
+  assert.equal(await page.locator('#out-app-start').textContent(), '');
 });

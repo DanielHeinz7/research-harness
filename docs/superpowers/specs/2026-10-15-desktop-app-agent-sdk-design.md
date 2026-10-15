@@ -1,10 +1,10 @@
 # Desktop app, sub-project 3: the agent panel on the Claude Agent SDK
 
-Status: draft for the owner's review, 2026-10-15. Built after sub-projects 1 and 2.
+Status: approved by the owner, 2026-10-15. Built after sub-projects 1 and 2.
 Decision record: vault `appdev/research-harness.md`, blocks of 2026-10-14 ("Desktop-App mit eigenem
 Agenten") and 2026-10-15. Builds on the approved shell spec
-`docs/superpowers/specs/2026-10-15-desktop-app-shell-design.md` (`990bbed`), the sub-project 2 draft
-`docs/superpowers/specs/2026-10-15-desktop-app-claude-code-design.md` (`73bb23a`), and the direction
+`docs/superpowers/specs/2026-10-15-desktop-app-shell-design.md` (`990bbed`), the approved sub-project 2 spec
+`docs/superpowers/specs/2026-10-15-desktop-app-claude-code-design.md` (`03d652b`), and the direction
 contract `.impeccable/surfaces/plugins-research-harness-dashboard-canvas-html.md` (`5d7f17d`). Mock
 for the column: `.impeccable/mocks/decision/sketches/model-pick.html`. Old mockup, still the
 reference for the "Connect a model" flow (not the look):

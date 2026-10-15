@@ -1560,7 +1560,9 @@
   }
 
   function applyActiveView() {
-    document.getElementById('fieldnav').hidden = activeView === 'agenda' || activeView === 'log';
+    // The shell may name a tab before the first render has drawn the field chips.
+    var fieldnav = document.getElementById('fieldnav');
+    if (fieldnav) fieldnav.hidden = activeView === 'agenda' || activeView === 'log';
     var views = app.querySelectorAll('.view');
     for (var i = 0; i < views.length; i++) {
       views[i].classList.toggle('active', views[i].getAttribute('data-view') === activeView);

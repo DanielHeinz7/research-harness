@@ -1085,3 +1085,21 @@ test('embedded in the shell: a message from another origin or another window cha
   }
   assert.deepEqual(seen.writes, [], 'no write reached the server');
 });
+
+test('embedded in the shell: a tab named before the canvas has loaded raises no error and still holds', { skip: !keyboardChromium, timeout: 120000 }, async (t) => {
+  // The shell names the tab as soon as the view is ready, and the state answer is held
+  // back, so the view has drawn nothing yet when the tab arrives.
+  const { page } = await embeddedViewPage(t, `
+    window.addEventListener('message', (event) => {
+      if (!event.data || event.data.type !== 'harness-ready' || event.source !== document.getElementById('view').contentWindow) return;
+      event.source.postMessage({ type: 'harness-tab', tab: 'to-talk-about' }, location.origin);
+    });`);
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.route('http://session.test/api/state', async (route) => { await pause(500); return route.fallback(); });
+  await page.goto('http://session.test/shell');
+  const frame = viewFrame(page);
+  await frame.waitForSelector('#agenda.active');
+  assert.equal(await activeTab(frame), 'To talk about', 'the early tab holds once the canvas is drawn');
+  assert.deepEqual(errors, [], 'the early tab raised no error in the view');
+});

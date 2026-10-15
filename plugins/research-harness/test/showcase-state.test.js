@@ -54,8 +54,9 @@ async function mount(query) {
   return { app: node('app'), notice: node('notice'), noticeText: node('notice-text') };
 }
 
-// Optional browser coverage uses the same locally supplied Playwright as the
-// screenshot script; the plugin and its ordinary Node tests need no browser.
+// Optional browser coverage uses the repository's Playwright devDependency,
+// the same one the screenshot script uses; the plugin and its ordinary Node
+// tests need no browser.
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (err) {
   if (err.code !== 'MODULE_NOT_FOUND') throw err;
@@ -319,6 +320,11 @@ test('Present: Enter on the control shows one field with its queries, arrow keys
   assert.ok(projector >= 21, `projector scale: ${projector}px`);
   await page.keyboard.press('Escape');
   assert.equal(await present.isHidden(), true);
+  // Leaving full screen settles asynchronously: the browser parks focus on
+  // <body> for a moment before the page's own refocus lands, and how long that
+  // takes differs between the bundled headless shell and the full Chromium
+  // build. Wait for the settled state instead of racing it.
+  await page.waitForFunction(() => document.activeElement.className === 'present-btn', null, { timeout: 10000 });
   assert.equal(await page.evaluate(() => document.activeElement.className), 'present-btn', 'focus returns to the control');
   assert.equal(await page.evaluate(() => document.getElementById('app').inert), false);
   assert.deepEqual(errors, []);

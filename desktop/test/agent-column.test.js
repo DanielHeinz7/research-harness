@@ -7,7 +7,7 @@ const { pathToFileURL } = require('node:url');
 
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (err) { if (err.code !== 'MODULE_NOT_FOUND') throw err; }
-const skip = chromium ? false : 'Playwright is not installed; run with NODE_PATH pointing at a node_modules that has it.';
+const skip = chromium ? false : 'Playwright is not installed; run `npm install && npm run setup:browsers` at the repository root.';
 const PAGE = pathToFileURL(path.join(__dirname, '..', 'agent', 'column', 'column.html')).href;
 
 const BASE = { version: '2.1.300', plan: 'Claude Pro', guard: null, exit: null, project: '/papers/a', sessionProject: null, canContinue: false, screenReader: false, screenReaderMode: false, pluginVersion: '0.5.0', step: null, fontUrl: null };

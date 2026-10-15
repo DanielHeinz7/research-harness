@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { createController } = require('../agent/controller');
-const { readAgentStore } = require('../agent/store');
+const { readAgentStore, writeAgentStore } = require('../agent/store');
 
 function fakeSession() {
   const ev = new EventEmitter();
@@ -183,6 +183,32 @@ test('not now and the screen-reader setting are remembered; the store holds no s
   assert.equal(stored.notNow, true);
   assert.equal(stored.screenReader, true);
   assert.doesNotMatch(fs.readFileSync(path.join(dataDir, 'agent.json'), 'utf8'), /@|org|token/i);
+});
+
+test('the SDK way: Claude Code is not checked or started, and the first run is skipped', async () => {
+  let located = 0;
+  let checked = 0;
+  const { ctl, dataDir, spawned } = setup({
+    locate: async () => { located += 1; return { path: '/c', version: '2.1.300', supported: true }; },
+    authStatus: async () => { checked += 1; return { loggedIn: true, method: 'claude.ai', plan: 'pro' }; },
+  });
+  writeAgentStore(dataDir, { way: 'sdk' });
+  await ctl.setProject('/papers/a');
+  assert.equal(located, 0, 'Claude Code is not looked for');
+  assert.equal(checked, 0, 'the sign-in is not checked');
+  assert.equal(spawned.length, 0, 'nothing is started');
+  assert.equal(ctl.state().phase, 'no-project', 'the state stays idle');
+  assert.equal(ctl.state().project, '/papers/a', 'the project is still recorded for the column');
+});
+
+test('the project event fires when the folder actually changes', async () => {
+  const { ctl } = setup();
+  const seen = [];
+  ctl.on('project', (folder) => seen.push(folder));
+  await ctl.setProject('/papers/a');
+  await ctl.setProject('/papers/a');
+  await ctl.setProject('/papers/b');
+  assert.deepEqual(seen, ['/papers/a', '/papers/b']);
 });
 
 test('the column view follows the slot, scaled by the page zoom', () => {

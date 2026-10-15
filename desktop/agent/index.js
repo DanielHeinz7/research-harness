@@ -94,7 +94,9 @@ function setUpAgent({ win, pluginRoot, pluginVersion, gitEnv, dataDir, shimsDir 
       controller.dispose();
     }
     await controller.setProject(folder);
-    if (!readAgentStore(dataDir).notNow) show(true);
+    // The SDK way shows its own page in the column, so this first run stays off.
+    const stored = readAgentStore(dataDir);
+    if (stored.way !== 'sdk' && !stored.notNow) show(true);
   });
   ipcMain.on('agent:setup', (e) => { if (e.sender === win.webContents) { show(true); controller.refresh(); } });
 

@@ -909,3 +909,122 @@ test('a statement number is addressable by fragment and survives the code redemp
   assert.match(live.app.innerHTML, /id="st-1\.1"/);
   assert.match(live.app.innerHTML, /<a class="sid" href="#st-1\.1" aria-label="Statement 1\.1">1\.1<\/a>/);
 });
+
+// Embedded in the app's shell, the view takes its token and its tab from the
+// shell by message. Only its own parent, from its own origin, may speak to it.
+async function embeddedViewPage(t, shellScript) {
+  let browser;
+  try { browser = await keyboardChromium.launch(); } catch (err) {
+    if (!/Executable doesn't exist/.test(err.message)) throw err;
+    browser = await keyboardChromium.launch({ channel: 'chromium' });
+  }
+  t.after(() => browser.close());
+  const context = await browser.newContext({ viewport: { width: 1000, height: 800 } });
+  const page = await context.newPage();
+  const seen = { writes: [], stateReads: 0, sessions: 0 };
+  page.on('pageerror', (err) => t.diagnostic('pageerror: ' + err.message));
+  const shell = '<!doctype html><title>shell</title><iframe id="view" src="/" title="Session view" style="width:900px;height:700px"></iframe>'
+    + '<iframe id="other" src="/blank" title="Other" style="width:10px;height:10px"></iframe><script>' + shellScript + '</script>';
+  const answer = (route, status, body, type) => route.fulfill({ status, contentType: type, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  await context.route('http://session.test/**', (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === '/api/state') { seen.stateReads += 1; return answer(route, 200, variantsState, 'application/json'); }
+    if (pathname === '/api/session') { seen.sessions += 1; return answer(route, 200, { ok: true, token: 'T-from-shell' }, 'application/json'); }
+    if (pathname.startsWith('/api/')) {
+      seen.writes.push({ pathname, token: request.headers()['x-harness-token'], payload: request.postDataJSON() });
+      return answer(route, 200, { ok: true }, 'application/json');
+    }
+    if (pathname === '/blank') return answer(route, 200, '<!doctype html><title>blank</title>', 'text/html');
+    if (pathname === '/shell') return answer(route, 200, shell, 'text/html');
+    return answer(route, 200, html, 'text/html');
+  });
+  return { page, context, seen };
+}
+
+const viewFrame = (page) => page.frames().find((f) => f.url() === 'http://session.test/');
+// The tab's label, without the count badge some tabs carry.
+const activeTab = async (frame) => (await frame.locator('#view-tabs [aria-current="page"]').evaluate((a) => a.firstChild.textContent)).trim();
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const tellView = (target, message, origin) => target.evaluate(([m, o]) => document.getElementById('view').contentWindow.postMessage(m, o === '*' ? '*' : location.origin), [message, origin]);
+
+test('embedded in the shell: the view announces itself, takes its token and tab from the shell, and reads state on refresh', { skip: !keyboardChromium, timeout: 120000 }, async (t) => {
+  // The shell redeems its own code, then answers the view's ready message.
+  const { page, seen } = await embeddedViewPage(t, `
+    window.log = [];
+    window.addEventListener('message', async (event) => {
+      window.log.push([event.origin, event.data && event.data.type]);
+      if (!event.data || event.data.type !== 'harness-ready' || event.source !== document.getElementById('view').contentWindow) return;
+      const res = await fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'abc123' }) });
+      const { token } = await res.json();
+      event.source.postMessage({ type: 'harness-token', token }, location.origin);
+      event.source.postMessage({ type: 'harness-tab', tab: 'to-talk-about' }, location.origin);
+    });`);
+  await page.goto('http://session.test/shell');
+  const frame = viewFrame(page);
+  await frame.waitForSelector('#agenda.active');
+  assert.deepEqual(await page.evaluate(() => window.log), [['http://session.test', 'harness-ready']], 'the view announces itself once, from its own origin');
+  assert.equal(await activeTab(frame), 'To talk about', 'the shell switched the view to To talk about');
+  assert.equal(await frame.locator('#notice').evaluate((n) => n.hidden), true, 'no "link already used" notice: the view never tried to redeem a code');
+  assert.equal(seen.sessions, 1, 'only the shell redeemed a code');
+
+  // Accept sits on the poster and the field views; the agenda only points to them.
+  await tellView(page, { type: 'harness-tab', tab: 'poster' });
+  await frame.waitForSelector('#poster.active');
+  await frame.locator('#poster button[data-action="accept"]').first().click();
+  assert.equal(await frame.locator('#dlg').evaluate((dlg) => dlg.open), true, 'Accept opens the sentence dialog');
+  await frame.locator('#dlg textarea[name="explained"]').fill('The fieldnotes show it.');
+  await frame.locator('#dlg button[type="submit"]').click();
+  await frame.waitForFunction(() => !document.getElementById('dlg').open);
+  assert.equal(seen.writes.length, 1);
+  assert.equal(seen.writes[0].pathname, '/api/accept');
+  assert.equal(seen.writes[0].token, 'T-from-shell', 'the write carries the token the shell sent');
+
+  const reads = seen.stateReads;
+  await tellView(page, { type: 'harness-refresh' });
+  for (let i = 0; i < 50 && seen.stateReads === reads; i += 1) await pause(20);
+  assert.equal(seen.stateReads, reads + 1, 'harness-refresh reads /api/state now');
+
+  await tellView(page, { type: 'harness-tab', tab: 'history' });
+  await frame.waitForSelector('#log.active');
+  assert.equal(await activeTab(frame), 'History');
+  await tellView(page, { type: 'harness-tab', tab: 'constructor' });
+  await tellView(page, { type: 'harness-tab', tab: 'compare' });
+  await pause(100);
+  assert.equal(await activeTab(frame), 'History', 'a tab name the shell does not use changes nothing');
+});
+
+test('embedded in the shell: a message from another origin or another window changes nothing', { skip: !keyboardChromium, timeout: 120000 }, async (t) => {
+  // This shell never answers the view: any token the view ends up with came from a stranger.
+  const { page, context, seen } = await embeddedViewPage(t, '');
+  await page.goto('http://session.test/shell');
+  const frame = viewFrame(page);
+  await frame.waitForSelector('#poster.active');
+  const messages = [{ type: 'harness-token', token: 'T-stolen' }, { type: 'harness-tab', tab: 'history' }, { type: 'harness-refresh' }];
+  const readsBefore = seen.stateReads;
+
+  // Another window, same origin: a sibling frame is not the view's parent.
+  const other = page.frames().find((f) => f.url() === 'http://session.test/blank');
+  await other.evaluate((list) => { const view = window.parent.frames[0]; list.forEach((m) => view.postMessage(m, location.origin)); }, messages);
+
+  // Another origin: a data: page that embeds the view is its parent, but not its origin.
+  const outsider = await context.newPage();
+  await outsider.goto('data:text/html,' + encodeURIComponent('<iframe id="view" src="http://session.test/"></iframe>'));
+  const embedded = outsider.frames().find((f) => f.url() === 'http://session.test/');
+  await embedded.waitForSelector('#poster.active');
+  const readsMid = seen.stateReads;
+  for (const m of messages) await tellView(outsider, m, '*');
+  await pause(300);
+
+  assert.equal(await activeTab(frame), 'Poster', 'a sibling window cannot switch the tab');
+  assert.equal(await activeTab(embedded), 'Poster', 'another origin cannot switch the tab');
+  assert.equal(seen.stateReads, readsMid, 'neither can make the view read state');
+  assert.equal(readsMid - readsBefore, 1, 'the only extra read is the outsider view loading itself');
+  // Neither stranger gave the view a token: a write is refused in the view and never sent.
+  for (const target of [frame, embedded]) {
+    await target.locator('#poster button[data-action="stated"]').first().click({ force: true });
+    await pause(200);
+    assert.equal(await target.locator('#notice').evaluate((n) => n.hidden), false, 'the view says it has no session');
+  }
+  assert.deepEqual(seen.writes, [], 'no write reached the server');
+});

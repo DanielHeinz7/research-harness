@@ -19,14 +19,17 @@ function gitEnv(dir) {
 
 const firstLine = (text) => text.trim().split('\n')[0];
 
-// node-pty's spawn-helper and pty.node, one per processor (sub-project 2's
-// packaging). Empty when the module is not in the build.
-function nodePtyBinaries(app) {
-  const dir = path.join(app, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules', 'node-pty');
+// node-pty's spawn-helper and pty.node for this build's own processor
+// (sub-project 2's packaging). node-pty ships prebuilds for other processors
+// and platforms as well and the build carries them all; only the folder named
+// after this build's processor has to hold this build's binaries. Empty when
+// the module is not in the build.
+function nodePtyBinaries(app, arch) {
+  const dir = path.join(app, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds', `darwin-${arch}`);
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir, { recursive: true, withFileTypes: true })
+  return fs.readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && (entry.name === 'spawn-helper' || entry.name === 'pty.node'))
-    .map((entry) => path.join(entry.parentPath, entry.name))
+    .map((entry) => path.join(dir, entry.name))
     .sort();
 }
 
@@ -56,7 +59,7 @@ function verifyApp(app, { dist, arch, run = runTool, rosetta = true }) {
   }
   for (const [team, n] of Object.entries(kept)) notes.push(`kept ${n} file(s) signed by team ${team}`);
 
-  for (const file of nodePtyBinaries(app)) {
+  for (const file of nodePtyBinaries(app, arch)) {
     const kind = run('file', ['-b', file]);
     if (!kind.stdout.includes(FILE_ARCH[arch])) problems.push(`${path.relative(app, file)} is not built for ${arch}: ${firstLine(kind.stdout)}`);
   }

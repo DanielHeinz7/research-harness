@@ -21,7 +21,11 @@ function runCli(root, args) {
         resolve({ ok: true, output });
         return;
       }
-      resolve({ ok: false, code: err.code === 2 ? 'invalid' : 'refused', error: output || err.message });
+      // err.message is about how node started the command — it carries the
+      // whole command line, paths and all — and the command's own sentence is
+      // already in stdout (the plugin's fail() writes there). Nothing readable
+      // came back, so say that in the app's words rather than repeat node's.
+      resolve({ ok: false, code: err.code === 2 ? 'invalid' : 'refused', error: output || 'This step could not be run, and it says nothing about why. Close this window and start the app again.' });
     });
   });
 }

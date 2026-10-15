@@ -185,7 +185,29 @@ test('a link shows without the password or token in front of its host', () => {
   assert.equal(appGit.displayLink('https://me:secret@github.com/a/b.git'), 'https://github.com/a/b.git');
   assert.equal(appGit.displayLink('https://github.com/a/b.git'), 'https://github.com/a/b.git');
   assert.equal(appGit.displayLink('git@github.com:a/b.git'), 'git@github.com:a/b.git');
+  assert.equal(appGit.displayLink('ssh://me:secret@host/a/b.git'), 'ssh://host/a/b.git', 'whatever the scheme');
+  assert.equal(appGit.displayLink('https://user@host/a.git'), 'https://host/a.git');
+  assert.equal(appGit.displayLink('https://me:p@ss@host/a.git'), 'https://host/a.git', 'up to the last @ of the host part');
   assert.equal(appGit.displayLink(null), null);
+});
+
+test('a link that carries a password or token is recognised; a plain user name is not', () => {
+  for (const bad of ['https://me:secret@github.com/a/b.git', 'ssh://git:token@host/a.git', 'http://x:y@h/a.git']) {
+    assert.equal(appGit.linkCarriesPassword(bad), true, bad);
+  }
+  for (const ok of ['https://github.com/a/b.git', 'git@github.com:a/b.git', 'ssh://git@host/a.git', 'https://user@host/a.git', '', null]) {
+    assert.equal(appGit.linkCarriesPassword(ok), false, String(ok));
+  }
+});
+
+test('clone refuses a link with a password in it, so no token reaches .git/config', async () => {
+  const parent = tmp();
+  const r = await appGit.clone({ url: 'https://me:secret@host/a.git', parent, folder: 'paper' });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'invalid');
+  assert.match(r.error, /without your password/);
+  assert.doesNotMatch(r.error, /secret/);
+  assert.equal(fs.existsSync(path.join(parent, 'paper')), false, 'nothing was set up');
 });
 
 test('a project becomes a repository with one commit; a link is added, checked and pushed with upstream', async () => {
@@ -216,4 +238,114 @@ test('a project becomes a repository with one commit; a link is added, checked a
   const missing = await appGit.remoteIsEmpty(`file://${path.join(dir, 'nowhere.git')}`);
   assert.equal(missing.ok, false);
   assert.doesNotMatch(missing.error, /fatal:/);
+});
+
+test('a project inside another repository reads its own origin, never the parent\'s', async () => {
+  const dir = tmp();
+  sh(dir, 'init', '-b', 'main');
+  sh(dir, 'remote', 'add', 'origin', 'https://example.invalid/outer.git');
+  const inner = path.join(dir, 'paper');
+  fs.mkdirSync(inner);
+  assert.equal(await appGit.originOf(inner), null, 'a folder without its own repository has no origin');
+  sh(inner, 'init', '-b', 'main');
+  assert.equal(await appGit.originOf(inner), null, 'its own repository without an origin');
+  assert.equal(await appGit.hasUpstream(inner), false);
+  sh(inner, 'remote', 'add', 'origin', 'https://example.invalid/inner.git');
+  assert.equal(await appGit.originOf(inner), 'https://example.invalid/inner.git', 'its own origin');
+});
+
+test('hasUpstream tells a stored link from an upload that went through', async () => {
+  process.env.RESEARCH_HARNESS_GIT_PROTOCOLS = 'https:ssh:file';
+  const dir = tmp();
+  const project = path.join(dir, 'paper');
+  fs.mkdirSync(path.join(project, 'research'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'research', 'canvas.md'), 'canvas\n');
+  await appGit.initRepo(project, ['research'], 'Start the project', 'A. Author');
+  sh(dir, 'init', '--bare', '-b', 'main', 'empty.git');
+  const url = `file://${path.join(dir, 'empty.git')}`;
+  assert.equal(await appGit.hasUpstream(project), false, 'no link at all');
+  assert.deepEqual(await appGit.addOrigin(project, url), { ok: true });
+  assert.equal(await appGit.originOf(project), url);
+  assert.equal(await appGit.hasUpstream(project), false, 'a stored link is not an upload');
+  assert.deepEqual(await appGit.push(project, { upstream: true }), { ok: true });
+  assert.equal(await appGit.hasUpstream(project), true);
+});
+
+test('commit sends the named paths only, not other work staged in the same repository', async () => {
+  const dir = tmp();
+  const project = path.join(dir, 'paper');
+  fs.mkdirSync(path.join(project, 'research'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'research', 'canvas.md'), 'canvas\n');
+  fs.writeFileSync(path.join(project, 'notes.txt'), 'notes\n');
+  await appGit.initRepo(project, ['research'], 'Start the project', 'A. Author');
+  assert.equal(sh(project, 'ls-files').trim(), 'research/canvas.md');
+  // Someone staged work outside the research folder in the same repository.
+  fs.writeFileSync(path.join(project, 'notes.txt'), 'notes, changed\n');
+  sh(project, 'add', '--', 'notes.txt');
+  fs.appendFileSync(path.join(project, 'research', 'canvas.md'), 'edit\n');
+  assert.deepEqual(await appGit.commit(project, ['research'], 'Research canvas changes', 'A. Author'), { ok: true, committed: true });
+  assert.equal(sh(project, 'show', '--name-only', '--format=', 'HEAD').trim(), 'research/canvas.md');
+  assert.equal(sh(project, 'status', '--porcelain').trim(), 'A  notes.txt', 'the other staged change is still there');
+
+  // Nothing changed in the research folder: no commit is made for it.
+  fs.appendFileSync(path.join(project, 'notes.txt'), 'more\n');
+  sh(project, 'add', '--', 'notes.txt');
+  assert.deepEqual(await appGit.commit(project, ['research'], 'Research canvas changes', 'A. Author'), { ok: true, committed: false });
+  assert.equal(sh(project, 'rev-list', '--count', 'HEAD').trim(), '2');
+});
+
+// A stand-in git that says nothing and never ends, so the deadline is what
+// ends it: on a machine without the developer tools the real git at /usr/bin
+// opens the system installer instead, which is what SQ-282 is about.
+function quietGit(file) {
+  fs.writeFileSync(file, '#!/bin/sh\nexec sleep 30\n');
+  fs.chmodSync(file, 0o755);
+  return file;
+}
+
+test('a network command that says nothing for too long gives up with a sentence', { skip: process.platform === 'win32' }, async () => {
+  const stub = quietGit(path.join(tmp(), 'quiet-git'));
+  process.env.RESEARCH_HARNESS_GIT = stub;
+  process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS = '1000';
+  try {
+    const started = Date.now();
+    const r = await appGit.push(tmp());
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'timeout');
+    assert.match(r.error, /stopped answering/);
+    assert.doesNotMatch(r.error, /fatal:|research-harness [a-z]|quiet-git/);
+    assert.ok(Date.now() - started < 20000, 'it did not wait for the command');
+  } finally {
+    delete process.env.RESEARCH_HARNESS_GIT;
+    delete process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS;
+  }
+});
+
+test('the deadline measures silence, so a command that keeps reporting goes on', { skip: process.platform === 'win32' }, async () => {
+  const stub = path.join(tmp(), 'chatty-git');
+  fs.writeFileSync(stub, '#!/bin/sh\necho one\nsleep 0.5\necho two\nsleep 0.5\necho three\n');
+  fs.chmodSync(stub, 0o755);
+  process.env.RESEARCH_HARNESS_GIT = stub;
+  process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS = '3000';
+  try {
+    assert.deepEqual(await appGit.push(tmp()), { ok: true });
+  } finally {
+    delete process.env.RESEARCH_HARNESS_GIT;
+    delete process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS;
+  }
+});
+
+test('a local command has no deadline: it is not a network step', { skip: process.platform === 'win32' }, async () => {
+  const stub = path.join(tmp(), 'slow-git');
+  fs.writeFileSync(stub, '#!/bin/sh\nsleep 1.5\necho main\n');
+  fs.chmodSync(stub, 0o755);
+  process.env.RESEARCH_HARNESS_GIT = stub;
+  process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS = '500';
+  try {
+    const dir = tmp();
+    assert.equal(await appGit.hasUpstream(dir), true, 'a slow local answer is waited for');
+  } finally {
+    delete process.env.RESEARCH_HARNESS_GIT;
+    delete process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS;
+  }
 });

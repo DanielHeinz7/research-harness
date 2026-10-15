@@ -1,7 +1,7 @@
 # Desktop app, sub-project 3: the agent panel on the Claude Agent SDK
 
 Status: approved by the owner, 2026-10-15. Built after sub-projects 1 and 2.
-Decision record: vault `appdev/research-harness.md`, blocks of 2026-10-14 ("Desktop-App mit eigenem
+Decision record: the owner's project notes, blocks of 2026-10-14 ("Desktop-App mit eigenem
 Agenten") and 2026-10-15. Builds on the approved shell spec
 `docs/superpowers/specs/2026-10-15-desktop-app-shell-design.md` (`990bbed`), the approved sub-project 2 spec
 `docs/superpowers/specs/2026-10-15-desktop-app-claude-code-design.md` (`03d652b`), and the direction
@@ -33,7 +33,7 @@ Success, all five:
 
 ## 2. Decided before this spec
 
-From the vault, owner's words recorded there: the app gets its own agent; on first start the person
+From the owner's project notes, in the words recorded there: the app gets its own agent; on first start the person
 picks one of two ways and can switch later; way 1 (this sub-project) is an agent panel on the Agent
 SDK with an API key, an institute gateway or Bedrock/Vertex, credentials in the macOS Keychain; way 2
 is Claude Code with the person's own plan. The SDK docs forbid third parties to offer claude.ai login
@@ -192,8 +192,8 @@ switch the guard off. Managed settings that an organisation installs on the mach
 | Amazon Bedrock | kind, region, model, AWS profile name if used | a Bedrock API key if used | `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, `AWS_PROFILE` or `AWS_BEARER_TOKEN_BEDROCK` |
 | Google Vertex | kind, project ID, region, model | nothing | `CLAUDE_CODE_USE_VERTEX=1`, `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION` |
 
-"Institute gateway" means any endpoint that speaks the Anthropic Messages API, such as the KIT
-gateway in `~/dh-appdev/kit-gateway`, which the owner's check uses. Vertex uses the Google sign-in
+"Institute gateway" means any endpoint that speaks the Anthropic Messages API, such as the
+university gateway the owner's check uses. Vertex uses the Google sign-in
 already present on the Mac; the app checks for it and says so if it is missing, because creating one
 needs Google's own tools.
 

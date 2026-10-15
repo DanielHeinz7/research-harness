@@ -1,6 +1,6 @@
 # Desktop app, sub-project 4: distribution, signing and updates
 
-Status: draft for the owner's review, 2026-10-15.
+Status: approved by the owner, 2026-10-15.
 Decision record: vault `appdev/research-harness.md`, blocks of 2026-10-14 ("Desktop-App mit eigenem
 Agenten") and 2026-10-15 ("Desktop-App: Proposal-Satz, Video, handoff-Skill; Apple-Konto
 recherchiert"). Builds on sub-project 1: spec `2026-10-15-desktop-app-shell-design.md` (`990bbed`),

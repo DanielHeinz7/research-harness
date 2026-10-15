@@ -13,6 +13,7 @@ The session view has a new look. It is now set like a galley proof. Statements a
 - A `literature-note` skill that drafts a literature note from one paper you select, through a local gateway. `scripts/extract-paper.py` turns the PDF into text with a checked printed-page map, and `scripts/verify-quotes.py` checks every quotation against the page the note claims. It rejects a quotation from another page, an invented word, an ellipsis or a page range, and a note with no quotations does not pass. The check covers wording only. The skill never accepts a claim, and the plugin reference has a walkthrough on an invented paper.
 - `research-harness serve --app [--app-data <dir>] [--no-open]` starts the session server in app mode. It starts without a paper project, opens the project of the folder it runs in if there is one, and prints the URL of the app page at `/app`. The page offers New project, Open project and Clone from link, and with a project open a sidebar with Get updates, Send my changes, Start session, Agenda, Export minutes and Invite co-author. Each dialog says what it will do before it does it. Recent projects are kept in `--app-data`, by default `~/.research-harness`. `serve` without `--app` works as before.
 - The session view shows each statement's status and who owns it, in the poster, the element view, To talk about, History and Framings. Text and spacing scale with the window, so the view reads on a projector, and light and dark colours have higher contrast.
+- At the start of a Claude Code session, the summary lists the open proposals by statement number, for example `Open proposals by number (cite statements as 3.1 or 3.1b): 1.2b, 2.2`. These are the numbers the session view shows, so you and the agent name the same statement.
 
 ### Changed
 
@@ -32,6 +33,7 @@ The session view has a new look. It is now set like a galley proof. Statements a
 ### Under the hood
 
 - Internal modules for the coming desktop app: `hooks/lib/app-git.js` (clone, update, commit and send without a shell), `hooks/lib/app-cli.js` (runs the plugin CLI for one project), `hooks/lib/app-store.js` and `hooks/lib/app-api.js` (recent projects and the app's routes). Nothing outside `serve --app` calls them. Embedded in the app page, the session view takes its token and tab from the page by message and ignores other origins.
+- The session view can reveal and look up a statement by its number when the coming desktop app asks for it.
 - The README pictures come from a committed `docs/media/showcase-state.json` that a test keeps renderable, with `scripts/capture-session-view.js` to capture them, and the READMEs show five captures of the session view.
 - New tests for literal note paths in a notes-only research directory, and the suite now passes on a machine without a git `user.name`.
 

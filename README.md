@@ -125,6 +125,26 @@ software engineering (Zenodo, CC BY 4.0): several framings, a choice between
 them, an acceptance with an open question, a review, and a check of the log on
 another machine. A test runs its commands and holds them to the output shown.
 
+## Windows
+
+research-harness runs on Windows in a browser tab; see "Install on Windows" below once it ships.
+
+### Windows line endings
+
+Git for Windows checks out text files with Windows line endings (CRLF) unless told otherwise.
+research-harness reads only LF, so it refuses a canvas or decision log with CRLF and changes
+nothing. Projects created with research-harness 0.7 or later carry `research/.gitattributes`, which
+keeps LF in every checkout, and the desktop app clones with LF.
+
+To repair a copy you cloned yourself: first run `git status` in the project folder. If it lists no
+changes of your own, run
+
+    git config core.autocrlf false
+    git checkout -- research
+
+If it does list changes of yours, commit or copy them away first; `git checkout -- research`
+replaces the research files with the committed ones.
+
 ## Reference
 
 Dorobantu, S., Gruber, M., Ravasi, D., & Wellman, N. (2024). The AMJ Management

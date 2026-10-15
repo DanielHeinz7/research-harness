@@ -179,7 +179,10 @@ async function clone({ url, parent, folder }) {
   if (fs.existsSync(root) && !isEmptyFolder(root)) {
     return { ok: false, code: 'exists', error: `${root} already exists and is not empty.` };
   }
-  const r = await git(parent, ['clone', '--', url, root], { network: true });
+  // -c writes core.autocrlf=false into the new clone's own config before any
+  // file is checked out, so this clone and its later pulls keep LF even where
+  // Git for Windows set core.autocrlf=true globally (spec 4.2, layer 2).
+  const r = await git(parent, ['clone', '-c', 'core.autocrlf=false', '--', url, root], { network: true });
   return r.ok ? { ok: true, root } : failed(r, 'Cloning');
 }
 

@@ -26,14 +26,26 @@ const { chooseFraming } = require('../hooks/lib/choose');
 const { setStated } = require('../hooks/lib/stated');
 const { appendLog } = require('../hooks/lib/log');
 const { agendaOf, HUMAN_QUESTIONS } = require('../hooks/lib/agenda');
+const appApi = require('../hooks/lib/app-api');
 
 const HOST = '127.0.0.1';
 const MAX_BODY = 64 * 1024;
 const CODE_TTL_MS = 60 * 1000;
 const SESSION = '/api/session';
+const APP_PREFIX = '/api/app/';
 
 const PLACEHOLDER = '<!doctype html><meta charset="utf-8"><title>Research harness</title>'
   + '<p>The session view (dashboard/canvas.html) is not installed. The API is at <code>/api/state</code>.</p>\n';
+const APP_PLACEHOLDER = '<!doctype html><meta charset="utf-8"><title>Research harness</title>'
+  + '<p>The app page (dashboard/app.html) is not installed. The app routes are under <code>/api/app/</code>.</p>\n';
+
+function readPage(pluginRoot, name, fallback) {
+  try {
+    return fs.readFileSync(path.join(pluginRoot, 'dashboard', name), 'utf8');
+  } catch (_) {
+    return fallback;
+  }
+}
 
 function pluginVersion(pluginRoot) {
   try {
@@ -134,6 +146,11 @@ function statusOf(result) {
   return result.code === 'stale' ? 409 : 422;
 }
 
+function appStatusOf(result) {
+  if (result.ok) return 200;
+  return result.code === 'no-project' || result.code === 'conflict' ? 409 : 422;
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const tooLarge = () => Object.assign(new Error('body too large'), { status: 413 });
@@ -180,7 +197,11 @@ const sameSecret = (value, buf) => {
 // whether to print or open it. `log` receives the one line written when the
 // code is redeemed, so the human sees in the terminal that the session was
 // taken.
-function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}, codeTtlMs = CODE_TTL_MS } = {}) {
+//
+// `app = { dataDir }` turns on app mode for the desktop app: `root` may then be
+// null, the routes under /api/app/ can open another project, and the resolved
+// object carries `appUrl`, the shell page's URL with the same code.
+function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}, codeTtlMs = CODE_TTL_MS, app } = {}) {
   const token = crypto.randomBytes(32).toString('hex');
   const tokenBuf = Buffer.from(token, 'utf8');
   // 128 bits, and shorter than the token so the two are never confused.
@@ -188,7 +209,11 @@ function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}
   const codeBuf = Buffer.from(code, 'utf8');
   const codeExpires = Date.now() + codeTtlMs;
   let redeemed = false;
-  const ctx = { root, pluginRoot };
+  // In app mode the current project can change; the project routes always act
+  // on the one open now.
+  let currentRoot = root;
+  const ctx = { get root() { return currentRoot; }, pluginRoot };
+  const appCtx = app ? { dataDir: app.dataDir, getRoot: () => currentRoot, setRoot: (r) => { currentRoot = r; } } : null;
   let host = null;
   let origin = null;
 
@@ -209,13 +234,12 @@ function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}
     const url = req.url.split('?')[0];
     if (!allowed(req, url)) return send(res, 403, { ok: false, error: 'forbidden' });
     if (req.method === 'GET' && url === '/') {
-      let html;
-      try {
-        html = fs.readFileSync(path.join(pluginRoot, 'dashboard', 'canvas.html'), 'utf8');
-      } catch (_) {
-        html = PLACEHOLDER;
-      }
-      return send(res, 200, html, 'text/html; charset=utf-8');
+      return send(res, 200, readPage(pluginRoot, 'canvas.html', PLACEHOLDER), 'text/html; charset=utf-8');
+    }
+    // The shell page, like the view, is fetched by navigation and so carries
+    // no token; it holds no project data and trades the code like the view.
+    if (appCtx && req.method === 'GET' && url === '/app') {
+      return send(res, 200, readPage(pluginRoot, 'app.html', APP_PLACEHOLDER), 'text/html; charset=utf-8');
     }
     const font = req.method === 'GET' && /^\/fonts\/([a-z0-9-]+\.woff2)$/.exec(url);
     if (font && FONTS.has(font[1])) {
@@ -225,11 +249,29 @@ function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}
         return send(res, 404, { ok: false, error: 'not found' });
       }
     }
+    // The app's routes. allowed() lets a GET through on the Host alone; these
+    // need the token whatever the method, since GET /api/app/projects lists
+    // folders on the person's disk.
+    let appRoute = null;
+    if (appCtx && url.startsWith(APP_PREFIX)) {
+      if (!sameSecret(req.headers['x-harness-token'], tokenBuf)) return send(res, 403, { ok: false, error: 'forbidden' });
+      const name = url.slice(APP_PREFIX.length);
+      appRoute = Object.prototype.hasOwnProperty.call(appApi.routes, name) ? appApi.routes[name] : null;
+      if (!appRoute) return send(res, 404, { ok: false, error: 'not found' });
+      if (req.method !== (name === 'projects' ? 'GET' : 'POST')) return send(res, 405, { ok: false, error: 'method not allowed' });
+      if (name === 'projects') {
+        const result = await appRoute({}, appCtx);
+        return send(res, appStatusOf(result), result);
+      }
+    } else if (!currentRoot && url.startsWith('/api/') && url !== SESSION) {
+      // App mode before a project is open: the code exchange still works.
+      return send(res, 409, { ok: false, code: 'no-project', error: 'No project is open.' });
+    }
     if (req.method === 'GET' && url === '/api/state') {
-      const view = viewState(root, pluginRoot);
+      const view = viewState(currentRoot, pluginRoot);
       return send(res, view.ok ? 200 : 422, view.ok ? view.body : view);
     }
-    const route = ROUTES[url];
+    const route = appRoute || ROUTES[url];
     if (!route && url !== SESSION) return send(res, 404, { ok: false, error: 'not found' });
     if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'method not allowed' });
     let body;
@@ -247,6 +289,10 @@ function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}
       redeemed = true;
       log(`session code redeemed ${new Date().toISOString()}`);
       return send(res, 200, { ok: true, token });
+    }
+    if (appRoute) {
+      const result = await appRoute(body, appCtx);
+      return send(res, appStatusOf(result), result);
     }
     const result = route(body, ctx);
     return send(res, statusOf(result), result);
@@ -271,6 +317,7 @@ function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}
         token,
         code,
         url: `${origin}/#c=${code}`,
+        ...(app ? { appUrl: `${origin}/app#c=${code}` } : {}),
         close: () => new Promise((done) => {
           server.close(() => done());
           server.closeAllConnections();

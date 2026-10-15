@@ -45,6 +45,7 @@ const USAGE = [
   'research-harness session start "<occasion>"',
   'research-harness session protocol [<n>] [--out <file>]',
   'research-harness serve [--no-open]',
+  'research-harness serve --app [--app-data <dir>] [--no-open]',
   'research-harness doctor',
   'research-harness install-cli [--dir <path>]',
 ].join('\n');
@@ -842,14 +843,24 @@ function agenda(flags) {
 // The session view (US-2). A human runs this in their own terminal; the URL
 // with the single-use code goes to their browser and their terminal, and the
 // token it is traded for never leaves the server and the view. The terminal
-// also shows when the code is redeemed. It runs until SIGINT.
+// also shows when the code is redeemed. It runs until SIGINT. With --app it
+// serves the desktop app's shell instead, which can open another project; the
+// folder it starts in is opened if it is a paper project.
 function serve(flags) {
   const root = project.projectDir({});
-  if (!fs.existsSync(project.canvasPath(root))) return fail('This is not a paper project: no research/canvas.md. Run research-harness init first.');
+  const appMode = flags.app === true;
+  if (!appMode && !fs.existsSync(project.canvasPath(root))) return fail('This is not a paper project: no research/canvas.md. Run research-harness init first.');
   const canvasServe = require('./canvas-serve');
-  canvasServe.start({ root, pluginRoot: pluginRoot(), log: say }).then((running) => {
-    say(running.url);
-    if (flags['no-open'] !== true) canvasServe.openInBrowser(running.url);
+  const options = appMode
+    ? {
+      root: fs.existsSync(project.canvasPath(root)) ? root : null,
+      app: { dataDir: typeof flags['app-data'] === 'string' ? flags['app-data'] : path.join(os.homedir(), '.research-harness') },
+    }
+    : { root };
+  canvasServe.start({ ...options, pluginRoot: pluginRoot(), log: say }).then((running) => {
+    const url = appMode ? running.appUrl : running.url;
+    say(url);
+    if (flags['no-open'] !== true) canvasServe.openInBrowser(url);
     process.once('SIGINT', () => {
       running.close().then(() => process.exit(0));
     });

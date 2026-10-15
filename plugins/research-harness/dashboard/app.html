@@ -200,6 +200,10 @@
   .dlg-error:not(:empty) { margin-top: 1rem; padding: 0.5rem 0.7rem; border: 1px solid var(--red); border-radius: 6px; background: var(--red-tint); font-size: var(--t-label); overflow-wrap: anywhere; }
   .dlg-offer { margin-top: 0.6rem; }
   .dlg-actions { margin-top: 1.2rem; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; }
+  .join-line { gap: 0.6rem; }
+  .join-line p { color: var(--ink); }
+  .link { display: block; margin-top: 0.3rem; padding: 0.4rem 0.6rem; border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); font-family: var(--mono); font-size: 0.9em; overflow-wrap: anywhere; user-select: all; }
+  #share-box, #sync-box { display: flex; flex-direction: column; gap: 0.5rem; }
   .dlg-facts { margin-top: 0.8rem; padding-left: 1.1rem; list-style: disc; color: var(--ink); font-size: var(--t-body); display: flex; flex-direction: column; gap: 0.2rem; max-width: 64ch; }
 </style>
 </head>
@@ -216,15 +220,27 @@
 
 <div id="shell" class="no-side">
   <aside id="sidebar" aria-label="Project, meeting and people" hidden>
+    <section class="group join-line" id="join-line" aria-label="Joining this project" hidden>
+      <p>This computer has not joined this project yet, so it cannot add entries.</p>
+      <button type="button" class="btn btn-primary side-btn" id="btn-join">Join this project…</button>
+    </section>
+
     <section class="group" aria-labelledby="h-project">
       <h2 id="h-project">Project</h2>
       <p class="proj-name" id="proj-name" tabindex="-1"></p>
       <p class="path" id="proj-path"></p>
-      <button type="button" class="btn side-btn" id="btn-update" aria-describedby="hint-update">Get updates <span class="badge" id="update-badge" hidden></span></button>
-      <p class="hint" id="hint-update">Brings in your co-authors’ changes. Yours are kept.</p>
-      <p class="outcome" id="out-update" aria-live="polite"></p>
-      <button type="button" class="btn side-btn" id="btn-send">Send my changes…</button>
-      <p class="outcome" id="out-send" aria-live="polite"></p>
+      <div id="share-box" hidden>
+        <button type="button" class="btn side-btn" id="btn-share" aria-describedby="hint-share">Share with co-authors…</button>
+        <p class="hint" id="hint-share">Puts the project in a repository you create, so co-authors can get it.</p>
+      </div>
+      <p class="outcome" id="out-share" aria-live="polite"></p>
+      <div id="sync-box">
+        <button type="button" class="btn side-btn" id="btn-update" aria-describedby="hint-update">Get updates <span class="badge" id="update-badge" hidden></span></button>
+        <p class="hint" id="hint-update">Brings in your co-authors’ changes. Yours are kept.</p>
+        <p class="outcome" id="out-update" aria-live="polite"></p>
+        <button type="button" class="btn side-btn" id="btn-send">Send my changes…</button>
+        <p class="outcome" id="out-send" aria-live="polite"></p>
+      </div>
       <div>
         <button type="button" class="row-btn" id="btn-open">Open project…</button>
         <button type="button" class="row-btn" id="btn-clone">Clone from link…</button>
@@ -246,7 +262,6 @@
       <h2 id="h-people">People</h2>
       <ul class="people" id="people"></ul>
       <button type="button" class="btn side-btn" id="btn-invite">Invite co-author…</button>
-      <button type="button" class="btn side-btn" id="btn-join" hidden>Join this project…</button>
       <p class="outcome" id="out-people" aria-live="polite"></p>
     </section>
   </aside>
@@ -279,13 +294,15 @@
 <template id="t-new">
   <form data-kind="new" novalidate>
     <h2 id="dlg-title">New project</h2>
-    <p class="dlg-sub">Creates a new folder inside the folder you choose, and writes the research canvas (research/canvas.md) and the decision log (research/decisions.md) into it. It also creates the key that seals your entries; the key stays on this computer, outside the folder.</p>
+    <p class="dlg-sub">Creates a new folder inside the folder you choose, and writes the research canvas (research/canvas.md) and the decision log (research/decisions.md) into it. It turns the folder into a git repository and saves the first version of the research files in it, so the project can be shared later. It also creates the key that seals your entries; the key stays on this computer, outside the folder.</p>
     <label for="f-parent">Folder to create it in<span class="hint">The new folder goes inside this one.</span></label>
     <div class="pathrow"><input type="text" id="f-parent" name="parent" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="parent" hidden>Choose…</button></div>
     <label for="f-folder">Name of the new folder<span class="hint">Letters, digits, dots, hyphens and underscores.</span></label>
     <input type="text" id="f-folder" name="folder" autocomplete="off" spellcheck="false">
     <label for="f-title">Working title of the paper<span class="hint">Optional. You can change it later.</span></label>
     <input type="text" id="f-title" name="title" autocomplete="off">
+    <label for="f-name">Your name<span class="hint">As co-authors should see it next to your entries. It is kept on this computer, not in the project.</span></label>
+    <input type="text" id="f-name" name="name" autocomplete="name">
     <fieldset>
       <legend>Where do you start?</legend>
       <label class="choice"><input type="radio" name="mode" value="brainstorming" checked><span><b>Brainstorming.</b> Nothing exists yet; you build the nine fields in conversation.</span></label>
@@ -313,7 +330,7 @@
   <form data-kind="clone" novalidate>
     <h2 id="dlg-title">Clone from link</h2>
     <p class="dlg-sub">Downloads the shared paper from the link into a new folder inside the folder you choose. Nothing is sent to anyone. If the link asks for a login, the app asks you for it.</p>
-    <label for="f-url">Link<span class="hint">Starts with https:// or ssh://, or looks like git@host:path.</span></label>
+    <label for="f-url">Link<span class="hint">The https link your co-author sent you. Links that start with ssh:// or look like git@host:path work too.</span></label>
     <input type="text" id="f-url" name="url" autocomplete="off" spellcheck="false">
     <label for="f-parent">Folder to download it into<span class="hint">The new folder goes inside this one.</span></label>
     <div class="pathrow"><input type="text" id="f-parent" name="parent" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="parent" hidden>Choose…</button></div>
@@ -330,11 +347,27 @@
     <p class="dlg-sub">This does three things, in this order:</p>
     <ul class="dlg-facts">
       <li>Saves the changes in your research folder (the canvas and the decision log) as one step in the project’s history.</li>
-      <li>Uploads them to the shared copy this project was cloned from, where your co-authors can get them.</li>
+      <li>Uploads them to the shared copy, where your co-authors can get them.</li>
       <li>If a co-author sent changes first, you get those before yours go out.</li>
     </ul>
     <p id="dlg-error" class="dlg-error" role="alert"></p>
     <div class="dlg-actions"><button type="button" class="btn" data-dlg="cancel">Cancel</button><button type="submit" class="btn btn-primary">Send changes</button></div>
+  </form>
+</template>
+
+<template id="t-share">
+  <form data-kind="share" novalidate>
+    <h2 id="dlg-title">Share with co-authors</h2>
+    <p class="dlg-sub">Co-authors get the project from a shared copy on a website. Create an empty private repository on GitHub, or on your institute’s GitLab, copy its https link and paste it below. The app then uploads the project there. Your co-authors use Clone from link… with the same link.</p>
+    <ul class="dlg-facts">
+      <li>Uploads the project’s history: the canvas and the decision log in the research folder.</li>
+      <li>The key that seals your entries stays on this computer. You give it to each co-author yourself, with Invite co-author….</li>
+      <li>The repository must be empty, without a README or licence file. If it already holds files, nothing is uploaded.</li>
+    </ul>
+    <label for="f-url">Link of the empty repository<span class="hint">Copy it from the repository’s page on the website. If it asks for a login, the app asks you for it.</span></label>
+    <input type="text" id="f-url" name="url" autocomplete="off" spellcheck="false">
+    <p id="dlg-error" class="dlg-error" role="alert"></p>
+    <div class="dlg-actions"><button type="button" class="btn" data-dlg="cancel">Cancel</button><button type="submit" class="btn btn-primary">Share project</button></div>
   </form>
 </template>
 
@@ -344,6 +377,10 @@
     <p class="dlg-sub">Writes a session marker with today’s date and your name into the decision log. The entries that follow belong to this session, and its minutes can be exported at the end.</p>
     <label for="f-occasion">What is the occasion?<span class="hint">One line, for example “Supervision with B. Supervisor”.</span></label>
     <input type="text" id="f-occasion" name="occasion" autocomplete="off">
+    <div id="name-block">
+      <label for="f-name">Your name<span class="hint">This computer has no name for the decision log yet. Give it once, as co-authors should see it next to your entries.</span></label>
+      <input type="text" id="f-name" name="name" autocomplete="name">
+    </div>
     <p id="dlg-error" class="dlg-error" role="alert"></p>
     <div class="dlg-actions"><button type="button" class="btn" data-dlg="cancel">Cancel</button><button type="submit" class="btn btn-primary">Start session</button></div>
   </form>
@@ -363,7 +400,8 @@
 <template id="t-invite">
   <form data-kind="invite" novalidate>
     <h2 id="dlg-title">Invite a co-author</h2>
-    <p class="dlg-sub">Writes this project’s sealing key to a file. Your co-author needs that file to add entries that verify here. Anyone who has the file can do the same, so give it to them yourself, by mail or on a USB stick. Do not paste it into a chat with an agent. The app sends it nowhere.</p>
+    <p class="dlg-sub">Your co-author needs two things from you: the project’s link and the key file. The link is how they download the project. The key file lets their entries verify here; anyone who has it can do the same, so give it to them yourself, by mail or on a USB stick. Do not paste it into a chat with an agent. The app sends neither of them anywhere.</p>
+    <p class="dlg-sub" id="invite-link-line"></p>
     <label for="f-out">Save the key file as<span class="hint" data-plain>Type the full path of the file, ending in .seal.key.</span></label>
     <div class="pathrow"><input type="text" id="f-out" name="out" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="out" hidden>Choose…</button></div>
     <p id="dlg-error" class="dlg-error" role="alert"></p>
@@ -401,6 +439,7 @@
 
   var current = null;      // folder of the open project
   var lastState = null;    // what /api/state said last
+  var facts = null;        // what /api/app/status said last: name, key, shared copy
   var sessionStart = null; // when this window started a session
   var sessionTimer = null;
 
@@ -441,6 +480,16 @@
     } catch (err) {
       return null;
     }
+  }
+
+  async function readFacts() {
+    var res = await api('status');
+    return res && res.ok ? res : null;
+  }
+
+  async function refreshFacts() {
+    var fresh = await readFacts();
+    if (fresh) facts = fresh;
   }
 
   function embedSessionView() {
@@ -575,14 +624,23 @@
       li.textContent = name;
       list.appendChild(li);
     });
-    var ledger = state && state.review && state.review.ledger;
-    $('btn-join').hidden = !(ledger && ledger.status === 'unverifiable' && ledger.reason === 'no-key');
+    // Join and Share follow what this computer holds and what the project has,
+    // not the ledger: an empty decision log has nothing to verify, and a
+    // co-author still needs the key before the first entry.
+    var f = facts || {};
+    var noKey = f.hasKey === false;
+    var unshared = f.shared === false;
+    $('join-line').hidden = !noKey;
+    $('btn-invite').hidden = noKey;
+    $('share-box').hidden = !unshared;
+    $('sync-box').hidden = unshared;
   }
 
   async function enterProject(root, reloadView) {
     var changed = root !== current;
     current = root;
     lastState = await readState();
+    facts = await readFacts();
     renderSidebar(lastState);
     show('project');
     if (changed || reloadView || !frame.getAttribute('src')) {
@@ -628,9 +686,15 @@
     if (dlg.open) dlg.close();
   }
 
-  function dialogError(form, message, fieldName) {
-    form.querySelector('.dlg-error').textContent = message;
+  // A refusal belongs to the submit that caused it; a new submit starts clean.
+  function clearDialogError(form) {
+    form.querySelector('.dlg-error').textContent = '';
     form.querySelectorAll('[aria-invalid]').forEach(function (n) { n.removeAttribute('aria-invalid'); n.removeAttribute('aria-describedby'); });
+  }
+
+  function dialogError(form, message, fieldName) {
+    clearDialogError(form);
+    form.querySelector('.dlg-error').textContent = message;
     var field = fieldName && fieldOf(form, fieldName);
     if (field) {
       field.setAttribute('aria-invalid', 'true');
@@ -669,20 +733,21 @@
   var DO = {
     new: function (form) {
       var mode = form.querySelector('input[name="mode"]:checked');
-      return api('init', { parent: val(form, 'parent'), folder: val(form, 'folder'), mode: mode && mode.value, title: val(form, 'title') || undefined });
+      return api('init', { parent: val(form, 'parent'), folder: val(form, 'folder'), mode: mode && mode.value, title: val(form, 'title') || undefined, name: val(form, 'name') || undefined });
     },
     open: function (form) { return api('open', { root: val(form, 'root') }); },
     clone: function (form) { return api('clone', { url: val(form, 'url'), parent: val(form, 'parent'), folder: val(form, 'folder') }); },
     send: function () { return api('send'); },
-    session: function (form) { return api('session', { action: 'start', occasion: val(form, 'occasion') }); },
+    share: function (form) { return api('share', { url: val(form, 'url') }); },
+    session: function (form) { return api('session', { action: 'start', occasion: val(form, 'occasion'), name: fieldOf(form, 'name') ? val(form, 'name') : undefined }); },
     minutes: function (form) { return api('session', { action: 'minutes', out: val(form, 'out') }); },
     invite: function (form) { return api('invite', { out: val(form, 'out') }); },
     join: function (form) { return api('join', { keyFile: val(form, 'keyFile'), name: val(form, 'name') }); },
   };
 
   var REQUIRED = {
-    new: ['parent', 'folder'], open: ['root'], clone: ['url', 'parent', 'folder'], send: [],
-    session: ['occasion'], minutes: ['out'], invite: ['out'], join: ['keyFile', 'name'],
+    new: ['parent', 'folder', 'name'], open: ['root'], clone: ['url', 'parent', 'folder'], send: [], share: ['url'],
+    session: ['occasion', 'name'], minutes: ['out'], invite: ['out'], join: ['keyFile', 'name'],
   };
   var FIELD_OF_CODE = { 'not-project': 'root', exists: 'folder', invalid: null };
 
@@ -692,7 +757,9 @@
       var made = res.current;
       closeDialog();
       await enterProject(made, true);
-      out = kind === 'new' ? 'Created the project in ' + made + '.' : kind === 'clone' ? 'Downloaded the project to ' + made + '.' : 'Opened ' + made + '.';
+      out = kind === 'new' ? 'Created the project in ' + made + '. Next: Share with co-authors… to let co-authors get it, or Start session… to begin a meeting.'
+        + (res.repoError ? ' The project history could not be set up yet, and sharing needs it. ' + res.repoError : '')
+        : kind === 'clone' ? 'Downloaded the project to ' + made + '.' : 'Opened ' + made + '.';
       clearAll();
       say('out-project', 'ok', out);
       $('proj-name').focus();
@@ -704,6 +771,11 @@
         ? 'Your co-authors had sent changes first. You got those, then your changes went out.'
         : 'Sent. The shared copy now holds all your changes.');
       restoreFocus($('btn-send'));
+    } else if (kind === 'share') {
+      await refreshFacts();
+      renderSidebar(lastState);
+      say('out-share', 'ok', 'Shared. The project is now at ' + res.origin + '. Next: Invite co-author… to save the key file. Your co-author needs that link and the key file to join.');
+      restoreFocus($('proj-name'));
     } else if (kind === 'session') {
       startClock();
       say('out-meeting', 'ok', 'Session started. The decision log has its marker.');
@@ -716,18 +788,20 @@
       restoreFocus($('btn-minutes'));
     } else if (kind === 'invite') {
       var keyPath = val(form, 'out');
-      say('out-people', 'ok', 'Saved the key file to ' + keyPath + '. Give it to your co-author yourself.');
+      var link = facts && facts.origin;
+      say('out-people', 'ok', 'Saved the key file to ' + keyPath + '. Your co-author needs two things, and you give them both yourself: ' + (link ? 'the project’s link (' + link + ') and this key file.' : 'this key file and the project’s link. The project has no link yet; use Share with co-authors… first.'));
       if (host && host.reveal) host.reveal(keyPath).catch(function () {});
       restoreFocus($('btn-invite'));
     } else if (kind === 'join') {
-      say('out-people', 'ok', 'You joined the project. Entries you write here are sealed with the shared key.');
       await refreshState();
+      say('out-people', 'ok', 'You joined the project. Entries you write here are sealed with the shared key.');
       restoreFocus($('proj-name'));
     }
   }
 
   async function submitDialog(form) {
     if (dlgBusy) return;
+    clearDialogError(form);
     var kind = form.dataset.kind;
     var needed = REQUIRED[kind];
     for (var i = 0; i < needed.length; i++) {
@@ -751,6 +825,7 @@
     if (kind === 'join') field = res.code === 'invalid' && /name/i.test(message) ? 'name' : 'keyFile';
     if (kind === 'new' && res.code === 'invalid') field = /name/i.test(message) ? 'folder' : 'parent';
     if (kind === 'clone') field = res.code === 'exists' || /folder name/i.test(message) ? 'folder' : res.code === 'invalid' && /link/i.test(message) ? 'url' : null;
+    if (res && res.field) field = res.field;
     dialogError(form, message, field);
     if (!field) submit.focus();
     var offer = form.querySelector('#offer-new');
@@ -758,7 +833,7 @@
   }
 
   function clearAll() {
-    ['out-update', 'out-send', 'out-project', 'out-meeting', 'out-people', 'out-start'].forEach(clearSay);
+    ['out-update', 'out-send', 'out-share', 'out-project', 'out-meeting', 'out-people', 'out-start'].forEach(clearSay);
     $('update-badge').hidden = true;
     stopClock();
   }
@@ -767,7 +842,37 @@
   function pickFolder() { return host.pickFolder(); }
 
   function openNew(invoker) {
-    openDialog('t-new', invoker, function (form) { wirePicker(form, 'parent', pickFolder); });
+    var form = openDialog('t-new', invoker, function (f) { wirePicker(f, 'parent', pickFolder); });
+    // The name this computer already has; with no project open it is asked for.
+    var nameField = fieldOf(form, 'name');
+    var typed = false;
+    nameField.addEventListener('input', function () { typed = true; });
+    if (facts && facts.name) nameField.value = facts.name;
+    api('status').then(function (res) {
+      if (res && res.ok && res.name && !typed && !nameField.value) nameField.value = res.name;
+    });
+  }
+  function openSession(invoker) {
+    var form = openDialog('t-session', invoker);
+    // Asked only when this computer has no name for the decision log.
+    if (facts && facts.name) form.querySelector('#name-block').remove();
+  }
+  function openInvite(invoker) {
+    openDialog('t-invite', invoker, function (form) {
+      wirePicker(form, 'out', function () { return host.saveFile({ suggestedName: saveName() + '.seal.key' }); });
+      var line = form.querySelector('#invite-link-line');
+      var link = facts && facts.origin;
+      line.textContent = '';
+      if (link) {
+        line.appendChild(document.createTextNode('The link to give them:'));
+        var code = document.createElement('code');
+        code.className = 'link';
+        code.textContent = link;
+        line.appendChild(code);
+      } else {
+        line.textContent = 'This project has no link yet. Use Share with co-authors… first, so your co-author has something to download.';
+      }
+    });
   }
   function openOpen(invoker) {
     openDialog('t-open', invoker, function (form) { wirePicker(form, 'root', pickFolder); });
@@ -822,6 +927,7 @@
   }
 
   async function refreshState() {
+    await refreshFacts();
     var fresh = await readState();
     if (fresh) { lastState = fresh; renderSidebar(fresh); }
     tellView({ type: 'harness-refresh' });
@@ -863,7 +969,8 @@
     $('btn-clone').addEventListener('click', function (e) { openClone(e.currentTarget); });
     $('btn-update').addEventListener('click', getUpdates);
     $('btn-send').addEventListener('click', function (e) { openDialog('t-send', e.currentTarget); });
-    $('btn-session').addEventListener('click', function (e) { openDialog('t-session', e.currentTarget); });
+    $('btn-share').addEventListener('click', function (e) { openDialog('t-share', e.currentTarget); });
+    $('btn-session').addEventListener('click', function (e) { openSession(e.currentTarget); });
     $('btn-agenda').addEventListener('click', function () {
       tellView({ type: 'harness-tab', tab: 'to-talk-about' });
       say('out-meeting', 'ok', 'The session view shows To talk about.');
@@ -873,11 +980,7 @@
         wirePicker(form, 'out', function () { return host.saveFile({ suggestedName: saveName() + '-minutes.md' }); });
       });
     });
-    $('btn-invite').addEventListener('click', function (e) {
-      openDialog('t-invite', e.currentTarget, function (form) {
-        wirePicker(form, 'out', function () { return host.saveFile({ suggestedName: saveName() + '.seal.key' }); });
-      });
-    });
+    $('btn-invite').addEventListener('click', function (e) { openInvite(e.currentTarget); });
     $('btn-join').addEventListener('click', function (e) {
       openDialog('t-join', e.currentTarget, function (form) {
         wirePicker(form, 'keyFile', function () { return host.pickFile({ suffix: '.seal.key' }); });

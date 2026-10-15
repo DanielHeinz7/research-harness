@@ -157,3 +157,63 @@ test('a missing project folder or bad arguments resolve with an error, never thr
   assert.equal((await appGit.commit(root, undefined, 'm', 'x')).ok, false);
   assert.equal((await appGit.commit(root, ['a'], undefined, 'x')).ok, false);
 });
+
+test('git failures become a sentence with the next step; git\'s own line is only a detail', () => {
+  const cases = [
+    ['fatal: not a git repository (or any of the parent directories): .git', /Share with co-authors/],
+    ['fatal: could not read Username for \'https://h\': terminal prompts disabled', /did not accept your login/],
+    ['remote: Invalid username or password.\nfatal: Authentication failed for \'https://h/a.git/\'', /did not accept your login/],
+    ['git@h: Permission denied (publickey).\nfatal: Could not read from remote repository.', /did not accept your login/],
+    ['remote: Repository not found.\nfatal: repository \'https://h/a.git/\' not found', /No repository was found/],
+    ['fatal: unable to access \'https://h/\': Could not resolve host: h', /could not reach the shared copy/],
+    ['fatal: refusing to merge unrelated histories', /started separately/],
+    ['error: Your local changes to the following files would be overwritten by merge:\n\tx', /outside the research folder/],
+    ['There is no tracking information for the current branch.', /not connected to a shared copy/],
+    ['fatal: No configured push destination.', /not connected to a shared copy/],
+    ['error: src refspec main does not match any', /no saved history/],
+    ['something git never said before', /Getting updates did not work\./],
+  ];
+  for (const [stderr, expected] of cases) {
+    const text = appGit.explain(stderr, 'Getting updates');
+    assert.match(text, expected, stderr);
+    assert.doesNotMatch(text, /^fatal|^error|fatal:|research-harness [a-z]/i, `git's text is not the message: ${text}`);
+    assert.match(text, /\(Git said: .+\)$/, 'git\'s line follows as a detail');
+  }
+});
+
+test('a link shows without the password or token in front of its host', () => {
+  assert.equal(appGit.displayLink('https://me:secret@github.com/a/b.git'), 'https://github.com/a/b.git');
+  assert.equal(appGit.displayLink('https://github.com/a/b.git'), 'https://github.com/a/b.git');
+  assert.equal(appGit.displayLink('git@github.com:a/b.git'), 'git@github.com:a/b.git');
+  assert.equal(appGit.displayLink(null), null);
+});
+
+test('a project becomes a repository with one commit; a link is added, checked and pushed with upstream', async () => {
+  process.env.RESEARCH_HARNESS_GIT_PROTOCOLS = 'https:ssh:file';
+  const dir = tmp();
+  const project = path.join(dir, 'paper');
+  fs.mkdirSync(path.join(project, 'research'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'research', 'canvas.md'), 'canvas\n');
+  fs.writeFileSync(path.join(project, 'notes.txt'), 'outside the research files\n');
+  assert.equal(appGit.hasRepo(project), false);
+  assert.deepEqual(await appGit.initRepo(project, ['research'], 'Start the project', 'A. Author'), { ok: true, committed: true });
+  assert.equal(appGit.hasRepo(project), true);
+  assert.equal(sh(project, 'symbolic-ref', '--short', 'HEAD').trim(), 'main');
+  assert.equal(sh(project, 'ls-files').trim(), 'research/canvas.md', 'only the research files are committed');
+  assert.equal(await appGit.originOf(project), null);
+
+  sh(dir, 'init', '--bare', '-b', 'main', 'empty.git');
+  const empty = `file://${path.join(dir, 'empty.git')}`;
+  assert.deepEqual(await appGit.remoteIsEmpty(empty), { ok: true, empty: true });
+  assert.deepEqual(await appGit.addOrigin(project, empty), { ok: true });
+  assert.equal(await appGit.originOf(project), empty);
+  assert.deepEqual(await appGit.push(project, { upstream: true }), { ok: true });
+  assert.equal(sh(project, 'rev-parse', '--abbrev-ref', '@{upstream}').trim(), 'origin/main');
+  assert.deepEqual(await appGit.remoteIsEmpty(empty), { ok: true, empty: false }, 'after the push the repository holds the project');
+
+  await appGit.removeOrigin(project);
+  assert.equal(await appGit.originOf(project), null);
+  const missing = await appGit.remoteIsEmpty(`file://${path.join(dir, 'nowhere.git')}`);
+  assert.equal(missing.ok, false);
+  assert.doesNotMatch(missing.error, /fatal:/);
+});

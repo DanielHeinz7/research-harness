@@ -10,6 +10,10 @@ function columnBounds(rect, zoom) {
   return { x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) };
 }
 
+// The live column, left here by setUpAgent. The SDK way reaches the column
+// only through the functions exported at the bottom of this file.
+let current = null;
+
 function setUpAgent({ win, pluginRoot, pluginVersion, gitEnv, dataDir, shimsDir }) {
   const { app, dialog, ipcMain, Menu, WebContentsView, shell } = require('electron');
   const { run } = require('./run');
@@ -57,6 +61,15 @@ function setUpAgent({ win, pluginRoot, pluginVersion, gitEnv, dataDir, shimsDir 
     win.webContents.send('agent:shown', shown);
     place();
   }
+  // Sub-project 2's "Not now" hides the column this way.
+  function hide() { show(false); }
+  // Load a page into the column view and show it. Task 8 names the settings
+  // page with a '#settings' fragment; loadFile takes the fragment apart.
+  function showPage(file) {
+    const hashAt = file.indexOf('#');
+    view.webContents.loadFile(hashAt === -1 ? file : file.slice(0, hashAt), hashAt === -1 ? {} : { hash: file.slice(hashAt + 1) });
+    show(true);
+  }
 
   controller.on('state', (s) => view.webContents.send('column:state', { ...s, fontUrl: `file://${path.join(pluginRoot, 'dashboard', 'fonts')}/` }));
   controller.on('data', (d) => view.webContents.send('column:data', d));
@@ -88,14 +101,21 @@ function setUpAgent({ win, pluginRoot, pluginVersion, gitEnv, dataDir, shimsDir 
   // Statement numbers: the column asks, the shell page answers from the session view.
   let lookupSeq = 0;
   const pending = new Map();
-  ipcMain.handle('column:lookup', (e, num) => {
-    if (e.sender !== view.webContents || typeof num !== 'string') return null;
+  function lookupStatement(num) {
     const id = ++lookupSeq;
     return new Promise((resolve) => {
       pending.set(id, resolve);
       setTimeout(() => { if (pending.delete(id)) resolve(null); }, 2000);
       win.webContents.send('agent:lookup', { id, num });
     });
+  }
+  function revealStatement(num) {
+    win.webContents.send('agent:reveal', num);
+    win.webContents.focus();
+  }
+  ipcMain.handle('column:lookup', (e, num) => {
+    if (e.sender !== view.webContents || typeof num !== 'string') return null;
+    return lookupStatement(num);
   });
   ipcMain.on('agent:lookup-result', (e, { id, words } = {}) => {
     if (e.sender !== win.webContents || !pending.has(id)) return;
@@ -105,8 +125,7 @@ function setUpAgent({ win, pluginRoot, pluginVersion, gitEnv, dataDir, shimsDir 
   });
   ipcMain.on('column:reveal', (e, num) => {
     if (e.sender !== view.webContents || typeof num !== 'string') return;
-    win.webContents.send('agent:reveal', num);
-    win.webContents.focus();
+    revealStatement(num);
   });
   ipcMain.on('column:run', (e, step) => {
     if (e.sender !== view.webContents) return;
@@ -148,7 +167,22 @@ function setUpAgent({ win, pluginRoot, pluginVersion, gitEnv, dataDir, shimsDir 
   ]));
 
   app.on('before-quit', () => controller.dispose());
+  current = {
+    showPage, hide, lookupStatement, revealStatement,
+    currentProject: () => controller.state().project,
+    onProjectChange: (cb) => controller.on('project', cb),
+  };
   return controller;
 }
 
-module.exports = { setUpAgent, columnBounds };
+// The contact points the SDK way uses (agent/sdk/column.js). They need the
+// live column, so each one goes through the handle setUpAgent left behind.
+module.exports = {
+  setUpAgent, columnBounds,
+  showPage: (file) => current.showPage(file),
+  hide: () => current.hide(),
+  lookupStatement: (num) => current.lookupStatement(num),
+  revealStatement: (num) => current.revealStatement(num),
+  currentProject: () => current.currentProject(),
+  onProjectChange: (cb) => current.onProjectChange(cb),
+};

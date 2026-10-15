@@ -40,8 +40,8 @@ Sub-projects 2, 4 and 5 touch the same build and release files. Checked against 
 - **`scripts/release.js`.** Task 5 here comes before sub-project 5, Task 8, which adds the Windows zip to the asset list this task builds. "No app file is uploaded while signing is none" means the macOS app; the Windows zip ships with every release (sub-project 5 spec).
 
 Test commands:
-- desktop: `cd desktop && npm test` (Playwright tests through `NODE_PATH=~/dh-appdev/dsi-pubs/node_modules`)
-- plugin: `cd plugins/research-harness && NODE_PATH=~/dh-appdev/dsi-pubs/node_modules node --test --test-timeout=120000 "test/*.test.js"`
+- desktop: `cd desktop && npm test` (Playwright tests through `NODE_PATH=/tmp/rh-playwright/node_modules`)
+- plugin: `cd plugins/research-harness && NODE_PATH=/tmp/rh-playwright/node_modules node --test --test-timeout=120000 "test/*.test.js"`
 - release script: `node --test scripts/release.test.js`
 
 ## Review Focus
@@ -1786,7 +1786,7 @@ In `desktop/test/smoke.test.js`, after the first-start page is visible, add:
     assert.equal(await win.evaluate(() => window.harnessHost.restartToUpdate().then(() => 'ok')), 'ok'); // a checkout has no updater; the call is a no-op
 ```
 
-- [ ] **Step 6: Run, expect PASS**: `cd desktop && node --test test/updater.test.js`, then `NODE_PATH=~/dh-appdev/dsi-pubs/node_modules npm test` (the smoke test runs with Playwright).
+- [ ] **Step 6: Run, expect PASS**: `cd desktop && node --test test/updater.test.js`, then `NODE_PATH=/tmp/rh-playwright/node_modules npm test` (the smoke test runs with Playwright).
 
 - [ ] **Step 7: Commit**
 
@@ -1860,7 +1860,7 @@ test('in a browser tab there is no update line at all', { skip, timeout: 120000 
 
 `focusContrastRatios` (`test/helpers/a11y.js`) labels each control with its trimmed `textContent`, so the button's entry reads "Restart now".
 
-- [ ] **Step 2: Run, expect FAIL**: `cd plugins/research-harness && NODE_PATH=~/dh-appdev/dsi-pubs/node_modules node --test --test-timeout=120000 test/app-shell.test.js`
+- [ ] **Step 2: Run, expect FAIL**: `cd plugins/research-harness && NODE_PATH=/tmp/rh-playwright/node_modules node --test --test-timeout=120000 test/app-shell.test.js`
 
 - [ ] **Step 3: Implement** in `dashboard/app.html`
 
@@ -2031,8 +2031,8 @@ In the spec, replace "It also says that a Developer ID certificate lasts five ye
 - [ ] **Step 3: Full check**
 
 ```bash
-cd desktop && NODE_PATH=~/dh-appdev/dsi-pubs/node_modules npm test
-cd ../plugins/research-harness && NODE_PATH=~/dh-appdev/dsi-pubs/node_modules node --test --test-timeout=120000 "test/*.test.js"
+cd desktop && NODE_PATH=/tmp/rh-playwright/node_modules npm test
+cd ../plugins/research-harness && NODE_PATH=/tmp/rh-playwright/node_modules node --test --test-timeout=120000 "test/*.test.js"
 cd ../.. && node --test scripts/release.test.js
 ```
 

@@ -26,7 +26,7 @@
 - The README anchor for the repair is `https://github.com/DanielHeinz7/research-harness#windows-line-endings`.
 
 Test commands, run in the directory they judge:
-- plugin, in `plugins/research-harness`: `NODE_PATH=~/dh-appdev/dsi-pubs/node_modules node --test --test-timeout=120000 "test/*.test.js"`
+- plugin, in `plugins/research-harness`: `NODE_PATH=/tmp/rh-playwright/node_modules node --test --test-timeout=120000 "test/*.test.js"`
 - scripts, in the repo root: `node --test scripts/*.test.js`
 
 Each task that changes what a user sees adds a release fragment `.release/unreleased/<ticket>.md` in the style of the existing ones (a `# <ticket>: <title>` line, then plain sentences).
@@ -127,7 +127,7 @@ test('sealedAppend refuses to extend a CRLF log', (t) => {
 ```
 
 - [ ] **Step 2: Run, expect FAIL** (`Cannot find module '../hooks/lib/line-endings'`):
-`NODE_PATH=~/dh-appdev/dsi-pubs/node_modules node --test test/line-endings.test.js`
+`NODE_PATH=/tmp/rh-playwright/node_modules node --test test/line-endings.test.js`
 
 - [ ] **Step 3: Implement.** Create `hooks/lib/line-endings.js`:
 
@@ -753,7 +753,7 @@ for (const name of Object.keys(routes)) {
 
 and after `say(url);`: `for (const line of startLines) say(line);` (declare `let startLines = [];` at the top of `serve`). `installCli`, first line: `const refusal = host.installCliRefusal(process.platform); if (refusal) return fail(refusal, 2);`.
 
-Node floor check: run the plugin suite once with the oldest Node on this Mac at or above 20, as a lower bound for the floor of 22: `ls ~/.nvm/versions/node`; use a `v22*` if present, else `v20.20.2`: `NODE_PATH=~/dh-appdev/dsi-pubs/node_modules ~/.nvm/versions/node/<v>/bin/node --test --test-timeout=120000 test/*.test.js` (shell glob, since `node --test` globs need Node 21+). Write in the commit body which version ran and what failed; a failure only below 22 does not block.
+Node floor check: run the plugin suite once with the oldest Node on this Mac at or above 20, as a lower bound for the floor of 22: `ls ~/.nvm/versions/node`; use a `v22*` if present, else `v20.20.2`: `NODE_PATH=/tmp/rh-playwright/node_modules ~/.nvm/versions/node/<v>/bin/node --test --test-timeout=120000 test/*.test.js` (shell glob, since `node --test` globs need Node 21+). Write in the commit body which version ran and what failed; a failure only below 22 does not block.
 
 - [ ] **Step 4: Run, expect PASS** (files, then the full plugin command).
 

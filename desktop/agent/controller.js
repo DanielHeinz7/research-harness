@@ -119,7 +119,10 @@ function createController(deps) {
   }
 
   async function setProject(folder) {
+    const changed = state.project !== folder;
     set({ project: folder });
+    // The SDK way listens for this to end a conversation in the old project.
+    if (changed) events.emit('project', folder);
     return refresh();
   }
 

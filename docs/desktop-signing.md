@@ -36,3 +36,95 @@ built `libexec/git-core` has no `.dll` file, and `git credential-manager --versi
 `The application to execute does not exist: …/git-credential-manager.dll`. The source tree
 `desktop/node_modules/dugite` has them. Whatever Task 4 settles for `signIgnore`, the build also has
 to bring those files in; not tried here.
+
+## Turning signing on
+
+Nothing in the code changes. Do these steps in order on the Mac that makes releases.
+
+### Certificate
+
+The Account Holder of the Apple Developer account creates the certificate; nobody else can
+(developer.apple.com/support/developer-id). The private key is made on the release Mac and never
+leaves it:
+
+1. On the release Mac: Keychain Access → Certificate Assistant → Request a Certificate From a
+   Certificate Authority, "Saved to disk". This creates the private key in the login keychain.
+2. The Account Holder uploads that request at developer.apple.com → Certificates → "+" →
+   "Developer ID Application" and sends back the `.cer` file.
+3. Double-click the `.cer` on the release Mac. `security find-identity -v -p codesigning` now lists
+   `"Developer ID Application: <name> (<TEAMID>)"`.
+
+### Notarization
+
+Make an app-specific password (account.apple.com → Sign-In and Security → App-Specific Passwords) or
+an App Store Connect API key. Then, in a terminal, so that the password is typed at the prompt and
+never appears in a command line:
+
+```bash
+xcrun notarytool store-credentials research-harness-notary --apple-id <apple-id> --team-id <TEAMID>
+```
+
+`xcrun notarytool history --keychain-profile research-harness-notary` must then answer without an
+error.
+
+### Switch and first build
+
+1. Fill in `desktop/distribution.json`:
+
+   ```json
+   {
+     "signing": "developer-id",
+     "identity": "Developer ID Application: <name> (<TEAMID>)",
+     "teamId": "<TEAMID>",
+     "notaryProfile": "research-harness-notary"
+   }
+   ```
+
+2. `cd desktop && npm ci && npm run dist`. Both builds go to Apple for notarization (minutes each).
+   Expect no `problem:` line, a note "kept … file(s) signed by team UBF8T346G9" (Microsoft's Git
+   Credential Manager), and `dist/release/latest-mac.yml`.
+3. Test a downloaded copy. Upload one DMG to a draft release (`gh release create signing-test --draft
+   desktop/dist/release/research-harness-mac-arm64.dmg`), download it in Safari from the draft's page,
+   open it on a second user account, drag the app to Applications and open it. The only dialog may
+   be "…is an app downloaded from the Internet. Are you sure you want to open it?". Then
+   `gh release delete signing-test --yes`.
+4. Add the section below to `README.md`, commit it together with `distribution.json`
+   ("Turn on Developer ID signing for the desktop app"), and make the next release with
+   `node scripts/release.js <version> "<summary>"`. Its `CHANGELOG.md` section says that the macOS app
+   can now be downloaded.
+
+### README section
+
+```markdown
+## Download the app (macOS)
+
+- Apple silicon (M1 and later): [research-harness-mac-arm64.dmg](https://github.com/DanielHeinz7/research-harness/releases/latest/download/research-harness-mac-arm64.dmg)
+- Intel: [research-harness-mac-x64.dmg](https://github.com/DanielHeinz7/research-harness/releases/latest/download/research-harness-mac-x64.dmg)
+
+Not sure which Mac you have? Apple menu → About This Mac. "Chip: Apple M…" means Apple silicon;
+"Processor: … Intel" means Intel.
+
+Open the downloaded file and drag Placet into Applications. The first time you open it,
+macOS asks whether you want to open an app downloaded from the Internet; choose Open.
+
+The app looks for a new version on GitHub when it starts and once a day, downloads it, and installs
+it when you quit. Turn this off under Placet → Check for Updates Automatically. GitHub sees
+the request, as with any visit to its pages.
+```
+
+### First update (owner check)
+
+After the release that turned signing on, install that version from the README link on a second user
+account. Make the next release. Open the app there: within a minute the sidebar (or the start page)
+says "Version … is ready". Choose Restart now; Placet → About Placet shows the
+new version.
+
+### Later
+
+- Keep the same team for every release. An installed app takes only an update signed like itself, so
+  a new team means everyone reinstalls once by hand.
+- When the certificate expires, already published versions keep opening; new versions need a new
+  certificate ("once your Developer ID certificate expires, you must be an Apple Developer Program
+  member to get new Developer ID certificates to sign updates and new applications",
+  developer.apple.com/support/developer-id). Repeat "Certificate" and update `identity` only if the
+  name changed.

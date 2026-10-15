@@ -8,6 +8,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 const seal = require('../hooks/lib/seal');
+const decisions = require('../hooks/lib/decisions');
+const { mergeLogs } = require('../hooks/lib/merge');
 
 const pluginRoot = path.resolve(__dirname, '..');
 const cli = path.join(pluginRoot, 'bin', 'research-harness.js');
@@ -28,8 +30,10 @@ function keyPathIn(state, root) {
 }
 
 // A bare origin, clone A (who inits and holds the key) and clone B (who gets
-// a copy of the key file), each with its own state dir and name.
-function twoClones() {
+// a copy of the key file), each with its own state dir and name. By default
+// the project starts from the fixture and the shared log holds one sealed
+// entry; `empty` starts a new project instead and shares its log empty.
+function twoClones({ empty = false } = {}) {
   const top = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-merge-'));
   const origin = path.join(top, 'origin.git');
   git(top, 'init', '-q', '--bare', '-b', 'main', origin);
@@ -38,15 +42,19 @@ function twoClones() {
   const sa = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
   const sb = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
   git(top, 'clone', '-q', origin, A);
-  fs.mkdirSync(path.join(A, 'research'));
-  fs.copyFileSync(path.join(fixtureDir, 'canvas.md'), path.join(A, 'research', 'canvas.md'));
-  fs.copyFileSync(path.join(fixtureDir, 'decisions.md'), path.join(A, 'research', 'decisions.md'));
-  const init = rh(A, sa, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  if (!empty) {
+    fs.mkdirSync(path.join(A, 'research'));
+    fs.copyFileSync(path.join(fixtureDir, 'canvas.md'), path.join(A, 'research', 'canvas.md'));
+    fs.copyFileSync(path.join(fixtureDir, 'decisions.md'), path.join(A, 'research', 'decisions.md'));
+  }
+  const init = rh(A, sa, ['init', '--project', 'voice-uptake', '--mode', empty ? 'brainstorming' : 'seed']);
   assert.equal(init.status, 0, init.stdout + init.stderr);
   const named = rh(A, sa, ['name', 'A. Researcher']);
   assert.equal(named.status, 0, named.stdout + named.stderr);
-  const logged = rh(A, sa, ['log', 'DISCOVERY', '7', '--body', 'Shared finding.']);
-  assert.equal(logged.status, 0, logged.stdout + logged.stderr);
+  if (!empty) {
+    const logged = rh(A, sa, ['log', 'DISCOVERY', '7', '--body', 'Shared finding.']);
+    assert.equal(logged.status, 0, logged.stdout + logged.stderr);
+  }
   git(A, 'add', '-A'); git(A, 'commit', '-qm', 'start'); git(A, 'push', '-q', 'origin', 'HEAD:main');
   git(top, 'clone', '-q', origin, B);
   git(B, 'config', 'pull.rebase', 'false');
@@ -82,6 +90,54 @@ test('two clones log in parallel, pull conflicts, merge-log joins the logs, both
   const atA = fs.readFileSync(path.join(A, 'research', 'decisions.md'), 'utf8');
   assert.equal(atA, merged);
   assert.equal(seal.verifyChain(atA, Buffer.from(key, 'hex')).status, 'verified');
+});
+
+// SQ-249: a new project is shared while its log is still empty, then both log.
+// The logs share no entry, but both grew from the same empty sealed log.
+test('a log shared empty, then logged on both sides, merges and verifies', () => {
+  const { A, B, sa, sb, key } = twoClones({ empty: true });
+  const file = path.join(B, 'research', 'decisions.md');
+  assert.equal(decisions.parseDecisions(fs.readFileSync(file, 'utf8')).entries.length, 0, 'the shared log is empty');
+  assert.equal(rh(A, sa, ['log', 'DISCOVERY', '1.1', '--body', 'From A.']).status, 0);
+  git(A, 'commit', '-qam', 'a'); git(A, 'push', '-q', 'origin', 'HEAD:main');
+  assert.equal(rh(B, sb, ['log', 'DISCOVERY', '1.1', '--body', 'From B.']).status, 0);
+  git(B, 'commit', '-qam', 'b');
+  assert.notEqual(git(B, 'pull', '--no-rebase', '-q', 'origin', 'main').status, 0, 'the pull conflicts on decisions.md');
+
+  const out = rh(B, sb, ['merge-log']);
+  assert.equal(out.status, 0, out.stdout);
+  const merged = fs.readFileSync(file, 'utf8');
+  assert.doesNotMatch(merged, /^<<<<<<<|^>>>>>>>/m);
+  assert.equal(seal.verifyChain(merged, Buffer.from(key, 'hex')).status, 'verified');
+  const entries = decisions.parseDecisions(merged).entries;
+  assert.deepEqual(entries.map((e) => [e.seq, e.kind, e.body.split('\n')[0]]).slice(0, 2), [[1, 'DISCOVERY', 'From A.'], [2, 'DISCOVERY', 'From B.']]);
+  assert.equal(entries[2].kind, 'MERGE');
+  const status = rh(B, sb, ['status']);
+  assert.equal(status.status, 0, status.stdout + status.stderr);
+});
+
+// What "share no entry" still refuses: logs that did not grow from one empty
+// sealed log. Built in memory, since unrelated projects share no git history.
+test('logs of different origin that share no entry are still refused', () => {
+  const KEY = Buffer.alloc(32, 9);
+  const append = (text, body, key = KEY, sealed = true) => {
+    const fields = { seq: decisions.parseDecisions(text).maxSeq + 1, date: '2026-10-15', kind: 'DISCOVERY', ref: '1.1', body, by: 'A' };
+    const entry = sealed ? seal.sealEntry(seal.lastSealOf(text), fields, key).text : decisions.formatEntry(fields);
+    return text + decisions.separatorAfter(text) + entry;
+  };
+  const header = '# Decision log — voice-uptake\n';
+  const ours = append(header, 'Ours.');
+  const opts = { by: 'A', theirsCommit: 'abc1234' };
+  const same = mergeLogs(ours, append(header, 'Theirs.'), KEY, opts);
+  assert.equal(same.ok, true, same.error);
+  assert.equal(seal.verifyChain(same.text, KEY).status, 'verified');
+
+  const otherProject = mergeLogs(ours, append('# Decision log — other\n', 'Theirs.'), KEY, opts);
+  assert.equal(otherProject.code, 'no-prefix');
+  assert.match(otherProject.error, /share no entry/);
+  assert.equal(mergeLogs(ours, append(header, 'Theirs.', Buffer.alloc(32, 7)), KEY, opts).code, 'broken', 'sealed under another key');
+  const legacyFirst = append(append(header, 'Legacy.', KEY, false), 'Theirs.');
+  assert.equal(mergeLogs(ours, legacyFirst, KEY, opts).code, 'no-prefix', 'theirs starts with an unsealed entry ours does not have');
 });
 
 test('merge-log refuses outside a merge and during a rebase', () => {

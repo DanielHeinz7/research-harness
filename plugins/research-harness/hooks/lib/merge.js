@@ -84,14 +84,20 @@ function mergeLogs(ours, theirs, key, { by, theirsCommit, skip = [] } = {}) {
     }
     return { ok: true, text: ours, merged: false, kept: 'ours' };
   }
-  if (n === 0) return refuse('no-prefix', 'The two logs share no entry; they are not two copies of one log. Nothing is merged.');
+  // No shared entry still means two copies of one log when both grew from the
+  // same empty log (SQ-249): the same bytes above #1, and a first entry on
+  // each side sealed onto them. Both sides verify under our key by now, so
+  // their seals anchor on those bytes. A log of another project, or one that
+  // starts with an unsealed entry ours lacks, does not share that origin.
+  const sameOrigin = a[0].seal !== null && b[0].seal !== null && ours.slice(0, a[0].offset) === theirs.slice(0, b[0].offset);
+  if (n === 0 && !sameOrigin) return refuse('no-prefix', 'The two logs share no entry; they are not two copies of one log. Nothing is merged.');
 
   const mine = a.slice(n);
   const other = b.slice(n);
   if (mine.some((e) => e.seal === null)) return refuse('broken', 'ours has unsealed entries after the shared part; nothing is merged.');
   for (const s of skip) {
     if (!mine.some((e) => e.seq === s && e.kind === 'DECISION')) {
-      return refuse('skip', `--skip-decision ${s}: our side has no DECISION #${s} after the shared part (#${a[n - 1].seq}); nothing is merged.`);
+      return refuse('skip', `--skip-decision ${s}: our side has no DECISION #${s} after the shared part (${n ? `#${a[n - 1].seq}` : 'the empty log'}); nothing is merged.`);
     }
   }
   const kept = mine.filter((e) => !skip.includes(e.seq));

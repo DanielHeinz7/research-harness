@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const project = require('./lib/project');
 const canvas = require('./lib/canvas');
+const numbers = require('./lib/numbers');
 const profileLib = require('./lib/profile');
 const { mechanicalReview, ledgerSummary } = require('./lib/review');
 const { parseDecisions } = require('./lib/decisions');
@@ -99,6 +100,12 @@ function summarize(projectRoot, { seenSeq = 0, variant, key: releaseKey = undefi
     ? report.invisibleCommitments.map((s) => s.question).join(', ')
     : 'none';
 
+  // At most 20 numbers, so a canvas full of proposals stays inside the 4 KiB budget.
+  const proposalNums = numbers.openProposalNumbers(parsed);
+  const proposalLine = proposalNums.length
+    ? proposalNums.slice(0, 20).join(', ') + (proposalNums.length > 20 ? `, +${proposalNums.length - 20} more` : '')
+    : 'none';
+
   const text = [
     `research-harness · paper project "${fm.project || '?'}"${variant !== undefined ? ` · variant ${variant} (lens: ${fm.lens || '?'})` : ''} · ${profileNote} · mode ${fm.mode || '?'}`,
     `Elements: ${statusLine}`,
@@ -106,6 +113,7 @@ function summarize(projectRoot, { seenSeq = 0, variant, key: releaseKey = undefi
     `Dependency violations: ${violationLine} · Stale acceptances: ${staleLine} · Ledger: ${ledgerSummary(report.ledger)}`,
     `Committed but not visible in the rendered canvas: ${hiddenLine}`,
     `Decisions not yet seen: ${unseenLine}`,
+    `Open proposals by number (cite statements as 3.1 or 3.1b): ${proposalLine}`,
     RULES,
   ].join('\n');
   return { text, maxSeq: log.maxSeq };

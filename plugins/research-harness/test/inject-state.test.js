@@ -65,6 +65,12 @@ test('with a canvas the hook injects a summary under 4 KiB naming empties, open 
   assert.match(text, /\/research-harness:accept/);
 });
 
+test('the summary lists open proposals by statement number', () => {
+  const root = makeProject();
+  const text = JSON.parse(run(root, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'))).stdout).hookSpecificOutput.additionalContext;
+  assert.match(text, /^Open proposals by number \(cite statements as 3\.1 or 3\.1b\): 1\.2b, 2\.2$/m);
+});
+
 test('a second session start with the same session id does not repeat decisions already injected', () => {
   const root = makeProject();
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));

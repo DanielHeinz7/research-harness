@@ -1,6 +1,6 @@
 # Desktop app, sub-project 5: Windows through the browser
 
-Status: draft for the owner's review, 2026-10-15.
+Status: approved by the owner, 2026-10-15.
 Decision record: vault `appdev/research-harness.md`, block of 2026-10-14 ("Desktop-App mit eigenem
 Agenten": "Nur macOS; Windows als Browser-Fallback mit derselben Web-Oberfläche (ungetestet, keine
 CI)"). Sub-project 1 spec `docs/superpowers/specs/2026-10-15-desktop-app-shell-design.md` (`990bbed`),

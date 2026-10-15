@@ -76,6 +76,20 @@ async function cli(root, args) {
   return withoutCommands(await runCli(root, args));
 }
 
+// The view's own write routes (accept, choose, stated, comment) refuse through
+// the ledger, whose sentences tell the person to run a command — the one thing
+// a window cannot do. In app mode those two refusals are answered in the app's
+// words instead: the Join the app's own routes use, and the name the person
+// has to give. Everything else is left as it stands — a broken chain or a key
+// that cannot be read is no window's to fix, and the sentence says what
+// happened.
+function appRefusal(result, root) {
+  if (!result || result.ok) return result;
+  if (result.code === 'ledger' && !holdsKey(root)) return { ok: false, code: 'no-key', error: JOIN_FIRST };
+  if (result.code === 'name') return { ok: false, code: 'name', error: NAME_NEEDED };
+  return result;
+}
+
 // The `name` field of a dialog. Absent leaves the name this computer has;
 // present is checked first (so a refusal writes nothing) and stored the way
 // `research-harness name` stores it.
@@ -251,4 +265,4 @@ const routes = {
   }),
 };
 
-module.exports = { routes, isProject };
+module.exports = { routes, isProject, appRefusal };

@@ -18,8 +18,9 @@ process.env.RESEARCH_HARNESS_STATE_DIR = stateDir;
 process.env.RESEARCH_HARNESS_GIT_PROTOCOLS = 'https:ssh:file';
 
 const appGit = require('../hooks/lib/app-git');
+const seal = require('../hooks/lib/seal');
 const { runCli } = require('../hooks/lib/app-cli');
-const { routes } = require('../hooks/lib/app-api');
+const { routes, appRefusal } = require('../hooks/lib/app-api');
 
 const roots = [stateDir];
 function tmp() {
@@ -375,4 +376,35 @@ test('a broken log refuses a session without telling the person to run a command
   const r = await routes.session({ action: 'start', occasion: 'Second' }, ctx);
   assertPlain(r);
   assert.match(r.error, /broken/);
+});
+
+// The view's own write routes refuse through the ledger (SQ-282), whose
+// sentences name commands. In app mode those two become the app's words; every
+// other refusal is left exactly as it stands.
+test('appRefusal: a ledger refusal without a key and a missing name become the app\'s sentences', (t) => {
+  freshComputer(t);
+  const root = tmp();
+  const ledger = {
+    ok: false,
+    code: 'ledger',
+    error: 'No sealing key for this project on this machine, so nothing is written: an entry counts only if it verifies (§4.7). Run `research-harness init --project <slug> --mode <mode>` once here to create the key, then retry.',
+  };
+  const noKey = appRefusal(ledger, root);
+  assert.equal(noKey.code, 'no-key');
+  assertPlain(noKey);
+  assert.match(noKey.error, /^Join this project first\./);
+
+  const named = appRefusal({ ok: false, code: 'name', error: 'no name is set for the decision log on this machine; run research-harness name "<your name>" once; nothing is written.' }, root);
+  assert.equal(named.code, 'name');
+  assertPlain(named);
+
+  // With the key here, a ledger refusal is a broken chain: no window action
+  // helps, and the sentence says what happened.
+  seal.createKey(root);
+  assert.equal(appRefusal(ledger, root), ledger);
+
+  const success = { ok: true, seq: 4, seal: 'abc' };
+  assert.equal(appRefusal(success, root), success);
+  const invalid = { ok: false, code: 'invalid', error: 'The body may not contain a line that starts like an entry heading (`## [#`).' };
+  assert.equal(appRefusal(invalid, root), invalid);
 });

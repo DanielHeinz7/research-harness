@@ -64,3 +64,41 @@ test('readName: an unusable name in the file is reported, not replaced by git', 
     assert.match(got.error, /not usable/);
   });
 });
+
+// A stand-in git: it records that it ran and answers the one question readName
+// asks. On a Mac without the developer tools the real git at /usr/bin opens
+// the system installer instead of answering, which is what SQ-282 is about.
+function gitStub(file, who, name) {
+  fs.writeFileSync(file, `#!/bin/sh\necho ${who} >> "${file}.ran"\necho "${name}"\n`);
+  fs.chmodSync(file, 0o755);
+  return file;
+}
+
+test('readName: the git the app named, never the git from PATH', { skip: process.platform === 'win32' }, () => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-bin-'));
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
+  const onPath = gitStub(path.join(bin, 'git'), 'path', 'Path Person');
+  const bundled = gitStub(path.join(bin, 'bundled-git'), 'app', 'App Person');
+  const saved = {
+    PATH: process.env.PATH,
+    state: process.env.RESEARCH_HARNESS_STATE_DIR,
+    git: process.env.RESEARCH_HARNESS_GIT,
+  };
+  try {
+    // PATH holds only the stand-in named `git`, so a fallback to PATH shows.
+    process.env.PATH = bin;
+    process.env.RESEARCH_HARNESS_STATE_DIR = state;
+    process.env.RESEARCH_HARNESS_GIT = bundled;
+    assert.deepEqual(identity.readName(bin), { name: 'App Person', source: 'git' });
+    assert.equal(fs.readFileSync(`${bundled}.ran`, 'utf8'), 'app\n', 'the app\'s git ran');
+    assert.equal(fs.existsSync(`${onPath}.ran`), false, 'the git from PATH never ran');
+    // Without the variable, PATH answers as it did before.
+    delete process.env.RESEARCH_HARNESS_GIT;
+    assert.deepEqual(identity.readName(bin), { name: 'Path Person', source: 'git' });
+    assert.equal(fs.readFileSync(`${onPath}.ran`, 'utf8'), 'path\n');
+  } finally {
+    process.env.PATH = saved.PATH;
+    if (saved.state === undefined) delete process.env.RESEARCH_HARNESS_STATE_DIR; else process.env.RESEARCH_HARNESS_STATE_DIR = saved.state;
+    if (saved.git === undefined) delete process.env.RESEARCH_HARNESS_GIT; else process.env.RESEARCH_HARNESS_GIT = saved.git;
+  }
+});

@@ -12,7 +12,7 @@ function readAgentStore(dataDir) {
   try {
     const j = JSON.parse(fs.readFileSync(file(dataDir), 'utf8'));
     return {
-      way: j.way === 'claude-code' ? j.way : null,
+      way: j.way === 'claude-code' || j.way === 'sdk' ? j.way : null,
       notNow: j.notNow === true,
       screenReader: j.screenReader === true,
       started: Array.isArray(j.started) ? j.started.filter((s) => typeof s === 'string').slice(0, 50) : [],

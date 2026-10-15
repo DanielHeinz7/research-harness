@@ -21,7 +21,9 @@ function runCli(root, args) {
         resolve({ ok: true, output });
         return;
       }
-      resolve({ ok: false, code: err.code === 2 ? 'invalid' : 'refused', error: output || err.message });
+      // err.message repeats the command line, key file paths included, so it
+      // is never the message.
+      resolve({ ok: false, code: err.code === 2 ? 'invalid' : 'refused', error: output || 'That step could not be completed, and the app has no further explanation. Try again.' });
     });
   });
 }

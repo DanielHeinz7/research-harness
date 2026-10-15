@@ -188,6 +188,103 @@ test('a link shows without the password or token in front of its host', () => {
   assert.equal(appGit.displayLink(null), null);
 });
 
+// SQ-285 F9: every scheme, and everything up to the last @ of the host part.
+test('a link shows without its login for every scheme, and a link with a login is not cloned', async () => {
+  assert.equal(appGit.displayLink('https://me:p@ss@github.com/a/b.git'), 'https://github.com/a/b.git');
+  assert.equal(appGit.displayLink('http://ghp_token@host/a/b.git'), 'http://host/a/b.git');
+  assert.equal(appGit.displayLink('ssh://me:secret@host/a/b.git'), 'ssh://host/a/b.git');
+  assert.equal(appGit.displayLink('HTTPS://tok@host/a.git'), 'HTTPS://host/a.git');
+  assert.equal(appGit.displayLink('https://host/team/@scope/a.git'), 'https://host/team/@scope/a.git', 'an @ in the path is not a login');
+  for (const login of ['https://me:secret@github.com/a/b.git', 'https://ghp_token@github.com/a/b.git', 'ssh://me:secret@host/a/b.git']) {
+    assert.equal(appGit.hasCredentials(login), true, login);
+  }
+  for (const plain of ['https://github.com/a/b.git', 'ssh://git@host/a/b.git', 'git@github.com:a/b.git', 'https://host/team/@scope/a.git']) {
+    assert.equal(appGit.hasCredentials(plain), false, plain);
+  }
+  process.env.RESEARCH_HARNESS_GIT_PROTOCOLS = 'https:ssh:file';
+  const parent = tmp();
+  const r = await appGit.clone({ url: 'https://me:secret@github.com/a/b.git', parent, folder: 'p' });
+  assert.equal(r.code, 'invalid');
+  assert.match(r.error, /without your password/);
+  assert.doesNotMatch(r.error, /secret/);
+  assert.deepEqual(fs.readdirSync(parent), []);
+});
+
+// SQ-285 F5: a commit holds the research paths, whatever else is staged.
+test('commit takes only the named paths, not what the person staged by hand', async () => {
+  const r = remoteWithClone('a');
+  fs.writeFileSync(path.join(r.clone, 'draft.txt'), 'private draft\n');
+  sh(r.clone, 'add', 'draft.txt');
+  fs.appendFileSync(path.join(r.clone, 'research', 'canvas.md'), 'more\n');
+  assert.deepEqual(await appGit.commit(r.clone, ['research'], 'research only', 'A. Researcher'), { ok: true, committed: true });
+  assert.equal(sh(r.clone, 'show', '--name-only', '--format=', 'HEAD').trim(), 'research/canvas.md');
+  assert.equal(sh(r.clone, 'diff', '--cached', '--name-only').trim(), 'draft.txt', 'the hand-staged file stays staged');
+  assert.deepEqual(await appGit.commit(r.clone, ['research'], 'nothing new', 'A. Researcher'), { ok: true, committed: false }, 'a staged file outside the paths is no reason to commit');
+});
+
+// SQ-285 F6: the project's own repository, never the one around it.
+test('originOf and hasUpstream look only at the project\'s own repository', async () => {
+  process.env.RESEARCH_HARNESS_GIT_PROTOCOLS = 'https:ssh:file';
+  const r = remoteWithClone('outer');
+  assert.equal(await appGit.originOf(r.clone), r.remote);
+  assert.equal(await appGit.hasUpstream(r.clone), true);
+  const inner = path.join(r.clone, 'papers', 'inner');
+  fs.mkdirSync(inner, { recursive: true });
+  assert.equal(await appGit.originOf(inner), null);
+  assert.equal(await appGit.hasUpstream(inner), false);
+  sh(r.clone, 'remote', 'add', 'other', r.remote);
+  const fresh = tmp();
+  sh(fresh, 'init', '-q', '-b', 'main');
+  sh(fresh, 'remote', 'add', 'origin', r.remote);
+  assert.equal(await appGit.originOf(fresh), r.remote);
+  assert.equal(await appGit.hasUpstream(fresh), false, 'an origin without a first push is not tracked');
+});
+
+// SQ-285 F4: a network step that hears nothing for the timeout stops with a
+// sentence; one that keeps talking, or waits for the person's login, does not.
+function stubGit(dir, body) {
+  const file = path.join(dir, 'git');
+  fs.writeFileSync(file, `#!/bin/sh\n${body}\n`);
+  fs.chmodSync(file, 0o755);
+  return file;
+}
+
+test('network steps stop after a silence, not while git talks or the person is asked for a login', { skip: process.platform === 'win32' }, async (t) => {
+  const saved = { git: process.env.RESEARCH_HARNESS_GIT, timeout: process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS, askpass: process.env.GIT_ASKPASS };
+  t.after(() => {
+    for (const [k, v] of [['RESEARCH_HARNESS_GIT', saved.git], ['RESEARCH_HARNESS_GIT_TIMEOUT_MS', saved.timeout], ['GIT_ASKPASS', saved.askpass]]) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  });
+  process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS = '400';
+  const dir = tmp();
+
+  // A host that never answers: git is silent until it is stopped.
+  process.env.RESEARCH_HARNESS_GIT = stubGit(dir, 'sleep 30');
+  const started = Date.now();
+  const silent = await appGit.remoteIsEmpty('https://host.invalid/a.git');
+  assert.equal(silent.code, 'timeout');
+  assert.match(silent.error, /did not answer for 0 seconds|did not answer for \d+ seconds/);
+  assert.match(silent.error, /try again/);
+  assert.ok(Date.now() - started < 10000, 'git and what it started were stopped');
+  const cloned = await appGit.clone({ url: 'https://host.invalid/a.git', parent: dir, folder: 'p' });
+  assert.equal(cloned.code, 'timeout');
+
+  // A slow transfer that keeps reporting progress runs to the end.
+  process.env.RESEARCH_HARNESS_GIT = stubGit(dir, 'for i in 1 2 3 4 5 6 7 8; do echo "Writing objects: $i" >&2; sleep 0.2; done');
+  assert.deepEqual(await appGit.remoteIsEmpty('https://host.invalid/a.git'), { ok: true, empty: true });
+
+  // The login dialog: git asks through GIT_ASKPASS and hears nothing while the
+  // person types, here for longer than the timeout.
+  const helper = path.join(dir, 'askpass');
+  fs.writeFileSync(helper, '#!/bin/sh\nsleep 1.2\necho typed-by-the-person\n');
+  fs.chmodSync(helper, 0o755);
+  process.env.GIT_ASKPASS = helper;
+  process.env.RESEARCH_HARNESS_GIT = stubGit(dir, 'answer=$("$GIT_ASKPASS" "Password for https://host.invalid: ")\necho "$answer\trefs/heads/main"');
+  const asked = await appGit.remoteIsEmpty('https://host.invalid/a.git');
+  assert.deepEqual(asked, { ok: true, empty: false }, 'the answer reached git and the step was not stopped');
+});
+
 test('a project becomes a repository with one commit; a link is added, checked and pushed with upstream', async () => {
   process.env.RESEARCH_HARNESS_GIT_PROTOCOLS = 'https:ssh:file';
   const dir = tmp();

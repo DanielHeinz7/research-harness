@@ -102,3 +102,17 @@ test('readName: the git the app named, never the git from PATH', { skip: process
     if (saved.git === undefined) delete process.env.RESEARCH_HARNESS_GIT; else process.env.RESEARCH_HARNESS_GIT = saved.git;
   }
 });
+
+// SQ-285: the name is also git's author for the person's commits. A name git
+// refuses, or one with control characters, would make every later Send fail.
+test('nameRefusal: control characters, a NUL and names git refuses as an identity', () => {
+  for (const bad of ['A\u0000B', 'A\tB', 'A\u001bB', 'A\u007fB']) assert.match(identity.nameRefusal(bad), /control characters/, JSON.stringify(bad));
+  for (const bad of ['<>', ',;', '"\'', '< >', ':\\']) assert.match(identity.nameRefusal(bad), /more than signs/, bad);
+  // What passes here, git takes as an author.
+  const dir = repo(null);
+  for (const ok of ['A. Researcher', '...', 'a<b>', 'Zoë Ünal', '-']) {
+    assert.equal(identity.nameRefusal(ok), null, ok);
+    const r = childProcess.spawnSync('git', ['-c', `user.name=${ok}`, '-c', 'user.email=a@example.invalid', 'commit', '--allow-empty', '-qm', 'm'], { cwd: dir, encoding: 'utf8', env: { ...process.env, ...NO_GLOBAL } });
+    assert.equal(r.status, 0, `${ok}: ${r.stderr}`);
+  }
+});

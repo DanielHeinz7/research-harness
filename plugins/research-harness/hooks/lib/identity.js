@@ -25,10 +25,16 @@ function namePath() {
 // and travels through a shell, and both break on a second line or a comment.
 // The heading and label refusals are the same two the entry text takes, so a
 // name can never read back as the start of an entry or of one of its fields.
+// It is also the author git records for the person's commits, so a name git
+// refuses as an identity, or one with control characters, is refused here
+// before it makes every later Send fail.
 function nameRefusal(name) {
   if (typeof name !== 'string' || !name.trim()) return 'A name may not be empty.';
   const t = name.trim();
   if (/[\r\n]/.test(t)) return 'A name is one line.';
+  if (/[\u0000-\u001f\u007f]/.test(t)) return 'A name may not contain control characters.';
+  // git takes no name made only of spaces and , : ; < > " ' \ (ident.c).
+  if (!/[^\u0000-\u0020,:;<>"'\\]/.test(t)) return 'A name needs more than signs such as < > , ; and :, which git leaves out of a name.';
   if (t.length > MAX_NAME) return `A name has at most ${MAX_NAME} characters.`;
   if (t.includes('#')) return 'A name may not contain #.';
   if (ENTRY_HEADING.test(t)) return 'A name may not start like an entry heading.';

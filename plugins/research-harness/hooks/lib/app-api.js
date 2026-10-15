@@ -23,6 +23,9 @@ function invalid(error, field) {
 
 const JOIN_FIRST = 'Join this project first. The key file comes from the co-author who created the project: they save it with Invite co-author… and give it to you by mail or on a USB stick.';
 const NAME_NEEDED = 'Enter your name as co-authors should see it.';
+// The key's place under the state folder is the app's business, not the
+// person's: no message names it.
+const KEY_UNREADABLE = 'This computer\'s key for the project cannot be read, so nothing was written. Use Join this project… with the key file from the co-author who created the project.';
 
 function isProject(root) {
   return typeof root === 'string' && path.isAbsolute(root) && fs.existsSync(project.canvasPath(root));
@@ -52,16 +55,20 @@ function personName(root) {
   }
 }
 
-// Whether this computer holds the project's key, apart from what the ledger
-// says about its entries: an empty decision log has nothing to verify and
-// still needs the key before anyone can write to it. A key file that exists
-// but cannot be read counts as held; joining would only refuse to replace it.
-function holdsKey(root) {
+// Whether this computer holds the project's key ('held'), has none
+// ('missing') or has a key file it cannot read ('unreadable'), apart from
+// what the ledger says about its entries: an empty decision log has nothing
+// to verify and still needs the key before anyone can write to it.
+function keyState(root) {
   try {
-    return seal.readKey(root) !== null;
+    return seal.readKey(root) !== null ? 'held' : 'missing';
   } catch {
-    return true;
+    return 'unreadable';
   }
+}
+
+function holdsKey(root) {
+  return keyState(root) === 'held';
 }
 
 // The commands the terminal would name are no help in a window. A failure
@@ -72,8 +79,16 @@ function withoutCommands(r) {
   return { ...r, error: kept.join(' ').trim() || 'That was refused, and nothing was changed.' };
 }
 
+// The command line names the key file by its path under the state folder.
+function withoutKeyPath(r, root) {
+  const file = seal.keyPath(root);
+  if (r.ok || typeof r.error !== 'string' || !r.error.includes(file)) return r;
+  if (keyState(root) === 'unreadable') return { ...r, error: KEY_UNREADABLE };
+  return { ...r, error: r.error.split(` at ${file}`).join(' on this computer').split(file).join('this computer\'s key for the project') };
+}
+
 async function cli(root, args) {
-  return withoutCommands(await runCli(root, args));
+  return withoutCommands(withoutKeyPath(await runCli(root, args), root));
 }
 
 // The view's own write routes (accept, choose, stated, comment) refuse through
@@ -85,7 +100,8 @@ async function cli(root, args) {
 // happened.
 function appRefusal(result, root) {
   if (!result || result.ok) return result;
-  if (result.code === 'ledger' && !holdsKey(root)) return { ok: false, code: 'no-key', error: JOIN_FIRST };
+  if (result.code === 'ledger' && keyState(root) === 'missing') return { ok: false, code: 'no-key', error: JOIN_FIRST };
+  if (result.code === 'ledger' && keyState(root) === 'unreadable') return { ok: false, code: 'no-key', error: KEY_UNREADABLE };
   if (result.code === 'name') return { ok: false, code: 'name', error: NAME_NEEDED };
   return result;
 }
@@ -151,23 +167,32 @@ const routes = {
   // What the sidebar needs to know beyond the decision log: the name this
   // computer has (also with no project open, for New project…), and for the
   // open project whether it has a shared copy and whether this computer holds
-  // its key. The ledger status is a different question.
+  // its key. The ledger status is a different question. Shared means an
+  // origin the branch tracks: an origin alone is a Share that stopped before
+  // its first push went through, and Share picks it up again. A key that
+  // cannot be read is no key here, so the sidebar offers Join.
   status: async (b, ctx) => {
     const root = ctx.getRoot();
     const out = { ok: true, name: personName(root) };
     if (!root) return out;
     const origin = await appGit.originOf(root);
-    return { ...out, hasKey: holdsKey(root), shared: origin !== null, origin: appGit.displayLink(origin) };
+    const shared = origin !== null && await appGit.hasUpstream(root);
+    return { ...out, hasKey: holdsKey(root), shared, origin: shared ? appGit.displayLink(origin) : null };
   },
 
   // Gives a project a shared copy: an empty repository the person made on a
   // host. Nothing changes until the repository is known to be empty and
-  // reachable; a failed upload takes the link away again, so the next try
-  // starts from the same place.
+  // reachable; a failed upload puts the link back as it was, so the next try
+  // starts from the same place. An origin without a first push (a Share that
+  // stopped half-way, or a repository opened with a link but never pushed)
+  // is not a shared copy yet: the link given now replaces it if it is empty.
+  // What goes up is the project's history as it is, with one more commit of
+  // the research folder.
   share: (b, ctx) => withProject(ctx, async (root) => {
     if (!appGit.isLink(b.url)) return invalid('Paste the https link of the empty repository, for example https://github.com/your-name/your-paper.git.', 'url');
+    if (appGit.hasCredentials(b.url)) return invalid(appGit.CREDENTIALS, 'url');
     const had = await appGit.originOf(root);
-    if (had) return { ok: false, code: 'shared', error: `This project already has a shared copy (${appGit.displayLink(had)}).` };
+    if (had && await appGit.hasUpstream(root)) return { ok: false, code: 'shared', error: `This project already has a shared copy (${appGit.displayLink(had)}).` };
     const remote = await appGit.remoteIsEmpty(b.url);
     if (!remote.ok) return { ...remote, field: 'url' };
     if (!remote.empty) {
@@ -183,11 +208,12 @@ const routes = {
       ? await appGit.commit(root, SEND_PATHS, 'Research canvas changes', name)
       : await appGit.initRepo(root, SEND_PATHS, 'Start the project', name);
     if (!history.ok) return history;
-    const added = await appGit.addOrigin(root, b.url);
+    const added = had ? await appGit.setOrigin(root, b.url) : await appGit.addOrigin(root, b.url);
     if (!added.ok) return added;
     const pushed = await appGit.push(root, { upstream: true });
     if (pushed.ok) return { ok: true, origin: appGit.displayLink(b.url) };
-    await appGit.removeOrigin(root);
+    if (had) await appGit.setOrigin(root, had);
+    else await appGit.removeOrigin(root);
     return pushed.code === 'rejected'
       ? { ok: false, code: 'not-empty', field: 'url', error: 'Someone put files into that repository while the project was uploading, so the upload was refused. Create a new, empty repository and paste its link instead.' }
       : pushed;
@@ -236,14 +262,38 @@ const routes = {
 
   invite: (b, ctx) => withProject(ctx, (root) => {
     if (!isAbsoluteFile(b.out, '.seal.key')) return Promise.resolve(invalid('Choose where to save the key file (a name ending in .seal.key).', 'out'));
-    if (!holdsKey(root)) return Promise.resolve({ ok: false, code: 'no-key', error: `This computer has no key for the project, so there is nothing to give a co-author. ${JOIN_FIRST}` });
+    const key = keyState(root);
+    if (key === 'unreadable') return Promise.resolve({ ok: false, code: 'no-key', error: KEY_UNREADABLE });
+    if (key === 'missing') return Promise.resolve({ ok: false, code: 'no-key', error: `This computer has no key for the project, so there is nothing to give a co-author. ${JOIN_FIRST}` });
     return cli(root, ['key', 'export', '--out', b.out]);
   }),
 
-  join: (b, ctx) => withProject(ctx, (root) => {
-    if (!isAbsoluteFile(b.keyFile, '.seal.key')) return Promise.resolve(invalid('Choose the key file you received (it ends in .seal.key).'));
-    if (!isLine(b.name, 80)) return Promise.resolve(invalid('Enter your name as co-authors should see it.'));
-    return cli(root, ['join', '--key-file', b.keyFile, '--name', b.name.trim()]);
+  // A key file this computer cannot read is set aside next to itself, never
+  // deleted, so the key the person received can take its place; join checks
+  // that key against the decision log first. If joining fails, the old file
+  // goes back.
+  join: (b, ctx) => withProject(ctx, async (root) => {
+    if (!isAbsoluteFile(b.keyFile, '.seal.key')) return invalid('Choose the key file you received (it ends in .seal.key).');
+    if (!isLine(b.name, 80)) return invalid('Enter your name as co-authors should see it.');
+    const file = seal.keyPath(root);
+    let aside = null;
+    if (keyState(root) === 'unreadable') {
+      aside = `${file}.unreadable-${Date.now()}`;
+      try {
+        fs.renameSync(file, aside);
+      } catch {
+        return { ok: false, code: 'no-key', error: 'This computer\'s key for the project cannot be read, and the app cannot set it aside. Nothing was changed.' };
+      }
+    }
+    const r = await cli(root, ['join', '--key-file', b.keyFile, '--name', b.name.trim()]);
+    if (!r.ok && aside && !fs.existsSync(file)) {
+      try {
+        fs.renameSync(aside, file);
+      } catch {
+        // The file stays beside, under its new name; it could not be read anyway.
+      }
+    }
+    return r;
   }),
 
   session: (b, ctx) => withProject(ctx, async (root) => {
@@ -253,7 +303,8 @@ const routes = {
       if (badName) return invalid(badName, 'name');
       // Before the key, nothing is written: a new key would make the other
       // people's entries read as broken.
-      if (!holdsKey(root)) return { ok: false, code: 'no-key', error: JOIN_FIRST };
+      const key = keyState(root);
+      if (key !== 'held') return { ok: false, code: 'no-key', error: key === 'unreadable' ? KEY_UNREADABLE : JOIN_FIRST };
       if (!personName(root) && !(typeof b.name === 'string' && b.name.trim())) return invalid(NAME_NEEDED, 'name');
       storeName(b, root);
       return cli(root, ['session', 'start', b.occasion.trim()]);

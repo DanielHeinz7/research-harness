@@ -24,7 +24,7 @@ const RUNBOOK = 'docs/desktop-signing.md';
 const BASE = {
   appId: 'org.research-harness.desktop',
   productName: 'Placet',
-  files: ['main.js', 'preload.js', 'server.js', 'git-path.js', 'package.json', 'agent/**', '!agent/shims/**'],
+  files: ['main.js', 'preload.js', 'server.js', 'git-path.js', 'updater.js', 'package.json', 'agent/**', '!agent/shims/**'],
   extraResources: [
     { from: 'build/plugin', to: 'plugin' },
     { from: 'askpass.sh', to: 'askpass.sh' },

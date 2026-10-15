@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('harnessHost', {
   saveFile: (opts) => ipcRenderer.invoke('host:save-file', opts),
   reveal: (p) => ipcRenderer.invoke('host:reveal', p),
   openExternal: (url) => ipcRenderer.invoke('host:open-external', url),
+  // Updates exist only in Developer ID builds; elsewhere nothing is ever sent.
+  onUpdate: (callback) => {
+    ipcRenderer.on('host:update', (_event, msg) => callback(msg));
+    ipcRenderer.invoke('host:update-state').then((msg) => { if (msg) callback(msg); });
+  },
+  restartToUpdate: () => ipcRenderer.invoke('host:restart-to-update'),
   agentBounds: (rect) => ipcRenderer.send('agent:bounds', rect),
   agentProject: (folder) => ipcRenderer.send('agent:project', folder),
   setUpAgent: () => ipcRenderer.send('agent:setup'),

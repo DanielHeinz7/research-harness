@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell, utilityProcess } = require('electron');
 const path = require('node:path');
 const { gitPath } = require('./git-path');
 const { setUpAgent } = require('./agent');
@@ -9,6 +9,37 @@ if (process.env.RESEARCH_HARNESS_TEST_USER_DATA) app.setPath('userData', process
 const pluginRoot = app.isPackaged ? path.join(process.resourcesPath, 'plugin') : path.join(__dirname, '..', 'plugins', 'research-harness');
 const askpass = app.isPackaged ? path.join(process.resourcesPath, 'askpass.sh') : path.join(__dirname, 'askpass.sh');
 const shimsDir = app.isPackaged ? path.join(process.resourcesPath, 'shims') : path.join(__dirname, 'agent', 'shims');
+
+const { createUpdater, fileSettings } = require('./updater');
+
+// dist.js writes the signing mode into the packaged package.json; a checkout has none.
+const signing = require('./package.json').harnessSigning || 'none';
+let updater = null;
+
+function appMenu(settings) {
+  return Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { label: 'Check for Updates…', click: () => updater.checkNow() },
+        { label: 'Check for Updates Automatically', type: 'checkbox', checked: settings.get(), click: (item) => settings.set(item.checked) },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ]);
+}
 
 function pluginVersion() {
   try { return JSON.parse(require('node:fs').readFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version || null; } catch (_) { return null; }
@@ -58,7 +89,7 @@ function window(url) {
     width: 1440,
     minWidth: 960,
     height: 900,
-    title: 'research-harness',
+    title: 'Placet',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   win.webContents.on('will-navigate', (event, target) => {
@@ -87,15 +118,24 @@ ipcMain.handle('host:save-file', async (e, opts) => {
 });
 ipcMain.handle('host:reveal', (e, p) => { if (typeof p === 'string' && path.isAbsolute(p)) shell.showItemInFolder(p); });
 ipcMain.handle('host:open-external', (e, url) => { if (typeof url === 'string' && url.startsWith('https://')) shell.openExternal(url); });
+ipcMain.handle('host:update-state', () => (updater ? updater.last() : null));
+ipcMain.handle('host:restart-to-update', () => { if (updater) updater.restart(); });
 
 app.whenReady().then(async () => {
   try {
     const { child, url } = await startServer();
     const win = window(url);
+    if (signing === 'developer-id') {
+      const { autoUpdater } = require('electron-updater');
+      const settings = fileSettings(app.getPath('userData'));
+      updater = createUpdater({ signing, autoUpdater, settings, send: (msg) => { if (!win.isDestroyed()) win.webContents.send('host:update', msg); } });
+      Menu.setApplicationMenu(appMenu(settings));
+      updater.start();
+    }
     setUpAgent({ win, pluginRoot, pluginVersion: pluginVersion(), gitEnv, dataDir: app.getPath('userData'), shimsDir });
     app.on('before-quit', () => child.kill());
   } catch (err) {
-    dialog.showErrorBox('research-harness could not start', err.message);
+    dialog.showErrorBox('Placet could not start', err.message);
     app.quit();
   }
 });

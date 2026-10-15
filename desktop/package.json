@@ -6,7 +6,9 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
-    "check-git": "node scripts/check-git.js"
+    "check-git": "node scripts/check-git.js",
+    "bundle": "node scripts/bundle-plugin.js",
+    "dist": "npm run bundle && electron-builder --mac dir"
   },
   "dependencies": {
     "dugite": "3.2.3"

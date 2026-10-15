@@ -52,15 +52,18 @@ function personName(root) {
   }
 }
 
-// Whether this computer holds the project's key, apart from what the ledger
-// says about its entries: an empty decision log has nothing to verify and
-// still needs the key before anyone can write to it. A key file that exists
-// but cannot be read counts as held; joining would only refuse to replace it.
-function holdsKey(root) {
+// This computer's key for the project, apart from what the ledger says about
+// its entries: an empty decision log has nothing to verify and still needs the
+// key before anyone can write to it. A key file that cannot be read is not a
+// key this computer holds — nobody can write with it either — so the sidebar
+// offers Join as it does without one.
+const KEY_UNREADABLE = 'This computer\'s key for the project cannot be read, so nothing can be written here. Give the key file read permission again, then try once more.';
+
+function keyState(root) {
   try {
-    return seal.readKey(root) !== null;
+    return seal.readKey(root) === null ? 'missing' : 'held';
   } catch {
-    return true;
+    return 'unreadable';
   }
 }
 
@@ -78,14 +81,18 @@ async function cli(root, args) {
 
 // The view's own write routes (accept, choose, stated, comment) refuse through
 // the ledger, whose sentences tell the person to run a command — the one thing
-// a window cannot do. In app mode those two refusals are answered in the app's
-// words instead: the Join the app's own routes use, and the name the person
-// has to give. Everything else is left as it stands — a broken chain or a key
-// that cannot be read is no window's to fix, and the sentence says what
-// happened.
+// a window cannot do. In app mode those refusals are answered in the app's
+// words instead: the Join the app's own routes use, the key this computer
+// cannot read (its path is no help in a window), and the name the person has
+// to give. Everything else is left as it stands — a broken chain is no
+// window's to fix, and the sentence says what happened.
 function appRefusal(result, root) {
   if (!result || result.ok) return result;
-  if (result.code === 'ledger' && !holdsKey(root)) return { ok: false, code: 'no-key', error: JOIN_FIRST };
+  if (result.code === 'ledger') {
+    const key = keyState(root);
+    if (key === 'unreadable') return { ok: false, code: 'no-key', error: KEY_UNREADABLE };
+    if (key === 'missing') return { ok: false, code: 'no-key', error: JOIN_FIRST };
+  }
   if (result.code === 'name') return { ok: false, code: 'name', error: NAME_NEEDED };
   return result;
 }
@@ -156,8 +163,12 @@ const routes = {
     const root = ctx.getRoot();
     const out = { ok: true, name: personName(root) };
     if (!root) return out;
+    // A shared copy is one this project has uploaded to. The link alone is
+    // what a share leaves behind when it stops before the upload, and then
+    // there is nothing for a co-author to get: Share finishes the job instead.
     const origin = await appGit.originOf(root);
-    return { ...out, hasKey: holdsKey(root), shared: origin !== null, origin: appGit.displayLink(origin) };
+    const shared = origin !== null && await appGit.hasUpstream(root);
+    return { ...out, hasKey: keyState(root) === 'held', shared, origin: shared ? appGit.displayLink(origin) : null };
   },
 
   // Gives a project a shared copy: an empty repository the person made on a
@@ -166,8 +177,22 @@ const routes = {
   // starts from the same place.
   share: (b, ctx) => withProject(ctx, async (root) => {
     if (!appGit.isLink(b.url)) return invalid('Paste the https link of the empty repository, for example https://github.com/your-name/your-paper.git.', 'url');
+    if (appGit.linkCarriesPassword(b.url)) return invalid(appGit.PASSWORD_REFUSAL, 'url');
     const had = await appGit.originOf(root);
-    if (had) return { ok: false, code: 'shared', error: `This project already has a shared copy (${appGit.displayLink(had)}).` };
+    if (had !== null && await appGit.hasUpstream(root)) {
+      return { ok: false, code: 'shared', error: `This project already has a shared copy (${appGit.displayLink(had)}).` };
+    }
+    // A share that stopped between the link and the upload is finished here:
+    // the link is stored already, so the upload is simply tried again. A
+    // different link is refused — the project is connected to the one it has.
+    if (had !== null && had !== b.url) {
+      return {
+        ok: false,
+        code: 'shared',
+        field: 'url',
+        error: `This project is connected to a shared copy already (${appGit.displayLink(had)}), so nothing was uploaded. Paste that link to finish the upload, or have the connection to this project removed first.`,
+      };
+    }
     const remote = await appGit.remoteIsEmpty(b.url);
     if (!remote.ok) return { ...remote, field: 'url' };
     if (!remote.empty) {
@@ -183,11 +208,12 @@ const routes = {
       ? await appGit.commit(root, SEND_PATHS, 'Research canvas changes', name)
       : await appGit.initRepo(root, SEND_PATHS, 'Start the project', name);
     if (!history.ok) return history;
-    const added = await appGit.addOrigin(root, b.url);
+    const added = had === null ? await appGit.addOrigin(root, b.url) : { ok: true };
     if (!added.ok) return added;
     const pushed = await appGit.push(root, { upstream: true });
     if (pushed.ok) return { ok: true, origin: appGit.displayLink(b.url) };
-    await appGit.removeOrigin(root);
+    // Only a link this attempt stored goes away again; a resumed one stays.
+    if (had === null) await appGit.removeOrigin(root);
     return pushed.code === 'rejected'
       ? { ok: false, code: 'not-empty', field: 'url', error: 'Someone put files into that repository while the project was uploading, so the upload was refused. Create a new, empty repository and paste its link instead.' }
       : pushed;
@@ -236,13 +262,18 @@ const routes = {
 
   invite: (b, ctx) => withProject(ctx, (root) => {
     if (!isAbsoluteFile(b.out, '.seal.key')) return Promise.resolve(invalid('Choose where to save the key file (a name ending in .seal.key).', 'out'));
-    if (!holdsKey(root)) return Promise.resolve({ ok: false, code: 'no-key', error: `This computer has no key for the project, so there is nothing to give a co-author. ${JOIN_FIRST}` });
+    const key = keyState(root);
+    if (key === 'unreadable') return Promise.resolve({ ok: false, code: 'no-key', error: KEY_UNREADABLE });
+    if (key === 'missing') return Promise.resolve({ ok: false, code: 'no-key', error: `This computer has no key for the project, so there is nothing to give a co-author. ${JOIN_FIRST}` });
     return cli(root, ['key', 'export', '--out', b.out]);
   }),
 
   join: (b, ctx) => withProject(ctx, (root) => {
     if (!isAbsoluteFile(b.keyFile, '.seal.key')) return Promise.resolve(invalid('Choose the key file you received (it ends in .seal.key).'));
     if (!isLine(b.name, 80)) return Promise.resolve(invalid('Enter your name as co-authors should see it.'));
+    // A key file that is there but unreadable blocks the command line too, and
+    // its sentence names a path inside the app's own state folder.
+    if (keyState(root) === 'unreadable') return Promise.resolve({ ok: false, code: 'no-key', error: KEY_UNREADABLE });
     return cli(root, ['join', '--key-file', b.keyFile, '--name', b.name.trim()]);
   }),
 
@@ -253,7 +284,9 @@ const routes = {
       if (badName) return invalid(badName, 'name');
       // Before the key, nothing is written: a new key would make the other
       // people's entries read as broken.
-      if (!holdsKey(root)) return { ok: false, code: 'no-key', error: JOIN_FIRST };
+      const key = keyState(root);
+      if (key === 'unreadable') return { ok: false, code: 'no-key', error: KEY_UNREADABLE };
+      if (key === 'missing') return { ok: false, code: 'no-key', error: JOIN_FIRST };
       if (!personName(root) && !(typeof b.name === 'string' && b.name.trim())) return invalid(NAME_NEEDED, 'name');
       storeName(b, root);
       return cli(root, ['session', 'start', b.occasion.trim()]);

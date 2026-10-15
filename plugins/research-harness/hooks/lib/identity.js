@@ -29,6 +29,14 @@ function nameRefusal(name) {
   if (typeof name !== 'string' || !name.trim()) return 'A name may not be empty.';
   const t = name.trim();
   if (/[\r\n]/.test(t)) return 'A name is one line.';
+  // Control characters, NUL among them. The name becomes a field line and a
+  // commit's author line, and a NUL never reaches git at all: node refuses to
+  // start the command, after which every Send, Share and Update fails.
+  if (/[\u0000-\u001f\u007f]/.test(t)) return 'A name may not contain control characters.';
+  // git refuses a name that is nothing but the characters it strips away
+  // ("name consists only of disallowed characters"), so it is refused here,
+  // where the person can still give another one.
+  if (!/[^<>\s]/.test(t)) return 'A name may not consist only of < and >.';
   if (t.length > MAX_NAME) return `A name has at most ${MAX_NAME} characters.`;
   if (t.includes('#')) return 'A name may not contain #.';
   if (ENTRY_HEADING.test(t)) return 'A name may not start like an entry heading.';

@@ -38,6 +38,24 @@ test('nameRefusal: one trimmed line, at most 60 characters, no #, no heading, no
   assert.match(identity.nameRefusal('**Why:** x'), /field label/);
 });
 
+// A name git cannot write fails every commit after it: a control character
+// travels into the author line, and a NUL never even reaches git, which node
+// refuses to start. Both are refused here, where the person can still give
+// another name.
+test('nameRefusal: control characters and a name git would refuse', () => {
+  assert.match(identity.nameRefusal('A\u0001B'), /control characters/);
+  assert.match(identity.nameRefusal('A\u0000B'), /control characters/);
+  assert.match(identity.nameRefusal('A\u007fB'), /control characters/);
+  assert.match(identity.nameRefusal('\u0000'), /control characters/);
+  // git: "name consists only of disallowed characters".
+  assert.match(identity.nameRefusal('<>'), /< and >/);
+  assert.match(identity.nameRefusal('< >'), /< and >/);
+  assert.match(identity.nameRefusal('  <>  '), /< and >/);
+  assert.equal(identity.nameRefusal('A <b>'), null, 'git accepts these');
+  assert.equal(identity.nameRefusal('A > B'), null);
+  assert.equal(identity.nameRefusal('A. Researcher'), null);
+});
+
 test('readName: the file first, then git config user.name, then a refusal naming the command', () => {
   const state = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'));
   const dir = repo('Git Person');

@@ -366,6 +366,135 @@ test('Get updates and Send answer in plain words where there is no shared copy o
   assertPlain(await routes.clone({ url: `file://${path.join(tmp(), 'gone.git')}`, parent: tmp(), folder: 'x' }, context(tmp())));
 });
 
+// -- The hardening from the review of SQ-279 (SQ-288) ------------------------
+
+test('a share that stopped after the link was stored is finished by sharing again', async (t) => {
+  freshComputer(t);
+  const ctx = context(tmp());
+  const a = (await routes.init({ parent: tmp(), folder: 'shared', mode: 'brainstorming', title: 'Shared', name: 'A. Author' }, ctx)).current;
+  const remote = bareRemote();
+  // What an interrupted Share leaves behind: the link, without the upload.
+  sh(a, 'remote', 'add', 'origin', remote.url);
+  const before = await routes.status({}, ctx);
+  assert.equal(before.shared, false, 'a stored link alone is not a shared copy');
+  assert.equal(before.origin, null, 'so there is no link to hand a co-author yet');
+  for (const route of [routes.update, routes.send]) assertPlain(await route({}, ctx));
+
+  // Another repository: refused, and the link the project is connected to stays.
+  const other = bareRemote();
+  const refused = await routes.share({ url: other.url }, ctx);
+  assertPlain(refused);
+  assert.equal(refused.code, 'shared');
+  assert.equal(refused.field, 'url');
+  assert.match(refused.error, /connected to a shared copy already/);
+  assert.match(refused.error, /finish the upload/);
+  assert.equal(sh(a, 'remote', 'get-url', 'origin').trim(), remote.url);
+  assert.equal(sh(other.path, 'for-each-ref').trim(), '', 'the other repository stays empty');
+
+  // The same link finishes the job the interrupted share started.
+  const resumed = await routes.share({ url: remote.url }, ctx);
+  assert.equal(resumed.ok, true, resumed.error);
+  assert.equal(resumed.origin, remote.url);
+  assert.equal(sh(remote.path, 'rev-list', '--count', 'main').trim(), '1', 'the project is up');
+  const after = await routes.status({}, ctx);
+  assert.equal(after.shared, true);
+  assert.equal(after.origin, remote.url);
+  assert.equal(sh(a, 'rev-parse', '--abbrev-ref', '@{upstream}').trim(), 'origin/main');
+});
+
+test('a resumed share still refuses a repository that already holds files', async (t) => {
+  freshComputer(t);
+  const ctx = context(tmp());
+  const a = (await routes.init({ parent: tmp(), folder: 'paper', mode: 'brainstorming', name: 'A. Author' }, ctx)).current;
+  const full = bareRemote(true);
+  const heads = sh(full.path, 'for-each-ref');
+  sh(a, 'remote', 'add', 'origin', full.url);
+  const refused = await routes.share({ url: full.url }, ctx);
+  assert.equal(refused.code, 'not-empty');
+  assert.equal(refused.field, 'url');
+  assert.match(refused.error, /already holds files/);
+  assertPlain(refused);
+  assert.equal(sh(full.path, 'for-each-ref'), heads, 'the other repository is as it was');
+});
+
+test('Share refuses a link that carries a password, and stores nothing', async (t) => {
+  freshComputer(t);
+  const ctx = context(tmp());
+  const a = (await routes.init({ parent: tmp(), folder: 'paper', mode: 'brainstorming', name: 'A. Author' }, ctx)).current;
+  const r = await routes.share({ url: 'https://me:secret@github.com/a/b.git' }, ctx);
+  assert.equal(r.code, 'invalid');
+  assert.equal(r.field, 'url');
+  assertPlain(r);
+  assert.match(r.error, /without your password/);
+  assert.doesNotMatch(r.error, /secret/, 'the password is not repeated back');
+  assert.equal(sh(a, 'remote').trim(), '', 'nothing was stored in .git/config');
+  assert.equal((await routes.status({}, ctx)).shared, false);
+});
+
+test('Send commits the research files only, also in a repository that holds other work', async (t) => {
+  freshComputer(t);
+  const ctx = context(tmp());
+  const a = (await routes.init({ parent: tmp(), folder: 'paper', mode: 'brainstorming', name: 'A. Author' }, ctx)).current;
+  const remote = bareRemote();
+  assert.equal((await routes.share({ url: remote.url }, ctx)).ok, true);
+  // The folder is a repository someone also works in: work outside the
+  // research folder sits in the same index.
+  fs.writeFileSync(path.join(a, 'notes.txt'), 'other work\n');
+  sh(a, 'add', '--', 'notes.txt');
+  fs.appendFileSync(path.join(a, 'research', 'canvas.md'), '\ncanvas edit\n');
+  const sent = await routes.send({}, ctx);
+  assert.equal(sent.ok, true, sent.error);
+  assert.equal(sh(a, 'show', '--name-only', '--format=', 'HEAD').trim(), 'research/canvas.md');
+  assert.equal(sh(a, 'status', '--porcelain').trim(), 'A  notes.txt', 'the other staged work is untouched');
+  assert.deepEqual(sh(remote.path, 'ls-tree', '-r', '--name-only', 'main').trim().split('\n'),
+    ['research/canvas.md', 'research/decisions.md'], 'and the work outside the research folder was not uploaded');
+});
+
+test('a project inside another repository does not inherit that repository\'s shared copy', async (t) => {
+  freshComputer(t);
+  const outer = tmp();
+  sh(outer, 'init', '-b', 'main');
+  sh(outer, 'remote', 'add', 'origin', 'https://example.invalid/outer.git');
+  sh(outer, 'config', 'branch.main.remote', 'origin');
+  sh(outer, 'config', 'branch.main.merge', 'refs/heads/main');
+  const inner = path.join(outer, 'paper');
+  fs.mkdirSync(path.join(inner, 'research'), { recursive: true });
+  fs.writeFileSync(path.join(inner, 'research', 'canvas.md'), 'canvas\n');
+  const ctx = context(tmp());
+  assert.equal((await routes.open({ root: inner }, ctx)).ok, true);
+  const opened = await routes.status({}, ctx);
+  assert.equal(opened.shared, false, 'the parent repository is not this project\'s shared copy');
+  assert.equal(opened.origin, null);
+  // With its own repository, too.
+  sh(inner, 'init', '-b', 'main');
+  const own = await routes.status({}, ctx);
+  assert.equal(own.shared, false);
+  assert.equal(own.origin, null);
+});
+
+test('an unreadable key reads as no key, names no path, and offers Join', async (t) => {
+  freshComputer(t);
+  const ctx = context(tmp());
+  const a = (await routes.init({ parent: tmp(), folder: 'paper', mode: 'brainstorming', name: 'A. Author' }, ctx)).current;
+  assert.equal((await routes.status({}, ctx)).hasKey, true);
+  // A key file that is there but cannot be read.
+  fs.rmSync(seal.keyPath(a));
+  fs.mkdirSync(seal.keyPath(a));
+  assert.equal((await routes.status({}, ctx)).hasKey, false, 'the sidebar offers Join');
+  const answers = [
+    await routes.session({ action: 'start', occasion: 'First' }, ctx),
+    await routes.invite({ out: path.join(tmp(), 'a.seal.key') }, ctx),
+    await routes.join({ keyFile: path.join(tmp(), 'a.seal.key'), name: 'B. Supervisor' }, ctx),
+    appRefusal({ ok: false, code: 'ledger', error: 'No sealing key for this project on this machine; run research-harness init --project <slug> --mode <mode> once here.' }, a),
+  ];
+  for (const r of answers) {
+    assert.equal(r.code, 'no-key', r.error);
+    assertPlain(r);
+    assert.match(r.error, /key for the project cannot be read/);
+    assert.doesNotMatch(r.error, /seal\.key/, 'the path inside the app\'s state folder is not named');
+  }
+});
+
 test('a broken log refuses a session without telling the person to run a command', async (t) => {
   freshComputer(t);
   const ctx = context(tmp());

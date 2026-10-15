@@ -697,6 +697,7 @@ test('Share with co-authors… explains the steps, refuses a non-empty repositor
   assert.match(text, /institute’s GitLab/);
   assert.match(text, /https link/);
   assert.match(text, /Clone from link…/);
+  assert.match(text, /history as it is[\s\S]*everything else committed in this folder/, 'the dialog says what is uploaded');
   assert.match(text, /key that seals your entries stays on this computer/);
   assert.equal(await page.evaluate(() => document.activeElement.name), 'url', 'the dialog opens on its field');
   await dialog.getByRole('button', { name: 'Share project' }).click();

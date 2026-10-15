@@ -135,6 +135,25 @@ function templateBody() {
   return template.replace(/^---[\s\S]*?\n---\n/, '');
 }
 
+const GITATTRIBUTES = path.join('research', '.gitattributes');
+
+// research/.gitattributes keeps every research file LF in every checkout, also
+// under Git for Windows' default core.autocrlf=true; without it the canvas and
+// the log are refused there (README, "Windows line endings"). A file that is
+// already there is the researcher's and stays as it is.
+function ensureGitattributes(root) {
+  const file = path.join(root, GITATTRIBUTES);
+  if (fs.existsSync(file)) return false;
+  fs.writeFileSync(file, '* text eol=lf\n');
+  return true;
+}
+
+// "a", "a and b", "a, b and c": the Created line reads as it did before when
+// research/.gitattributes is already there and nothing is added to it.
+function andList(items) {
+  return items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0];
+}
+
 // A variant is one framing of an existing project, under its own lens: a full
 // state directory under research/variants/<name>/ with its own canvas and its
 // own log. It takes the project slug and profile from the main canvas, so the
@@ -172,7 +191,9 @@ function initVariant(flags) {
   fs.mkdirSync(path.dirname(canvasFile), { recursive: true });
   fs.writeFileSync(canvasFile, `${frontmatter}${templateBody()}`);
   if (!fs.existsSync(decisionsFile)) fs.writeFileSync(decisionsFile, decisions.header(`${slug} · variant ${name}`));
-  say(`Created ${path.relative(root, canvasFile)} and ${path.relative(root, decisionsFile)} (variant ${name}, lens: ${lens}, mode ${mode}).`);
+  const made = [path.relative(root, canvasFile), path.relative(root, decisionsFile)];
+  if (ensureGitattributes(root)) made.push(path.relative(root, path.join(root, GITATTRIBUTES)));
+  say(`Created ${andList(made)} (variant ${name}, lens: ${lens}, mode ${mode}).`);
   say('Every element is empty. Only the researcher chooses a framing, with research-harness choose <name>.');
   return 0;
 }
@@ -260,7 +281,9 @@ function init(flags) {
   fs.mkdirSync(path.dirname(canvasFile), { recursive: true });
   fs.writeFileSync(canvasFile, `${frontmatter}${body}`);
   if (!fs.existsSync(decisionsFile)) fs.writeFileSync(decisionsFile, seal.withKeyLine(decisions.header(flags.project), keyBytes));
-  say(`Created ${path.relative(root, canvasFile)} and ${path.relative(root, decisionsFile)} (profile ${profileId}, mode ${flags.mode}).`);
+  const made = [path.relative(root, canvasFile), path.relative(root, decisionsFile)];
+  if (ensureGitattributes(root)) made.push(path.relative(root, path.join(root, GITATTRIBUTES)));
+  say(`Created ${andList(made)} (profile ${profileId}, mode ${flags.mode}).`);
   say(keyLine(key));
   say('Every element is empty. That is the correct starting state.');
   return 0;

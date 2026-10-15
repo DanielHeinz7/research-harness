@@ -1,6 +1,8 @@
 # Desktop app, sub-project 4: distribution, signing and updates
 
-Status: approved by the owner, 2026-10-15.
+Status: approved by the owner, 2026-10-15. Corrected the same day from the live state of `desktop/`
+(sub-project 1 landed with electron-builder 26.17.0 and dugite 3.2.3): signing details in 4.2, 4.3
+and 6. The design did not change.
 Decision record: vault `appdev/research-harness.md`, blocks of 2026-10-14 ("Desktop-App mit eigenem
 Agenten") and 2026-10-15 ("Desktop-App: Proposal-Satz, Video, handoff-Skill; Apple-Konto
 recherchiert"). Builds on sub-project 1: spec `2026-10-15-desktop-app-shell-design.md` (`990bbed`),
@@ -46,7 +48,7 @@ Checked for this spec on 2026-10-15, at the source:
 |---|---|
 | macOS Sequoia opens an app from an unidentified developer only through System Settings → Privacy & Security → "Open Anyway"; the page does not mention Control-click → Open. | support.apple.com/102445 |
 | electron-builder skips signing when no identity is found and does not ad-hoc sign by itself; `identity: "-"` ad-hoc signs and adds `allow-jit` and `disable-library-validation` itself. It signs nested frameworks and helpers. Notarization: `mac.notarize: true`, credentials from `APPLE_KEYCHAIN_PROFILE` + `APPLE_TEAM_ID` (or Apple ID or API key variables). A stock Electron app needs no entitlements file. | electron-builder `website/docs/features/code-signing/code-signing-mac.md`, `notarization.md` (master) |
-| Current stable electron-builder is 26.15.3 (`npm view`, `latest`); 27 is in alpha and moves the signing keys under `mac.sign`. | npm, `notarization.md` |
+| Current stable electron-builder is 26.15.3 (`npm view`, `latest`); `desktop/` pins 26.17.0 (tag `v26`). 27 is in alpha and moves the signing keys under `mac.sign`. In 26 the notarization options are API key, Apple ID, or `APPLE_KEYCHAIN` + `APPLE_KEYCHAIN_PROFILE`. | npm, `desktop/package.json`, `app-builder-lib/scheme.json` at `electron-builder@26.15.3` |
 | "macOS application must be signed in order for auto updating to work"; the `zip` target is required, otherwise `latest-mac.yml` is not written. | electron-builder `features/auto-update.md` |
 | electron-updater's GitHub provider, with prereleases off, reads `github.com/<owner>/<repo>/releases/latest`, the release marked Latest. | `electron-updater/src/providers/GitHubProvider.ts`, `getLatestTagName` |
 | electron-updater's `isUpdaterActive()` returns true for any packaged app; it does not look at signing. | `electron-updater/src/AppUpdater.ts` |
@@ -140,10 +142,19 @@ asks for the app-specific password itself, or takes an App Store Connect API key
    `research-harness-mac-x64.dmg` (no version, so the download links in 4.6 never change), and
    `research-harness-<version>-mac-<arch>.zip` for updates.
 3. Sign according to the switch:
-   - `none`: ad-hoc (`identity: "-"`), hardened runtime on, no notarization, no publish settings.
-   - `developer-id`: the identity from the file, hardened runtime on, `notarize: true`, and publish
-     settings for this repository with `--publish never` (uploading is `release.js`'s job).
-     `APPLE_KEYCHAIN_PROFILE` and `APPLE_TEAM_ID` go only into electron-builder's environment.
+   - `none`: ad-hoc (`identity: "-"`), hardened runtime on with an entitlements file that grants
+     `allow-jit` and `disable-library-validation` (electron-builder 26 does not add the second one
+     itself; its schema says so), no notarization, no publish settings.
+   - `developer-id`: the identity from the file, without the "Developer ID Application: " prefix
+     (electron-builder 26 refuses the prefix, `macCodeSign.ts`), hardened runtime on with `allow-jit`
+     only, `notarize: true`, and publish settings for this repository with `--publish never`
+     (uploading is `release.js`'s job). `APPLE_KEYCHAIN` and `APPLE_KEYCHAIN_PROFILE` go only into
+     electron-builder's environment (electron-builder 26's third notarization option).
+   - Both modes: Mach-O files that arrive already signed with a Developer ID, hardened runtime and a
+     timestamp keep that signature (`mac.signIgnore`, computed from `codesign` before the build).
+     dugite's git has 55 Mach-O files: 30 ad-hoc, 24 signed by Microsoft (Git Credential Manager and
+     its .NET runtime), 1 signed by GitHub (checked 2026-10-15 in `desktop/node_modules/dugite/git`).
+     Re-signing the .NET files would replace Microsoft's entitlements with ours.
 4. Check the result with `verify-app.js` (4.3).
 
 The two runs each write a `latest-mac.yml`; the script merges them into one that lists both zips.
@@ -163,9 +174,12 @@ For each built app:
 
 - `codesign --verify --deep --strict` passes.
 - Every Mach-O file inside the bundle is signed, found by walking the bundle and asking `file`. This
-  covers dugite's git and whatever binary another sub-project adds later. In `developer-id` mode each
-  one has the hardened-runtime flag, a secure timestamp, and the team ID from `distribution.json`
-  (`codesign -dvvv`).
+  covers dugite's git and whatever binary another sub-project adds later. Each one has the
+  hardened-runtime flag (`codesign -dvvv`). In `developer-id` mode each one also has a secure
+  timestamp and either the team ID from `distribution.json` or a Developer ID signature it arrived
+  with (kept, see 4.2); the script lists the kept ones by team.
+- The bundled git and its credential manager still run inside the signed app (`git --version`,
+  `git credential-manager --version`).
 - The bundled git is built for the app's processor (`file` says `arm64` or `x86_64`), and
   `git --version` runs from inside the bundle.
 - `developer-id` only: `xcrun stapler validate` passes for the app, and `spctl --assess --type execute
@@ -254,10 +268,12 @@ years and that apps signed with a timestamp keep opening after it expires.
   assumption in §2.
 - The Intel app is started under Rosetta on an Apple silicon Mac (`arch -x86_64`), and its git
   reports `x86_64`.
-- Signing path without an account: a self-signed code-signing certificate in a temporary keychain runs
-  `developer-id` mode with notarization turned off by a test-only setting, to show that every Mach-O
-  file, git included, gets the hardened runtime. If electron-builder refuses a non-Developer-ID
-  certificate, this test is dropped and the report says so.
+- Signing path without an account: every `none` build already runs with the hardened runtime, so the
+  local build shows that the app, git and the credential manager start under it. A self-signed
+  certificate cannot stand in for a Developer ID: electron-builder looks identities up with
+  `security find-identity -v -p codesigning` (`macCodeSign.ts`), which lists only trusted ones, and
+  trusting a certificate asks for the account password in a dialog. What a real identity adds (team
+  ID, library validation, notarization) waits for the account.
 - Not testable before an account exists: notarization, stapling, and a real update. The first signed
   release is that test, run by the owner: install version N from the download link on a second user
   account, release N+1, see the sidebar line, restart, check the version.
@@ -285,11 +301,11 @@ staged rollouts; a universal app.
 
 ## 9. Files this sub-project touches
 
-Created: `desktop/distribution.json`, `desktop/scripts/dist.js`, `desktop/scripts/verify-app.js`,
+Created: `desktop/distribution.json`, two entitlements files, `desktop/scripts/dist.js`, `desktop/scripts/verify-app.js`,
 `desktop/updater.js`, `desktop/test/*`, `docs/desktop-signing.md`. Changed: `desktop/package.json`
 (`dist` script, electron-updater), `desktop/electron-builder.yml` (settings move into `dist.js`),
 `desktop/main.js` and `preload.js` (updater, two bridge members), `plugins/research-harness/dashboard/app.html`
 (the update line), `scripts/release.js` and `scripts/release.test.js`, and the README in the commit
 that turns signing on.
 
-All of `desktop/` comes from sub-project 1, Task 8, so this plan starts after that task has landed.
+All of `desktop/` comes from sub-project 1, Task 8, which landed on `main` on 2026-10-15 (`a3cba17`).

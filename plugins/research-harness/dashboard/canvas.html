@@ -1916,13 +1916,36 @@
   }
 
   // A link to a statement (`#st-3.1`) opens the page on it.
-  function scrollToLinked() {
-    var linked = STATEMENT_HASH.exec(location.hash);
-    var target = linked && document.getElementById(linked[1]);
-    if (!target) return;
+  function revealById(id) {
+    var target = document.getElementById(id);
+    if (!target) return false;
     layoutIn(app);
     if (target.scrollIntoView) target.scrollIntoView({ block: 'center' });
     if (target.focus) target.focus({ preventScroll: true });
+    return true;
+  }
+
+  function scrollToLinked() {
+    var linked = STATEMENT_HASH.exec(location.hash);
+    if (linked) revealById(linked[1]);
+  }
+
+  // The app's agent column asks for a statement by number (a link in the
+  // agent's reply). Hidden statements are not shown, so they are not found.
+  function lookupStatement(num) {
+    if (!state) return null;
+    for (var a = 0; a < state.elements.length; a++) {
+      var qs = state.elements[a].questions;
+      for (var b = 0; b < qs.length; b++) {
+        for (var c = 0; c < qs[b].statements.length; c++) {
+          var st = qs[b].statements[c];
+          if (statementNumber(qs[b], c) !== num || st.hidden) continue;
+          var words = String(st.text || '').trim().split(/\s+/).filter(Boolean);
+          return words.length > 8 ? words.slice(0, 8).join(' ') + ' …' : words.join(' ');
+        }
+      }
+    }
+    return null;
   }
 
   // Embedded in the app's shell page, the view takes its token from the shell
@@ -1948,6 +1971,13 @@
       if (msg.type === 'harness-tab') showTab(msg.tab);
       if (msg.type === 'harness-refresh') {
         refreshState().catch(function (err) { showNotice('Could not reload the canvas: ' + err.message); });
+      }
+      if (msg.type === 'harness-reveal' && typeof msg.num === 'string') {
+        showTab('poster');
+        revealById('st-' + msg.num);
+      }
+      if (msg.type === 'harness-lookup' && typeof msg.num === 'string') {
+        window.parent.postMessage({ type: 'harness-lookup-result', id: msg.id, words: lookupStatement(msg.num) }, window.location.origin);
       }
     });
     window.parent.postMessage({ type: 'harness-ready' }, window.location.origin);

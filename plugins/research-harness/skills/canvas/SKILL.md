@@ -29,6 +29,8 @@ manuscript exists), and the target outlet if known. Example:
 
 Every statement is one paragraph ending in a marker group.
 
+Statements are numbered by their question: the first statement under 3.1 is 3.1, the next ones 3.1b, 3.1c. Cite statements by these numbers; the desktop app turns them into links to the statement.
+
 - `[proposed]` — your suggestion. Most of what you write.
 - `[tentative]` — something found in the material, not yet confirmed.
 - `[stated]` — **only** a transcription of what the researcher said in this

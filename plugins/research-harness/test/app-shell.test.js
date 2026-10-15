@@ -253,6 +253,31 @@ test('with a host bridge, Choose… fills the field from the native picker', { s
   assert.match(await page.locator('#out-project').textContent(), /Opened /);
 });
 
+test('the session view reveals a statement by number and answers lookups', { skip, timeout: 120000 }, async (t) => {
+  const root = path.join(tmp(), 'voice-uptake');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'voice-uptake'), root, { recursive: true });
+  const srv = await startApp(t);
+  const page = await openPage(t, srv, { host: true });
+  await page.getByRole('button', { name: 'Open project…' }).click();
+  await page.evaluate((picked) => { window.__picked = picked; }, root);
+  await page.getByRole('button', { name: 'Choose…' }).click();
+  await page.locator('#dlg').getByRole('button', { name: 'Open project' }).click();
+  await sessionView(page).locator('#poster.active').waitFor();
+
+  const ask = (num) => page.evaluate((n) => new Promise((resolve) => {
+    const frame = document.getElementById('session-frame');
+    window.addEventListener('message', function on(e) {
+      if (e.data && e.data.type === 'harness-lookup-result' && e.data.id === 7) { window.removeEventListener('message', on); resolve(e.data.words); }
+    });
+    frame.contentWindow.postMessage({ type: 'harness-lookup', id: 7, num: n }, location.origin);
+  }), num);
+  assert.match(await ask('1.2b'), /^Uptake may be a property of the meeting's/);
+  assert.equal(await ask('9.9'), null);
+
+  await page.evaluate(() => document.getElementById('session-frame').contentWindow.postMessage({ type: 'harness-reveal', num: '1.2b' }, location.origin));
+  await sessionView(page).locator('[id="st-1.2b"]:focus').waitFor();
+});
+
 test('the whole flow from a browser tab: new project, session, agenda, minutes, invitation', { skip, timeout: 180000 }, async (t) => {
   const srv = await startApp(t);
   const page = await openPage(t, srv);

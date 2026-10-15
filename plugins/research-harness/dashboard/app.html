@@ -44,6 +44,7 @@
     --red-tint: #fdf0f0;
     --blue: #0b5cad;
     --blue-tint: #e7f0f9;
+    --dialog: var(--paper);
     --backdrop: rgba(26, 26, 26, 0.45);
     --sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     --serif: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
@@ -71,6 +72,7 @@
       --red-tint: #2b1b1d;
       --blue: #74b6ff;
       --blue-tint: #1a2a3d;
+      --dialog: var(--panel);
       --backdrop: rgba(0, 0, 0, 0.65);
     }
   }
@@ -171,6 +173,9 @@
   #session-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: var(--paper); }
   #fatal, #start { padding: 2rem var(--page) 3rem; max-width: 52rem; }
   #fatal p { font-size: var(--t-col); font-family: var(--serif); }
+  #start { width: 100%; margin-inline: auto; }
+  #start #main-start { margin-top: 0.5rem; }
+  #app-projects { margin-top: auto; }
   #start h1 { font-size: var(--t-title); font-weight: 700; letter-spacing: -0.01em; }
   #start .lede { margin-top: 0.5rem; max-width: 64ch; color: var(--ink-2); }
   .start-list { margin-top: 1.5rem; border-top: 1px solid var(--ink); }
@@ -191,7 +196,7 @@
   }
 
   /* -- Dialog ------------------------------------------------------------------ */
-  dialog.dlg { width: min(38rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 1.4rem 1.6rem; border: 1px solid var(--ink); border-radius: 8px; background: var(--paper); color: var(--ink); overflow-y: auto; }
+  dialog.dlg { width: min(38rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 1.4rem 1.6rem; border: 1px solid var(--ink); border-radius: 8px; background: var(--dialog); color: var(--ink); overflow-y: auto; }
   dialog.dlg::backdrop { background: var(--backdrop); }
   .dlg h2 { font-size: var(--t-head); font-weight: 700; }
   .dlg-sub { margin-top: 0.4rem; color: var(--ink-2); font-size: var(--t-body); max-width: 64ch; }
@@ -204,7 +209,9 @@
   .dlg .pathrow .btn { margin-top: 0.3rem; }
   .dlg fieldset { border: 0; min-width: 0; }
   .dlg .choice { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.6rem; margin-top: 0.6rem; align-items: start; font-weight: 400; }
-  .dlg .choice input { width: 1.25rem; height: 1.25rem; margin: 0.2rem 0 0; accent-color: var(--ink); }
+  .dlg .choice input { appearance: none; width: 1.25rem; height: 1.25rem; margin: 0.2rem 0 0; border: 1px solid var(--ink); border-radius: 50%; background: var(--paper); display: grid; place-content: center; cursor: pointer; }
+  .dlg .choice input:checked::before { content: ""; width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--ink); }
+  @media (forced-colors: active) { .dlg .choice input { appearance: auto; } .dlg .choice input:checked::before { content: none; } }
   .dlg .choice b { font-weight: 700; }
   .dlg-error:not(:empty) { margin-top: 1rem; padding: 0.5rem 0.7rem; border: 1px solid var(--red); border-radius: 6px; background: var(--red-tint); font-size: var(--t-label); overflow-wrap: anywhere; }
   .dlg-offer { margin-top: 0.6rem; }
@@ -247,13 +254,9 @@
         <button type="button" class="btn side-btn" id="btn-update" aria-describedby="hint-update">Get updates <span class="badge" id="update-badge" hidden></span></button>
         <p class="hint" id="hint-update">Brings in your co-authors’ changes. Yours are kept.</p>
         <p class="outcome" id="out-update" aria-live="polite"></p>
-        <button type="button" class="btn side-btn" id="btn-send">Send my changes…</button>
+        <button type="button" class="btn side-btn" id="btn-send" aria-describedby="hint-send">Send my changes…</button>
+        <p class="hint" id="hint-send">Sends your saved changes so co-authors can get them.</p>
         <p class="outcome" id="out-send" aria-live="polite"></p>
-      </div>
-      <div>
-        <button type="button" class="row-btn" id="btn-open">Open project…</button>
-        <button type="button" class="row-btn" id="btn-clone">Clone from link…</button>
-        <button type="button" class="row-btn" id="btn-new">New project…</button>
       </div>
       <button type="button" class="btn side-btn" id="btn-agent-setup" hidden>Set up the agent…</button>
       <button type="button" class="btn side-btn" id="agent-toggle" hidden>Hide the agent</button>
@@ -264,9 +267,9 @@
       <h2 id="h-meeting">Meeting</h2>
       <p class="live" id="live" tabindex="-1" hidden><i aria-hidden="true"></i><span>Session running · <span class="elapsed" id="elapsed">0:00</span></span></p>
       <button type="button" class="btn side-btn" id="btn-session">Start session…</button>
-      <button type="button" class="btn side-btn" id="btn-agenda">Agenda</button>
-      <button type="button" class="btn side-btn" id="btn-minutes">Export minutes…</button>
+      <button type="button" class="btn side-btn" id="btn-agenda">To talk about</button>
       <p class="outcome" id="out-meeting" aria-live="polite"></p>
+      <button type="button" class="btn side-btn" id="btn-minutes">Export minutes…</button>
     </section>
 
     <section class="group" aria-labelledby="h-people">
@@ -275,13 +278,22 @@
       <button type="button" class="btn side-btn" id="btn-invite">Invite co-author…</button>
       <p class="outcome" id="out-people" aria-live="polite"></p>
     </section>
+    <section class="group" id="app-projects" aria-labelledby="h-app-projects">
+      <h2 id="h-app-projects">Other projects</h2>
+      <div>
+        <button type="button" class="row-btn" id="btn-open">Open project…</button>
+        <button type="button" class="row-btn" id="btn-clone">Clone from link…</button>
+        <button type="button" class="row-btn" id="btn-new">New project…</button>
+      </div>
+    </section>
   </aside>
 
   <main id="main" tabindex="-1">
     <div id="fatal" hidden></div>
 
     <div id="start" hidden>
-      <h1 id="main-start" tabindex="-1">Start with a paper project</h1>
+      <h1>Placet</h1>
+      <h2 id="main-start" tabindex="-1">Start with a paper project</h2>
       <p class="lede">Each project is a folder on this computer. Nothing leaves it until you send your changes.</p>
       <ul class="start-list">
         <li><button type="button" class="btn btn-primary" id="start-new" aria-describedby="d-new">New project…</button><p id="d-new">Creates a folder for a new paper and sets up its research canvas and decision log.</p></li>
@@ -307,10 +319,10 @@
 <template id="t-new">
   <form data-kind="new" novalidate>
     <h2 id="dlg-title">New project</h2>
-    <p class="dlg-sub">Creates a new folder inside the folder you choose, and writes the research canvas (research/canvas.md) and the decision log (research/decisions.md) into it. It turns the folder into a git repository and saves the first version of the research files in it, so the project can be shared later. It also creates the key that seals your entries; the key stays on this computer, outside the folder.</p>
+    <p class="dlg-sub">Creates a new paper project, with a research canvas and a decision log, inside the folder you choose. It turns the folder into a git repository and saves the first version of the research files in it, so the project can be shared later. It also creates the key that seals your entries; the key stays on this computer, outside the folder.</p>
     <label for="f-parent">Folder to create it in<span class="hint">The new folder goes inside this one.</span></label>
     <div class="pathrow"><input type="text" id="f-parent" name="parent" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="parent" hidden>Choose…</button></div>
-    <label for="f-folder">Name of the new folder<span class="hint">Letters, digits, dots, hyphens and underscores.</span></label>
+    <label for="f-folder">Name of the new folder</label>
     <input type="text" id="f-folder" name="folder" autocomplete="off" spellcheck="false">
     <label for="f-title">Working title of the paper<span class="hint">Optional. You can change it later.</span></label>
     <input type="text" id="f-title" name="title" autocomplete="off">
@@ -347,7 +359,7 @@
     <input type="text" id="f-url" name="url" autocomplete="off" spellcheck="false">
     <label for="f-parent">Folder to download it into<span class="hint">The new folder goes inside this one.</span></label>
     <div class="pathrow"><input type="text" id="f-parent" name="parent" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="parent" hidden>Choose…</button></div>
-    <label for="f-folder">Name of the new folder<span class="hint">It must not exist yet. Letters, digits, dots, hyphens and underscores.</span></label>
+    <label for="f-folder">Name of the new folder<span class="hint">It must not exist yet.</span></label>
     <input type="text" id="f-folder" name="folder" autocomplete="off" spellcheck="false">
     <p id="dlg-error" class="dlg-error" role="alert"></p>
     <div class="dlg-actions"><button type="button" class="btn" data-dlg="cancel">Cancel</button><button type="submit" class="btn btn-primary">Clone project</button></div>
@@ -402,7 +414,7 @@
 <template id="t-minutes">
   <form data-kind="minutes" novalidate>
     <h2 id="dlg-title">Export minutes</h2>
-    <p class="dlg-sub">Writes the minutes of the latest session to a Markdown file: what was said, decided and left open. The decision log itself is not changed.</p>
+    <p class="dlg-sub">Writes the minutes of the latest session to a text file (Markdown, opens in any editor): what was said, decided and left open. The decision log itself is not changed.</p>
     <label for="f-out">Save the minutes as<span class="hint" data-plain>Type the full path of the file, ending in .md.</span></label>
     <div class="pathrow"><input type="text" id="f-out" name="out" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="out" hidden>Choose…</button></div>
     <p id="dlg-error" class="dlg-error" role="alert"></p>
@@ -580,10 +592,12 @@
   setUpAgentColumn();
 
   // -- Outcomes -------------------------------------------------------------
-  // One line under the control that caused it. It stays until the next action
-  // on that control; nothing here fades or disappears on a timer.
+  // Keep the latest outcome in each group, under the control that caused it.
+  // Nothing fades or disappears on a timer.
   function say(id, kind, text) {
     var box = $(id);
+    var group = box.closest('.group');
+    if (group) group.querySelectorAll('.outcome').forEach(function (other) { clearSay(other.id); });
     box.textContent = '';
     box.dataset.kind = kind;
     var words = document.createElement('span');
@@ -1050,6 +1064,7 @@
     $('btn-agenda').addEventListener('click', function () {
       tellView({ type: 'harness-tab', tab: 'to-talk-about' });
       say('out-meeting', 'ok', 'The session view shows To talk about.');
+      $('out-meeting').scrollIntoView({ block: 'nearest' });
     });
     $('btn-minutes').addEventListener('click', function (e) {
       openDialog('t-minutes', e.currentTarget, function (form) {

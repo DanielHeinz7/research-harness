@@ -148,6 +148,84 @@ test('app.html is self-contained and keeps the token out of every store', () => 
 
 // -- Rendered ------------------------------------------------------------------
 
+for (const colorScheme of ['light', 'dark']) {
+  test('Shell polish: first start and folder dialogs in ' + colorScheme, { skip, timeout: 120000 }, async (t) => {
+    const srv = await startApp(t);
+    const page = await openPage(t, srv, { colorScheme });
+    await page.locator('#start').waitFor();
+    assert.equal(await page.getByRole('heading', { name: 'Placet', exact: true }).count(), 1, 'first start names the app');
+    const startBox = await page.locator('#start').boundingBox();
+    assert.ok(Math.abs(startBox.x - (1440 - startBox.width) / 2) < 2, 'the first-start block is centred');
+    if (process.env.APP_SHELL_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.APP_SHELL_CAPTURE_DIR, colorScheme + '-start-1440.png') });
+    for (const action of ['New project…', 'Clone from link…']) {
+      await page.getByRole('button', { name: action, exact: true }).click();
+      assert.doesNotMatch(await page.locator('#dlg').innerText(), /Letters, digits|research\/canvas\.md/, 'folder rules and paths do not lead the dialog');
+      await page.locator('#f-parent').fill(tmp());
+      await page.getByLabel('Name of the new folder').fill('My Paper');
+      if (action === 'New project…') await page.getByLabel('Your name').fill('A. Author');
+      else await page.locator('#f-url').fill('https://example.invalid/paper.git');
+      await page.locator('#dlg button[type="submit"]').click();
+      await page.locator('#f-folder[aria-invalid="true"]').waitFor();
+      assert.match(await page.locator('#dlg-error').innerText(), /folder name may use letters, digits, dots, hyphens and underscores/i, 'the rule appears at the invalid name');
+      assert.equal(await page.locator('#f-folder').evaluate((n) => n === document.activeElement), true, 'the invalid folder receives keyboard focus');
+      if (action === 'New project…') {
+        const radio = page.getByRole('radio', { name: /^Seed/ });
+        const unchecked = await radio.evaluate((n) => ({ fill: getComputedStyle(n).backgroundColor, paper: getComputedStyle(document.body).backgroundColor }));
+        assert.equal(unchecked.fill, unchecked.paper, 'unselected radios are hollow, not grey-filled');
+        await radio.focus();
+        await page.keyboard.press('Space');
+        assert.equal(await radio.isChecked(), true, 'radio remains keyboard-operable');
+        const primary = page.locator('#dlg button[type="submit"]');
+        const enabledFill = await primary.evaluate((n) => getComputedStyle(n).backgroundColor);
+        await primary.evaluate((n) => { n.disabled = true; });
+        assert.notEqual(await primary.evaluate((n) => getComputedStyle(n).backgroundColor), enabledFill, 'primary and disabled fills differ');
+        await primary.evaluate((n) => { n.disabled = false; });
+        if (colorScheme === 'dark') assert.notEqual(await page.locator('#dlg').evaluate((n) => getComputedStyle(n).backgroundColor), unchecked.paper, 'dark dialog is distinct from the page');
+        if (process.env.APP_SHELL_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.APP_SHELL_CAPTURE_DIR, colorScheme + '-new-1440.png') });
+      }
+      await page.keyboard.press('Escape');
+    }
+  });
+
+  test('Shell polish: project groups, latest outcomes and meeting navigation in ' + colorScheme, { skip, timeout: 120000 }, async (t) => {
+    const root = await makeProject();
+    const srv = await startApp(t, { open: root });
+    const browser = await launchChromium();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme });
+    await page.route('**/api/app/status', (r) => r.fulfill({ json: { ok: true, hasKey: true, shared: true, name: 'A. Author' } }));
+    for (const action of ['update', 'send']) await page.route('**/api/app/' + action, (r) => r.fulfill({ json: { ok: true } }));
+    await page.goto(srv.appUrl);
+    await page.locator('#proj-name').waitFor();
+    assert.deepEqual(await page.locator('#app-projects button').allTextContents(), START_BUTTONS.slice(1).concat(START_BUTTONS[0]), 'app-wide controls have their own group');
+    assert.equal(await page.locator('#h-project').evaluate((n) => n.closest('section').querySelector('#btn-open') === null), true, 'Open is not mixed with this project');
+    assert.match(await page.locator('#hint-send').innerText(), /co-authors/, 'Send has a one-line explanation');
+    assert.equal(await page.locator('#btn-send').getAttribute('aria-describedby'), 'hint-send');
+    await page.getByRole('button', { name: /^Get updates/ }).click();
+    await page.waitForFunction(() => /already have/.test(document.getElementById('out-update').textContent));
+    await page.getByRole('button', { name: 'Send my changes…' }).click();
+    await page.locator('#dlg button[type="submit"]').click();
+    await page.waitForFunction(() => /Sent\./.test(document.getElementById('out-send').textContent));
+    assert.equal(await page.locator('#out-update').textContent(), '', 'Send replaces the older project outcome');
+    assert.equal(await page.locator('#sidebar section[aria-labelledby="h-project"] .outcome:not(:empty)').count(), 1, 'only the latest outcome remains in the project group');
+    const agenda = page.getByRole('button', { name: 'To talk about', exact: true });
+    await agenda.click();
+    await sessionView(page).locator('#agenda.active').waitFor();
+    assert.equal(await sessionView(page).locator('#fieldnav').isVisible(), false, 'Fields is hidden on To talk about');
+    const note = page.locator('#out-meeting');
+    const noteBox = await note.boundingBox();
+    assert.ok(noteBox.y >= 0 && noteBox.y + noteBox.height <= 900, 'meeting outcome is visible without manual scrolling');
+    assert.match(await note.innerText(), /To talk about/);
+    assert.equal(await sessionView(page).locator('#view-tabs .active').innerText(), 'To talk about');
+    if (process.env.APP_SHELL_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.APP_SHELL_CAPTURE_DIR, colorScheme + '-meeting-1440.png') });
+    await page.getByRole('button', { name: 'Export minutes…' }).click();
+    assert.match(await page.locator('#dlg').innerText(), /a text file \(Markdown, opens in any editor\)/);
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 320, height: 720 });
+    assert.deepEqual(await documentWidths(page), { document: 320, viewport: 320 }, 'project groups reflow to 320 px');
+  });
+}
+
 test('first start: three ways in, each with one sentence, all reachable by Tab', { skip, timeout: 120000 }, async (t) => {
   const srv = await startApp(t);
   const page = await openPage(t, srv);
@@ -178,7 +256,7 @@ test('an open project: sidebar with name, folder, Meeting and People, and the se
   }
   // A project made in the app has no shared copy yet: Share stands in for
   // Get updates and Send my changes.
-  for (const name of ['Share with co-authors…', 'Open project…', 'Clone from link…', 'New project…', 'Start session…', 'Agenda', 'Export minutes…', 'Invite co-author…']) {
+  for (const name of ['Share with co-authors…', 'Open project…', 'Clone from link…', 'New project…', 'Start session…', 'To talk about', 'Export minutes…', 'Invite co-author…']) {
     assert.equal(await page.getByRole('button', { name: new RegExp(`^${name}`) }).count(), 1, name);
   }
   for (const name of ['Get updates', 'Send my changes…']) {
@@ -355,9 +433,9 @@ for (const colorScheme of ['light', 'dark']) {
     const root = copyFixture('voice-uptake');
     const page = await openPage(t, await startApp(t), { host: true, colorScheme });
     await openFixture(page, root);
-    await page.locator('#btn-new').focus();
+    await page.locator('#btn-share').focus();
     await page.keyboard.press('Tab');
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-agent-setup', 'Set up the agent… follows New project…');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-agent-setup', 'Set up the agent… follows this project’s sharing control');
     const setup = (await focusContrastRatios(page)).find((item) => item.label === 'Set up the agent…');
     assert.ok(setup && setup.ratio >= 3, `Set up the agent…: focus contrast >= 3:1 (${setup && setup.ratio.toFixed(2)})`);
 
@@ -385,7 +463,7 @@ test('the whole flow from a browser tab: new project, session, agenda, minutes, 
   const page = await openPage(t, srv);
   const parent = tmp();
   await page.getByRole('button', { name: 'New project…' }).click();
-  assert.match(await page.locator('#dlg').textContent(), /writes the research canvas \(research\/canvas\.md\)/, 'the dialog says which files are written');
+  assert.match(await page.locator('#dlg').textContent(), /with a research canvas and a decision log/, 'the dialog says what is created');
   assert.equal(await page.locator('#dlg input[name="mode"]').count(), 3);
   await page.getByLabel('Folder to create it in').fill(parent);
   await page.getByLabel('Name of the new folder').fill('paper-one');
@@ -399,7 +477,7 @@ test('the whole flow from a browser tab: new project, session, agenda, minutes, 
   assert.ok(fs.existsSync(path.join(parent, 'paper-one', 'research', 'canvas.md')));
   await sessionView(page).locator('#poster.active').waitFor();
 
-  await page.getByRole('button', { name: 'Agenda' }).click();
+  await page.getByRole('button', { name: 'To talk about', exact: true }).click();
   await sessionView(page).locator('#agenda.active').waitFor();
 
   await page.getByRole('button', { name: 'Start session…' }).click();
@@ -464,7 +542,7 @@ for (const colorScheme of ['light', 'dark']) {
       await page.keyboard.press('Tab');
       order.push(await page.evaluate(() => document.activeElement.id));
     }
-    const expected = ['skip-link', 'btn-share', 'btn-open', 'btn-clone', 'btn-new', 'btn-session', 'btn-agenda', 'btn-minutes', 'btn-invite'];
+    const expected = ['skip-link', 'btn-share', 'btn-session', 'btn-agenda', 'btn-minutes', 'btn-invite', 'btn-open', 'btn-clone', 'btn-new'];
     assert.deepEqual(order.slice(0, expected.length), expected, 'Tab walks the sidebar in reading order');
 
     const ratios = await focusContrastRatios(page);

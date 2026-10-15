@@ -60,7 +60,7 @@ PreToolUse:Edit hook error: A [proposed] statement cannot be promoted to [accept
 
 `git status --porcelain` in the project afterwards: empty. Each guard run through the shim took about 200 ms (Electron start-up), against 20 ms for the failed start in (b).
 
-**`node-pty` under Electron 44.** `npm install node-pty@1.1.0` ships prebuilds for `darwin-arm64` and `darwin-x64`. With npm's install-script policy the post-install script did not run, and the first spawn failed with `Error: posix_spawnp failed.` because `prebuilds/darwin-arm64/spawn-helper` was `-rw-r--r--`. After `chmod +x` on it, `ELECTRON_RUN_AS_NODE=1 Electron -e "<pty.spawn('/bin/echo',['pty-ok'])>"` printed `DATA:pty-ok` and `EXIT {"exitCode":0,"signal":0}`. So `node-pty@1.1.0` goes into `allowScripts` (Task 7), and the packaged app unpacks it (Task 11).
+**`node-pty` under Electron 44.** `npm install node-pty@1.1.0` ships prebuilds for `darwin-arm64` and `darwin-x64`. The first spawn failed with `Error: posix_spawnp failed.` because `prebuilds/darwin-arm64/spawn-helper` was `-rw-r--r--`. After `chmod +x` on it, `ELECTRON_RUN_AS_NODE=1 Electron -e "<pty.spawn('/bin/echo',['pty-ok'])>"` printed `DATA:pty-ok` and `EXIT {"exitCode":0,"signal":0}`, and the packaged app unpacks the module (Task 11). **Corrected 2026-10-15 from SQ-256:** this plan first blamed npm's install-script policy and put `node-pty@1.1.0` into `allowScripts` as the fix. That was an assumption, not a result. SQ-256 found that the registry tarball itself ships `spawn-helper` as `-rw-r--r--` (`tar -tvf node-pty-1.1.0.tgz`), that neither of node-pty's install scripts contains a chmod, and that the file stays `0644` after `allowScripts` plus `npm install` and after `npm rebuild`. The fix that works is a `postinstall` in `desktop/package.json` that sets `0o755` on the platform's `spawn-helper` (SQ-256's commit 983b8d2).
 
 **`claude auth status --json` keys** on this machine: `loggedIn, authMethod, apiProvider, analyticsDisabled, projectsDirectory, configDirectory, email, orgId, orgName, subscriptionType`; values kept: `{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}`. **Not tried:** the output when signed out (signing out would end the owner's session). The parser treats anything but `loggedIn === true` as signed out.
 
@@ -1097,7 +1097,7 @@ git commit -m "Desktop agent: read the session marker, find statement numbers in
 cd desktop && npm install --save-exact node-pty@1.1.0 @xterm/xterm@6.0.0 @xterm/addon-fit@0.11.0
 ```
 
-Then add `"node-pty@1.1.0": true` to `allowScripts` in `desktop/package.json` beside `dugite@3.2.3`, and run `npm install` again so the post-install script runs. Check: `ls -l node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper` shows `-rwxr-xr-x`. Without that, every spawn fails with `posix_spawnp failed.` (probe above).
+Then make `spawn-helper` executable after every install: a `postinstall` script in `desktop/package.json` that runs `fs.chmodSync` with `0o755` on `node_modules/node-pty/prebuilds/<platform>-<arch>/spawn-helper` when the file exists (corrected from SQ-256; `allowScripts` alone does not do it, see the probe section). Check: `ls -l node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper` shows `-rwxr-xr-x`. Without that, every spawn fails with `posix_spawnp failed.` (probe above).
 
 - [ ] **Step 2: Write the failing test**
 

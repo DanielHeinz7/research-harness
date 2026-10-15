@@ -12,6 +12,7 @@ const profile = require('./lib/profile');
 const output = require('./lib/output');
 const ledger = require('./lib/ledger');
 const seal = require('./lib/seal');
+const lineEndings = require('./lib/line-endings');
 
 // The plugin's own root, for the one question the guard asks of it: does this
 // canvas name a profile that ships (§4.5)?
@@ -115,6 +116,10 @@ function describeLoss(lost, afterSet) {
 // time; they were not wrong, they were too narrow, and SQ-21's attacks went
 // around them rather than through them.
 function canvasVerdict(beforeText, afterText) {
+  // A CRLF file reads as empty, so a write could not be compared with what is
+  // there; the repair is git's (README, "Windows line endings"), not the agent's.
+  const crlfBefore = lineEndings.firstCrlfLine(beforeText);
+  if (crlfBefore) return cannotJudge(lineEndings.crlfProblem(crlfBefore));
   const before = canvas.parseCanvas(beforeText || '');
   const after = canvas.parseCanvas(afterText || '');
   const existed = String(beforeText || '').trim() !== '';
@@ -236,6 +241,10 @@ function describeGlossaryLoss(lost, after) {
 }
 
 function glossaryVerdict(beforeText, afterText) {
+  // A CRLF file reads as empty, so a write could not be compared with what is
+  // there; the repair is git's (README, "Windows line endings"), not the agent's.
+  const crlfBefore = lineEndings.firstCrlfLine(beforeText);
+  if (crlfBefore) return cannotJudge(lineEndings.crlfProblem(crlfBefore), GLOSSARY_NEXT_STEP);
   const before = glossary.parseGlossary(beforeText || '');
   const after = glossary.parseGlossary(afterText || '');
   const existed = String(beforeText || '').trim() !== '';
@@ -3029,4 +3038,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { canvasVerdict, bashVerdict, applyEdit };
+module.exports = { canvasVerdict, glossaryVerdict, bashVerdict, applyEdit };

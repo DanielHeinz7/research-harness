@@ -489,7 +489,9 @@
     try {
       var res = await fetch('/api/state', { headers: { 'X-Harness-Token': token } });
       var body = await res.json();
-      return res.ok ? body : null;
+      if (res.ok) return body;
+      if (body && body.error) say('out-project', 'problem', body.error);
+      return null;
     } catch (err) {
       return null;
     }

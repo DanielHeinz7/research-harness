@@ -8,6 +8,7 @@ const { parseDecisions } = require('./decisions');
 const identity = require('./identity');
 const profileLib = require('./profile');
 const seal = require('./seal');
+const lineEndings = require('./line-endings');
 const { textHash } = require('./hash');
 
 function defaultPluginRoot() {
@@ -41,6 +42,10 @@ function loadState(root, { pluginRoot, variant } = {}) {
   }
   const parsed = canvas.parseCanvas(canvasText);
   const decisionsText = project.readIfExists(paths.decisions) || '';
+  for (const [file, text] of [[paths.canvas, canvasText], [paths.decisions, decisionsText]]) {
+    const line = lineEndings.firstCrlfLine(text);
+    if (line) return { root, paths, error: lineEndings.crlfRefusal(path.relative(root, file), line), code: 'line-endings' };
+  }
   let graph = null;
   let checks = [];
   let profileError = null;

@@ -243,6 +243,15 @@ test('Get updates counts the new entries and Send reports what it did', { skip, 
   assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-send', 'focus returns to the control that opened the dialog');
 });
 
+test('a project whose canvas has Windows line endings: the sidebar says so in plain words', { skip, timeout: 120000 }, async (t) => {
+  const root = await makeProject();
+  const file = path.join(root, 'research', 'canvas.md');
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/\n/g, '\r\n'));
+  const srv = await startApp(t, { open: root });
+  const page = await openPage(t, srv);
+  await page.getByText(/Windows line endings \(CRLF\)/).first().waitFor();
+});
+
 test('in a plain browser, Open project… shows a labelled path field and no picker', { skip, timeout: 120000 }, async (t) => {
   const srv = await startApp(t);
   const page = await openPage(t, srv);

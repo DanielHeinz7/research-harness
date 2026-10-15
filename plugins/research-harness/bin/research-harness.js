@@ -288,6 +288,10 @@ function status(flags) {
   if (error) return fail(error, 2);
   const given = keyOverride(flags);
   if (given.error) return fail(given.error, given.code || 1);
+  // summarize() reads a CRLF canvas as one without elements; the refusal from
+  // loadState names the cause instead of "not a paper project".
+  const state = loadState(variant);
+  if (state.code === 'line-endings') return fail(state.error);
   const summary = summarize(root, { seenSeq: 0, variant, key: given.key });
   if (!summary) {
     if (variant !== undefined) return fail(`There is no variant "${variant}" (or its canvas has no elements): no ${path.relative(root, project.canvasPath(root, variant))}.`);

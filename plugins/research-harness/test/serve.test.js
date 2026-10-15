@@ -13,6 +13,7 @@ const profileLib = require('../hooks/lib/profile');
 const stateLib = require('../hooks/lib/state');
 const { textHash } = require('../hooks/lib/hash');
 const { HUMAN_QUESTIONS, agendaOf } = require('../hooks/lib/agenda');
+const { readStore } = require('../hooks/lib/app-store');
 const { start, viewState } = require('../bin/canvas-serve');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -128,6 +129,20 @@ function post(srv, urlPath, payload, extra = {}) {
   };
   for (const k of Object.keys(headers)) if (headers[k] === undefined) delete headers[k];
   return request(srv.port, { method: 'POST', urlPath, headers, body: JSON.stringify(payload) });
+}
+
+// A GET as the shell sends it: with the token when one is given.
+function get(srv, urlPath, token) {
+  const headers = { Host: `127.0.0.1:${srv.port}` };
+  if (token) headers['X-Harness-Token'] = token;
+  return request(srv.port, { urlPath, headers });
+}
+
+// Trades the server's single-use code for the token, as the view does.
+async function redeem(srv) {
+  const res = await post(srv, '/api/session', { code: srv.code }, { 'X-Harness-Token': undefined });
+  assert.equal(res.status, 200, res.text);
+  return res.json.token;
 }
 
 function filesUnder(dir) {
@@ -483,6 +498,97 @@ test('viewState carries the agenda and the human questions, computed by agendaOf
   const state = stateLib.loadState(root, { pluginRoot });
   assert.deepEqual(body.agenda, agendaOf(state.parsed, state.decisionsText));
   assert.deepEqual(body.humanQuestions, HUMAN_QUESTIONS);
+});
+
+function appDataDir() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-app-data-'));
+  roots.push(dir);
+  return dir;
+}
+
+test('app mode: no project open, token required, open switches the project', async (t) => {
+  const srv = await start({ root: null, pluginRoot, app: { dataDir: appDataDir() } });
+  t.after(() => srv.close());
+  assert.equal(srv.appUrl, `http://127.0.0.1:${srv.port}/app#c=${srv.code}`);
+  // The code exchange works with no project open.
+  const token = await redeem(srv);
+  // The app's routes need the token, the GET among them too.
+  assert.equal((await get(srv, '/api/app/projects', null)).status, 403);
+  assert.equal((await get(srv, '/api/app/projects', 'a'.repeat(64))).status, 403);
+  assert.equal((await post(srv, '/api/app/open', { root: '/' }, { 'X-Harness-Token': undefined })).status, 403);
+  const none = await get(srv, '/api/app/projects', token);
+  assert.equal(none.status, 200, none.text);
+  assert.equal(none.json.current, null);
+  const state = await get(srv, '/api/state', token);
+  assert.equal(state.status, 409);
+  assert.equal(state.json.code, 'no-project');
+  assert.equal((await post(srv, '/api/comment', { ref: '1.2', body: 'x' })).status, 409);
+  const root = keyedProject();
+  const opened = await post(srv, '/api/app/open', { root }, { 'X-Harness-Token': token });
+  assert.equal(opened.json.ok, true, opened.text);
+  const now = await get(srv, '/api/state', token);
+  assert.equal(now.status, 200, now.text);
+  assert.equal(now.json.project, 'voice-uptake');
+  // The project routes write into the project that was opened.
+  const comment = await post(srv, '/api/comment', { ref: '1.2', body: 'Opened from the app.' }, { 'X-Harness-Token': token });
+  assert.equal(comment.status, 200, comment.text);
+  assert.match(read(root, 'decisions.md'), /Opened from the app\./);
+  assert.equal((await get(srv, '/api/app/projects', token)).json.current, root);
+  assert.equal((await post(srv, '/api/app/nope', {}, { 'X-Harness-Token': token })).status, 404);
+  assert.equal((await post(srv, '/api/app/projects', {}, { 'X-Harness-Token': token })).status, 405);
+  assert.equal((await get(srv, '/api/app/open', token)).status, 405);
+  const notProject = await post(srv, '/api/app/open', { root: appDataDir() }, { 'X-Harness-Token': token });
+  assert.equal(notProject.status, 422);
+  assert.equal(notProject.json.code, 'not-project');
+});
+
+test('app mode serves the shell page and project mode does not', async (t) => {
+  const app = await start({ root: null, pluginRoot, app: { dataDir: appDataDir() } });
+  t.after(() => app.close());
+  const page = await get(app, '/app', null);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /^<!doctype html>/i);
+  const plain = await start({ root: keyedProject(), pluginRoot });
+  t.after(() => plain.close());
+  assert.equal(plain.appUrl, undefined);
+  assert.equal((await get(plain, '/app', null)).status, 404);
+  assert.equal((await get(plain, '/api/app/projects', plain.token)).status, 404);
+});
+
+test('research-harness serve --app starts without a project and prints the app URL', { skip: process.platform === 'win32' }, async (t) => {
+  const cwd = appDataDir();
+  const dataDir = appDataDir();
+  const child = childProcess.spawn(process.execPath, [cli, 'serve', '--app', '--app-data', dataDir, '--no-open'], {
+    cwd,
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  await new Promise((resolve, reject) => {
+    child.stdout.on('data', (c) => { stdout += c; if (stdout.includes('\n')) resolve(); });
+    child.once('exit', () => reject(new Error(`serve exited early: ${stdout}`)));
+  });
+  const m = /^http:\/\/127\.0\.0\.1:(\d+)\/app#c=([0-9a-f]{32})\n$/.exec(stdout);
+  assert.ok(m, stdout);
+  const srv = { port: Number(m[1]), code: m[2] };
+  const token = await redeem(srv);
+  const projects = await get(srv, '/api/app/projects', token);
+  assert.equal(projects.status, 200, projects.text);
+  assert.equal(projects.json.current, null, 'a folder without a canvas opens no project');
+  const root = keyedProject();
+  assert.equal((await post(srv, '/api/app/open', { root }, { 'X-Harness-Token': token })).json.ok, true);
+  assert.deepEqual(readStore(dataDir).recent, [root], 'recent projects land in --app-data');
+  const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)));
+  child.kill('SIGINT');
+  assert.equal(await exited, 0);
+  assert.ok(!stdout.includes(token));
+});
+
+test('the usage names serve --app', () => {
+  const out = run(appDataDir(), ['--help']);
+  assert.match(out.stdout, /^research-harness serve --app \[--app-data <dir>\] \[--no-open\]$/m);
 });
 
 test.after(() => {

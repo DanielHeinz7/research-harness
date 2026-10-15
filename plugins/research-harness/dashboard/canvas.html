@@ -169,6 +169,7 @@
   .present-btn { margin-left: auto; align-self: center; margin-bottom: 0.4rem; }
 
   #fieldnav { display: flex; align-items: center; gap: 0.5rem 0.75rem; padding: 0.6rem var(--page); border-bottom: 1px solid var(--line); background: var(--paper); }
+  #fieldnav[hidden] { display: none; }
   .fields-label { font-size: var(--t-label); color: var(--ink-3); }
   .chips { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 0.375rem; }
   .chips li { display: flex; flex: calc(1 + var(--n, 0)) 1 3.25rem; min-width: 3rem; }
@@ -181,13 +182,13 @@
     font-size: var(--t-label); font-weight: 600;
   }
   .chip:hover { background: var(--panel); }
-  .chip.empty { border-style: dashed; color: var(--ink-2); font-weight: 500; }
+  .chip.empty { border-style: dashed; border-color: var(--ink); }
   .chip[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
   .chip-num { font-variant-numeric: tabular-nums; font-family: var(--sans); }
-  .chip-name { display: none; min-width: 0; overflow: hidden; font-weight: 500; line-height: 1.1; text-align: left; hyphens: auto; overflow-wrap: break-word; }
+  .chip-name { display: none; min-width: 0; overflow: hidden; font-weight: 500; line-height: 1.1; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
   /* The name shows as soon as it has room for a few letters; wide windows
      give every chip that room, narrow ones keep the number alone. */
-  @container (min-width: 4.5rem) { .chip-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; } }
+  @container (min-width: 4.5rem) { .chip-name { display: block; } }
   @media (min-width: 65rem) { .chips li { flex-basis: 6rem; min-width: 5rem; } }
   .chip .mark { width: 0.8em; height: 0.8em; }
   .chip.accent { box-shadow: inset 0 -3px 0 var(--ink); }
@@ -1436,7 +1437,7 @@
     });
     return '<details class="agenda-gaps"><summary>Not answered yet <span class="agenda-gap-count">'
       + gaps.length + (gaps.length === 1 ? ' question in ' : ' questions in ')
-      + groups.size + (groups.size === 1 ? ' field' : ' fields') + '</span></summary>'
+      + groups.size + (groups.size === 1 ? ' field' : ' fields') + '</span> <span class="agenda-gap-count">(expand to see the questions)</span></summary>'
       + '<ul class="agenda-gap-fields">' + Array.from(groups.values()).map(renderGapField).join('') + '</ul></details>';
   }
 
@@ -1550,6 +1551,7 @@
   }
 
   function applyActiveView() {
+    document.getElementById('fieldnav').hidden = activeView === 'agenda' || activeView === 'log';
     var views = app.querySelectorAll('.view');
     for (var i = 0; i < views.length; i++) {
       views[i].classList.toggle('active', views[i].getAttribute('data-view') === activeView);

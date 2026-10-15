@@ -552,7 +552,7 @@ test('Agenda groups unanswered questions by field below the discussion, collapse
   ];
   const page = await mount({ state, query: '&view=agenda' });
   const agenda = page.app.innerHTML.match(/<section id="agenda"[\s\S]*?<\/section>/)[0];
-  assert.match(agenda, /<details class="agenda-gaps"><summary>Not answered yet <span[^>]*>3 questions in 2 fields<\/span><\/summary>/);
+  assert.match(agenda, /<details class="agenda-gaps"><summary>Not answered yet <span[^>]*>3 questions in 2 fields<\/span> <span[^>]*>\(expand to see the questions\)<\/span><\/summary>/);
   assert.ok(agenda.indexOf('agenda-list') < agenda.indexOf('agenda-gaps'), 'discussion comes first');
   assert.equal((agenda.match(/class="agenda-gap-field"/g) || []).length, 2, 'one group per field, even for non-adjacent gaps');
   assert.match(agenda, /<strong>Who cares\?<\/strong> <span[^>]*>2 questions<\/span>/);
@@ -718,6 +718,67 @@ test('Names: unknown and All filter without browser storage and an absent name l
 // Browser checks use live session routes: fixture mode suppresses statement actions.
 const { chromium: keyboardChromium, launchChromium, focusContrastRatios } = require('./helpers/a11y');
 for (const colorScheme of ['light', 'dark']) {
+  test('Field navigation polish across window widths in ' + colorScheme, { skip: !keyboardChromium, timeout: 120000 }, async (t) => {
+    const browser = await launchChromium();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ colorScheme });
+    await page.route('http://session.test/**', (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.startsWith('/fonts/')) return route.fulfill({ path: path.join(__dirname, '../dashboard', pathname) });
+      if (pathname === '/api/session') return route.fulfill({ json: { ok: true, token: 'T' } });
+      return route.fulfill({ contentType: pathname === '/api/state' ? 'application/json' : 'text/html', body: pathname === '/api/state' ? JSON.stringify(variantsState) : html });
+    });
+    await page.goto('http://session.test/');
+    await page.locator('#poster.active').waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    for (const width of [1440, 1024, 900, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      const chips = page.locator('#fieldnav .chip');
+      assert.equal(await chips.count(), 9);
+      for (const chip of await chips.all()) {
+        const title = await chip.getAttribute('title');
+        assert.ok(title, 'number-only fields keep their hover name');
+        assert.ok((await chip.getAttribute('aria-label')).includes(title), 'number-only fields keep their screen-reader name');
+      }
+      const name = page.locator('#fieldnav [data-chip="8"] .chip-name');
+      if (width === 1440) {
+        assert.equal(await name.innerText(), 'Contributions');
+        assert.equal(await name.evaluate((n) => getComputedStyle(n).whiteSpace), 'nowrap', 'Contributions cannot strand its last letter on another line');
+        assert.equal(await name.evaluate((n) => n.scrollWidth <= n.clientWidth), true, 'Contributions fits in full at desktop width');
+      }
+      const empty = page.locator('#fieldnav .chip.empty').first();
+      const ink = await empty.evaluate((n) => ({ text: getComputedStyle(n).color, border: getComputedStyle(n).borderTopColor, ink: getComputedStyle(document.body).color, style: getComputedStyle(n).borderTopStyle }));
+      assert.equal(ink.text, ink.ink, 'empty fields use active ink, not disabled grey');
+      assert.equal(ink.border, ink.ink);
+      assert.equal(ink.style, 'dashed', 'the pinned empty-field marker stays');
+      await empty.focus();
+      const ratios = await focusContrastRatios(page);
+      assert.ok(ratios.every((r) => r.ratio >= 3), 'visible-control keyboard focus has sufficient contrast');
+      const sizes = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+      assert.equal(sizes[0], sizes[1], 'fields reflow without horizontal page scroll at ' + width);
+      if (process.env.SESSION_A11Y_CAPTURE_DIR) {
+        fs.mkdirSync(process.env.SESSION_A11Y_CAPTURE_DIR, { recursive: true });
+        await page.evaluate(() => { document.activeElement.blur(); window.scrollTo(0, 0); });
+        await page.screenshot({ path: path.join(process.env.SESSION_A11Y_CAPTURE_DIR, colorScheme + '-fields-' + width + '.png') });
+      }
+    }
+    for (const view of ['agenda', 'log']) {
+      await page.locator('#view-tabs [data-view-target="' + view + '"]').click();
+      assert.equal(await page.locator('#fieldnav').isVisible(), false, 'Fields is absent on ' + view);
+    }
+    await page.locator('#view-tabs [data-view-target="agenda"]').click();
+    const gaps = page.locator('.agenda-gaps');
+    const summary = gaps.locator(':scope > summary');
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await gaps.getAttribute('open'), '', 'question count expands with the keyboard');
+    const fieldSummary = gaps.locator('details > summary').first();
+    await fieldSummary.click();
+    assert.ok(await gaps.getByRole('button').first().isVisible(), 'the count leads to the actual questions by field');
+    await page.locator('#view-tabs [data-view-target="poster"]').click();
+    assert.equal(await page.locator('#fieldnav').isVisible(), true, 'Fields returns on Poster');
+  });
+
   test('live keyboard navigation, dialog errors and return focus in ' + colorScheme, { skip: !keyboardChromium, timeout: 120000 }, async (t) => {
     const browser = await launchChromium();
     t.after(() => browser.close());

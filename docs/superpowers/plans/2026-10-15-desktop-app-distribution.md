@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-desktop-app-distribution-design.md` (approved `e6967d3`, corrected from the live `desktop/` state in `e72d774`).
 
+**Execution:** subagent-driven, one Sidequest ticket per task, chosen by the owner on 2026-10-15. Not started.
+
 ## Global Constraints
 
 - No app file is uploaded anywhere while `distribution.json` says `"signing": "none"`.

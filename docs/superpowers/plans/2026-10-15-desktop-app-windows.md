@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-desktop-app-windows-design.md` (approved, `7988db4`).
 
+**Execution:** subagent-driven, one Sidequest ticket per task, chosen by the owner on 2026-10-15.
+
 ## Global Constraints
 
 - The plugin stays dependency-free. No shell anywhere: `execFile`/`spawnSync` with argument arrays.

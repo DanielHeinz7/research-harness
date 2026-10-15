@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-desktop-app-distribution-design.md` (approved `e6967d3`, corrected from the live `desktop/` state in `e72d774`).
 
-**Execution:** subagent-driven, one Sidequest ticket per task, chosen by the owner on 2026-10-15. Not started.
+**Execution:** subagent-driven, one Sidequest ticket per task, chosen by the owner on 2026-10-15. Not started. The lane "Desktop-Bau" holds the board for sub-projects 2 to 5 and is the only integrator; the owner first tests sub-project 1 by hand.
 
 ## Global Constraints
 
@@ -25,6 +25,7 @@
 - Never press "Open Anyway", never change Gatekeeper settings (`spctl --master-disable`, `--add`) on the owner's Mac.
 - Code style: `desktop/` uses `'use strict'`, single quotes, arrow functions; `scripts/release.js` and its test use double quotes and `function`. English for code, UI, docs, commits.
 - No release fragment in `.release/unreleased/`: nothing here reaches a user until signing is on.
+- The app and its program are called `Research Harness` (`productName`, so `Research Harness.app/Contents/MacOS/Research Harness`); `research-harness` stays the CLI's name. The plugin's guard reads a program called `research-harness` as a CLI call and refuses non-reading commands in the same line. No change to the guard for this. `appId` and the DMG file names stay as they are.
 
 Test commands:
 - desktop: `cd desktop && npm test` (Playwright tests through `NODE_PATH=~/dh-appdev/dsi-pubs/node_modules`)
@@ -59,6 +60,8 @@ Test commands:
 ### Task 1: What macOS shows for a downloaded test build
 
 Settles the assumption in spec §2: a build with no signature at all, once downloaded, says "is damaged" instead of offering "Open Anyway". Also shows what ad-hoc re-signing does to the Git Credential Manager.
+
+This task probes today's build, which is still called `research-harness.app` (the rename comes with Task 2's settings, used from Task 4 on). Start it only with `open`, never by running `Contents/MacOS/research-harness` in a Bash line: the guard refuses such a line (see Global Constraints).
 
 **Files:**
 - Create: `desktop/entitlements.adhoc.plist`, `desktop/entitlements.mac.plist`, `docs/desktop-signing.md`
@@ -183,7 +186,7 @@ git commit -m "Entitlements for the desktop builds; what macOS shows for a downl
 ### Task 2: The switch and its electron-builder settings
 
 **Files:**
-- Create: `desktop/distribution.json`, `desktop/lib/distribution.js`, `desktop/test/distribution.test.js`
+- Create: `desktop/distribution.json`, `desktop/lib/distribution.js`, `desktop/test/distribution.test.js`, `desktop/test/app-name.test.js`
 
 **Interfaces:**
 - Consumes: Task 1's `desktop/entitlements.adhoc.plist`, `desktop/entitlements.mac.plist`.
@@ -192,7 +195,7 @@ git commit -m "Entitlements for the desktop builds; what macOS shows for a downl
   - `builderSettings(dist: Dist, { version: string, keep: string[], outDir: string, keychain?: string }): { config: object, env: object }`. `keep` holds paths relative to dugite's `git/` folder.
   - `preflight(dist: Dist, { run?, keychain? }?): string[]` — problems in plain words; empty means ready.
   - `runTool(cmd: string, args: string[], opts?): { status: number, stdout: string, stderr: string }` (spawnSync, no shell).
-  - `DistributionError`, `DIST_FILE` (absolute path of `desktop/distribution.json`), `LOGIN_KEYCHAIN`, `BASE` (the settings `electron-builder.yml` holds today).
+  - `DistributionError`, `DIST_FILE` (absolute path of `desktop/distribution.json`), `LOGIN_KEYCHAIN`, `BASE` (the settings `electron-builder.yml` holds today, except `productName`, which becomes `Research Harness`).
 
 - [ ] **Step 1: The switch**
 
@@ -259,6 +262,7 @@ test('none: ad-hoc with hardened runtime, no notarization, no publishing, no App
   assert.deepEqual(config.extraMetadata, { version: '0.6.0', harnessSigning: 'none' });
   assert.equal(config.directories.output, '/tmp/out');
   assert.equal(config.appId, 'org.research-harness.desktop');
+  assert.equal(config.productName, 'Research Harness');
   assert.deepEqual(Object.keys(env).filter((k) => k.startsWith('APPLE_')), []);
 });
 
@@ -284,7 +288,7 @@ test('kept signatures become anchored, escaped signIgnore patterns', () => {
   const keep = ['libexec/git-core/git-credential-manager', 'libexec/git-core/libcoreclr.dylib'];
   const { config } = builderSettings({ signing: 'none' }, { version: '0.6.0', keep, outDir: '/o' });
   assert.deepEqual(config.mac.signIgnore, ['/node_modules/dugite/git/libexec/git-core/git-credential-manager$', '/node_modules/dugite/git/libexec/git-core/libcoreclr\\.dylib$']);
-  const inApp = '/x/research-harness.app/Contents/Resources/app.asar.unpacked/node_modules/dugite/git/libexec/git-core/libcoreclr.dylib';
+  const inApp = '/x/Research Harness.app/Contents/Resources/app.asar.unpacked/node_modules/dugite/git/libexec/git-core/libcoreclr.dylib';
   assert.match(inApp, new RegExp(config.mac.signIgnore[1]));
   assert.doesNotMatch(inApp.replace('libcoreclr.dylib', 'libcoreclrXdylib'), new RegExp(config.mac.signIgnore[1]));
 });
@@ -314,7 +318,56 @@ test('preflight passes when certificate and profile are there', () => {
 });
 ```
 
-- [ ] **Step 3: Run, expect FAIL** (`Cannot find module '../lib/distribution'`): `cd desktop && node --test test/distribution.test.js`
+`desktop/test/app-name.test.js` pins the name against the plugin's real guard. In an empty folder the guard refuses the line with `research-harness` and allows it with `Research Harness` (replayed 2026-10-15 with `hooks/guard-promotion.js`, in the repository and in an empty folder; inside a paper project it refuses both, for `seq`, which is another rule):
+
+```js
+'use strict';
+// The app must not share its program name with the CLI: the plugin's guard
+// reads a program called research-harness as a CLI call and refuses the
+// other commands in the same line. The guard stays as it is; the app is named.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { BASE } = require('../lib/distribution');
+
+const PLUGIN = path.join(__dirname, '..', '..', 'plugins', 'research-harness');
+
+function guard(command) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-name-'));
+  try {
+    const { CLAUDE_PROJECT_DIR: _project, RESEARCH_HARNESS_DIR: _dir, ...ambient } = process.env;
+    const out = childProcess.spawnSync(process.execPath, [path.join(PLUGIN, 'hooks', 'guard-promotion.js')], {
+      cwd,
+      env: { ...ambient, CLAUDE_PLUGIN_ROOT: PLUGIN },
+      input: JSON.stringify({ cwd, session_id: 's', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }),
+      encoding: 'utf8',
+    });
+    assert.equal(out.status, 0, out.stderr);
+    return out.stdout ? JSON.parse(out.stdout).hookSpecificOutput.permissionDecision : 'allow';
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
+const startThrice = (name) => `APP="dist/${name}.app/Contents/MacOS/${name}"; for i in $(seq 1 3); do "$APP"; done`;
+
+test('the app is called Research Harness, not like the CLI', () => {
+  assert.equal(BASE.productName, 'Research Harness');
+});
+
+test('the guard lets an agent start the app by its program name', () => {
+  assert.equal(guard(startThrice(BASE.productName)), 'allow');
+});
+
+test('why the name matters: the same line with the CLI\'s name is refused', () => {
+  assert.equal(guard(startThrice('research-harness')), 'deny');
+});
+```
+
+- [ ] **Step 3: Run, expect FAIL** (`Cannot find module '../lib/distribution'`): `cd desktop && node --test test/distribution.test.js test/app-name.test.js`
 
 - [ ] **Step 4: Implement** `desktop/lib/distribution.js`
 
@@ -337,10 +390,12 @@ const PREFIX = 'Developer ID Application: ';
 const FIELDS = { none: ['signing'], 'developer-id': ['signing', 'identity', 'teamId', 'notaryProfile'] };
 const RUNBOOK = 'docs/desktop-signing.md';
 
-// What electron-builder.yml held before this sub-project (sub-project 1, Task 8).
+// What electron-builder.yml held before this sub-project (sub-project 1, Task 8),
+// except the name: an app program called research-harness looks like the CLI
+// to the plugin's guard, which then refuses the rest of the line.
 const BASE = {
   appId: 'org.research-harness.desktop',
-  productName: 'research-harness',
+  productName: 'Research Harness',
   files: ['main.js', 'preload.js', 'server.js', 'git-path.js', 'package.json'],
   extraResources: [{ from: 'build/plugin', to: 'plugin' }, { from: 'askpass.sh', to: 'askpass.sh' }],
   asarUnpack: ['node_modules/dugite/**'],
@@ -428,12 +483,12 @@ function preflight(dist, { run = runTool, keychain = LOGIN_KEYCHAIN } = {}) {
 module.exports = { readDistribution, builderSettings, preflight, runTool, DistributionError, DIST_FILE, LOGIN_KEYCHAIN, BASE };
 ```
 
-- [ ] **Step 5: Run, expect PASS**: `cd desktop && node --test test/distribution.test.js`, then `npm test`.
+- [ ] **Step 5: Run, expect PASS**: `cd desktop && node --test test/distribution.test.js test/app-name.test.js`, then `npm test`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add desktop/distribution.json desktop/lib/distribution.js desktop/test/distribution.test.js
+git add desktop/distribution.json desktop/lib/distribution.js desktop/test/distribution.test.js desktop/test/app-name.test.js
 git commit -m "Desktop distribution switch and its electron-builder settings"
 ```
 
@@ -557,7 +612,7 @@ const MICROSOFT = 'CodeDirectory v=20500 flags=0x10000(runtime)\nAuthority=Devel
 function fakeApp(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-verify-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const app = path.join(dir, 'research-harness.app');
+  const app = path.join(dir, 'Research Harness.app');
   for (const rel of ['Contents/MacOS/research-harness', `${GITREL}/bin/git`, `${GITREL}/libexec/git-core/git-credential-manager`]) {
     fs.mkdirSync(path.dirname(path.join(app, rel)), { recursive: true });
     fs.writeFileSync(path.join(app, rel), Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1]));
@@ -793,7 +848,7 @@ module.exports = { verifyApp, gitDir };
 'use strict';
 // Checks a built app as desktop/distribution.json says it should be signed.
 //
-//   node scripts/verify-app.js <research-harness.app> <arm64|x64>
+//   node scripts/verify-app.js <Research Harness.app> <arm64|x64>
 //
 // Exit 0 every check passed, 1 a check failed, 2 wrong arguments or switch.
 const fs = require('node:fs');
@@ -803,7 +858,7 @@ const { verifyApp } = require('../lib/verify');
 const ROSETTA = '/Library/Apple/usr/share/rosetta/rosetta';
 const [app, arch] = process.argv.slice(2);
 if (!app || !['arm64', 'x64'].includes(arch) || !fs.existsSync(app)) {
-  console.error('usage: node scripts/verify-app.js <research-harness.app> <arm64|x64>');
+  console.error('usage: node scripts/verify-app.js <Research Harness.app> <arm64|x64>');
   process.exit(2);
 }
 let dist;
@@ -956,10 +1011,10 @@ test('a rejected notarization names the command that shows Apple\'s log', () => 
 test('appIn finds the app in mac-arm64/ and in mac/', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-appin-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  fs.mkdirSync(path.join(dir, 'arm64', 'mac-arm64', 'research-harness.app'), { recursive: true });
-  fs.mkdirSync(path.join(dir, 'x64', 'mac', 'research-harness.app'), { recursive: true });
-  assert.equal(appIn(path.join(dir, 'arm64')), path.join(dir, 'arm64', 'mac-arm64', 'research-harness.app'));
-  assert.equal(appIn(path.join(dir, 'x64')), path.join(dir, 'x64', 'mac', 'research-harness.app'));
+  fs.mkdirSync(path.join(dir, 'arm64', 'mac-arm64', 'Research Harness.app'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'x64', 'mac', 'Research Harness.app'), { recursive: true });
+  assert.equal(appIn(path.join(dir, 'arm64')), path.join(dir, 'arm64', 'mac-arm64', 'Research Harness.app'));
+  assert.equal(appIn(path.join(dir, 'x64')), path.join(dir, 'x64', 'mac', 'Research Harness.app'));
   assert.throws(() => appIn(dir), /no research-harness\.app/);
 });
 ```
@@ -1080,10 +1135,10 @@ function notaryHint(message, dist) {
 
 function appIn(dir) {
   for (const sub of fs.readdirSync(dir)) {
-    const app = path.join(dir, sub, 'research-harness.app');
+    const app = path.join(dir, sub, 'Research Harness.app');
     if (sub.startsWith('mac') && fs.existsSync(app)) return app;
   }
-  throw new Error(`no research-harness.app under ${dir}`);
+  throw new Error(`no Research Harness.app under ${dir}`);
 }
 
 async function buildOne(dist, arch, version) {
@@ -1199,8 +1254,8 @@ file node_modules/dugite/git/bin/git
 Expected: exit 0; for each processor a note "signing is none: this build is for local tests and cannot be published", no `problem:` line; in `dist/release` the two DMGs, two zips and their blockmaps and no `latest-mac.yml`; `file` reports this Mac's processor (Review Focus 2). Record in the report which files `signIgnore` kept (count by team, from the electron-builder log or `keepList`).
 
 Then:
-- `hdiutil attach -nobrowse -readonly dist/release/research-harness-mac-arm64.dmg`, check that `research-harness.app` and an `Applications` link are in the mounted volume, `hdiutil detach` it.
-- `open dist/x64/mac/research-harness.app` (runs under Rosetta on Apple silicon), `screencapture -x -T 8 "$TMPDIR/rh-x64.png"`, read the PNG: the first-start page shows "Start with a paper project". Quit with `osascript -e 'quit app "research-harness"'`. If Rosetta is not installed, say so and skip; do not install it.
+- `hdiutil attach -nobrowse -readonly dist/release/research-harness-mac-arm64.dmg`, check that `Research Harness.app` and an `Applications` link are in the mounted volume, `hdiutil detach` it.
+- `open "dist/x64/mac/Research Harness.app"` (runs under Rosetta on Apple silicon), `screencapture -x -T 8 "$TMPDIR/rh-x64.png"`, read the PNG: the first-start page shows "Start with a paper project". Quit with `osascript -e 'quit app "Research Harness"'`. If Rosetta is not installed, say so and skip; do not install it.
 - `npm test` once more, expect PASS (the host git is back).
 
 If electron-builder writes no DMG or zip under those names, or `verifyApp` reports a problem, stop and report the exact output; do not loosen a check.
@@ -1644,6 +1699,8 @@ module.exports = { createUpdater, fileSettings, plainError, DAY };
 
 In `desktop/lib/distribution.js`, `BASE.files` becomes `['main.js', 'preload.js', 'server.js', 'git-path.js', 'updater.js', 'package.json']`.
 
+In `desktop/main.js`, the window title `'research-harness'` and the error box title `'research-harness could not start'` become `'Research Harness'` and `'Research Harness could not start'`, so the window, the menu bar (`app.name` is the `productName`) and the update line use one name.
+
 `desktop/main.js`: add `Menu` to the electron import, and below the `askpass` line:
 
 ```js
@@ -1757,7 +1814,7 @@ for (const colorScheme of ['light', 'dark']) {
     assert.equal(await page.locator('#out-app-start').textContent(), '');
     assert.equal(await page.locator('#start-restart').isVisible(), false);
     await page.evaluate(() => window.__sendUpdate({ state: 'ready', version: '9.9.9' }));
-    await page.locator('#out-app-start', { hasText: 'Version 9.9.9 is ready. It installs when you quit research-harness.' }).waitFor();
+    await page.locator('#out-app-start', { hasText: 'Version 9.9.9 is ready. It installs when you quit Research Harness.' }).waitFor();
     const ratios = await focusContrastRatios(page);
     const restart = ratios.find((item) => /Restart now/.test(item.label));
     assert.ok(restart && restart.ratio >= 3, `Restart now: focus contrast >= 3:1 (${restart && restart.ratio.toFixed(2)})`);
@@ -1819,8 +1876,8 @@ In the script, after the `say` function:
   // Only the desktop app signed with a Developer ID sends these (sub-project
   // 4). A browser tab has no host and never shows the line.
   var UPDATE_TEXT = {
-    downloading: function (m) { return 'Version ' + m.version + ' is downloading. It installs when you quit research-harness.'; },
-    ready: function (m) { return 'Version ' + m.version + ' is ready. It installs when you quit research-harness.'; },
+    downloading: function (m) { return 'Version ' + m.version + ' is downloading. It installs when you quit Research Harness.'; },
+    ready: function (m) { return 'Version ' + m.version + ' is ready. It installs when you quit Research Harness.'; },
     current: function () { return 'You have the newest version.'; },
     error: function (m) { return m.message; },
   };
@@ -1929,11 +1986,11 @@ error.
 Not sure which Mac you have? Apple menu → About This Mac. "Chip: Apple M…" means Apple silicon;
 "Processor: … Intel" means Intel.
 
-Open the downloaded file and drag research-harness into Applications. The first time you open it,
+Open the downloaded file and drag Research Harness into Applications. The first time you open it,
 macOS asks whether you want to open an app downloaded from the Internet; choose Open.
 
 The app looks for a new version on GitHub when it starts and once a day, downloads it, and installs
-it when you quit. Turn this off under research-harness → Check for Updates Automatically. GitHub sees
+it when you quit. Turn this off under Research Harness → Check for Updates Automatically. GitHub sees
 the request, as with any visit to its pages.
 ```
 
@@ -1941,7 +1998,7 @@ the request, as with any visit to its pages.
 
 After the release that turned signing on, install that version from the README link on a second user
 account. Make the next release. Open the app there: within a minute the sidebar (or the start page)
-says "Version … is ready". Choose Restart now; research-harness → About research-harness shows the
+says "Version … is ready". Choose Restart now; Research Harness → About Research Harness shows the
 new version.
 
 ### Later

@@ -141,6 +141,12 @@ asks for the app-specific password itself, or takes an App Store Connect API key
    `extraMetadata`), and fixed file names: `research-harness-mac-arm64.dmg` and
    `research-harness-mac-x64.dmg` (no version, so the download links in 4.6 never change), and
    `research-harness-<version>-mac-<arch>.zip` for updates.
+   The app and its program are called `Research Harness` (`productName`); `research-harness`
+   stays the CLI's name. The plugin's guard reads a program called `research-harness` as a CLI
+   call and refuses non-reading commands in the same line (found in the lane "Desktop-App
+   Design", replayed 2026-10-15 with `hooks/guard-promotion.js` in the repository and in an empty
+   folder: deny for `research-harness`, allow for `myapp` and `Research Harness`). The guard is not
+   loosened for this.
 3. Sign according to the switch:
    - `none`: ad-hoc (`identity: "-"`), hardened runtime on with an entitlements file that grants
      `allow-jit` and `disable-library-validation` (electron-builder 26 does not add the second one

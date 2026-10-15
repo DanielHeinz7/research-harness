@@ -95,7 +95,11 @@ function createController(deps) {
       proc = null;
       set({ phase: 'exited', exit: { code, words: exitWords(code) } });
     });
-    markerDone = waitForMarker(thisMarker, { timeoutMs: deps.markerTimeoutMs || 15000, intervalMs: deps.markerIntervalMs || 250, exited: () => exited }).then((marker) => {
+    markerDone = waitForMarker(thisMarker, {
+      timeoutMs: deps.markerTimeoutMs || 15000, intervalMs: deps.markerIntervalMs || 250,
+      exited: () => exited || proc !== p,
+      onTimeout: () => { if (markerPath !== thisMarker) return; set({ guard: guardLine(classify(null, { bundledRoot: deps.pluginRoot }), { exited: false }) }); },
+    }).then((marker) => {
       if (markerPath !== thisMarker) return;
       set({ guard: guardLine(classify(marker, { bundledRoot: deps.pluginRoot }), { exited }) });
     });

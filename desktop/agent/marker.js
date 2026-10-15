@@ -26,12 +26,21 @@ function classify(marker, { bundledRoot }) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitForMarker(file, { timeoutMs = 15000, intervalMs = 250, exited = () => false } = {}) {
+// Watches until a marker appears or the session exits. The timeout only tells
+// the caller that the guard is still unconfirmed; the watch itself keeps going,
+// because the hooks of a first session start late (Claude Code asks whether the
+// folder is trusted first) and the marker can still arrive afterwards.
+async function waitForMarker(file, { timeoutMs = 15000, intervalMs = 250, exited = () => false, onTimeout = null } = {}) {
   const until = Date.now() + timeoutMs;
+  let timedOut = false;
   for (;;) {
     const marker = readMarker(file);
     if (marker) return marker;
-    if (exited() || Date.now() >= until) return null;
+    if (exited()) return null;
+    if (!timedOut && Date.now() >= until) {
+      timedOut = true;
+      if (onTimeout) onTimeout();
+    }
     await sleep(intervalMs);
   }
 }
@@ -43,7 +52,7 @@ function guardLine(result, { exited = false } = {}) {
     text: "Guard not confirmed. The agent's writes may not be checked in this session.",
     detail: exited
       ? 'The session did not start.'
-      : "Claude Code did not report the research-harness hooks. Your organisation's settings may turn hooks off. The app cannot stop Claude Code.",
+      : "Claude Code may be asking whether to trust this folder; the answer goes in the terminal below. It did not report the research-harness hooks, so your organisation's settings may turn hooks off. The app cannot stop Claude Code.",
     warn: true,
   };
 }

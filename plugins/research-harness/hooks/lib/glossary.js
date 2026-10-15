@@ -36,6 +36,7 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 
 const canvas = require('./canvas');
+const lineEndings = require('./line-endings');
 const project = require('./project');
 const { textHash } = require('./hash');
 
@@ -175,6 +176,8 @@ function parseGlossary(text) {
     entries: [],
     problems: [],
   };
+  const crlf = lineEndings.firstCrlfLine(text);
+  if (crlf) parsed.problems.push(lineEndings.crlfProblem(crlf));
   if (header.unterminated) parsed.problems.push('frontmatter is not terminated');
   if (!parsed.schemaSupported) {
     parsed.problems.push(parsed.schema === null

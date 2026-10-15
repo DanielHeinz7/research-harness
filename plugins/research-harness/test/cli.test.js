@@ -850,6 +850,27 @@ test('init refuses a bare value flag before it writes the canvas, the log or a k
   assert.notDeepEqual(fs.readdirSync(stateDirOf(root)), []);
 });
 
+// SQ-294 (F5): the name becomes the log's title line and the canvas slug, so a
+// line break in it splits the header — and one carrying `Seal key: …` made the
+// write crash. It is refused before anything is written.
+test('init refuses --project with a line break or a carriage return, and writes nothing', () => {
+  for (const name of ['voice\nuptake', 'voice\ruptake', 'voice\nSeal key: 0000000000000000']) {
+    const root = makeProject(false);
+    const out = run(root, ['init', '--project', name, '--mode', 'seed']);
+    assert.equal(out.status, 2, `${JSON.stringify(name)}: ${out.stdout}${out.stderr}`);
+    assert.match(out.stdout, /^--project must be one line: a name with a line break or a carriage return is not allowed\.$/m);
+    assert.equal(fs.existsSync(path.join(root, 'research')), false, 'no canvas and no log are written');
+    assert.deepEqual(fs.readdirSync(stateDirOf(root)), [], 'no sealing key is written');
+  }
+  // The same call with a one-line name writes all three, so the refusals above
+  // are not vacuous.
+  const root = makeProject(false);
+  const ok = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.ok(fs.existsSync(path.join(root, 'research', 'canvas.md')));
+  assert.notDeepEqual(fs.readdirSync(stateDirOf(root)), []);
+});
+
 test('log --supersedes refuses a bare flag, zero, a negative and an entry the log does not have, and writes nothing', () => {
   const root = keyedProject();
   const before = readLog(root);

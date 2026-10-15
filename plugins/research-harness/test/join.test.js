@@ -152,26 +152,81 @@ test('join refuses a wrong key and a malformed file, and copies nothing', () => 
   assert.deepEqual(fs.readdirSync(state).filter((n) => n !== 'name'), [], 'no key directory was created');
 });
 
-test('join refuses when a different key is already here, and is a no-op with the same key', () => {
-  const { root, exported } = keyedWithExport();
-  const clone = duplicateProject(root);
+// SQ-294 (F2): the trap this command exists to close is a key of the clone's
+// own sitting where the project's key belongs. The log's `Seal key:` line is
+// what tells them apart, so the key file that matches the line replaces the
+// stored one — loudly — and nothing else does.
+test('join replaces a stored key the log\'s Seal key line contradicts, and says so in one sentence', () => {
+  // A project whose log names its key, one entry sealed: the clone receives a
+  // log that says which key is the project's, which is what the replacement is
+  // checked against.
+  const holder = freshProject();
+  assert.equal(run(holder, ['log', 'DISCOVERY', '7', '--body', 'The first finding.']).status, 0);
+  const { exported } = exportFrom(holder);
+  assert.notEqual(seal.keyLineOf(logOf(holder)), null);
+  const clone = duplicateProject(holder);
   const state = freshState();
-  // The trap this command exists to close: someone ran init in the clone and a
-  // key of its own is already here. The right key must not replace it quietly.
   const keyFile = keyFileIn(state, clone);
   fs.mkdirSync(path.dirname(keyFile), { recursive: true, mode: 0o700 });
   fs.writeFileSync(keyFile, 'cd'.repeat(32), { mode: 0o600 });
-  const refused = run(clone, ['join', '--key-file', exported, '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: state });
+
+  // A key file the line does not name replaces nothing.
+  const refused = run(clone, ['join', '--key-file', wrongKeyFile(), '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: state });
   assert.equal(refused.status, 1, refused.stdout);
-  assert.match(refused.stdout, /A different key is already at/);
-  assert.match(refused.stdout, /nothing was copied/);
+  assert.match(refused.stdout, /does not hold the project's key: the Seal key line in research\/decisions\.md names a different key/);
+  assert.match(refused.stdout, /Nothing was copied/);
   assert.equal(fs.readFileSync(keyFile, 'utf8') === 'cd'.repeat(32), true, 'the key that was here is kept');
-  // The same key again is a no-op success, not a refusal.
-  fs.writeFileSync(keyFile, fs.readFileSync(exported, 'utf8').trim(), { mode: 0o600 });
+
+  // The key the line names replaces it, and join says which key it went with.
+  const replaced = run(clone, ['join', '--key-file', exported, '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(replaced.status, 0, replaced.stdout);
+  assert.ok(replaced.stdout.includes(keyFile), 'the sentence names the file it replaced');
+  assert.match(replaced.stdout, /^The key already at .* does not match the Seal key line in research\/decisions\.md; the key file you gave does, so it replaced the stored one\.$/m);
+  assert.equal(fs.readFileSync(keyFile, 'utf8').trim() === fs.readFileSync(exported, 'utf8').trim(), true, 'the key file decides which key is the project\'s');
+  // The wrong key no longer stands in the way of the write it was blocking.
+  const written = run(clone, ['log', 'DISCOVERY', '7', '--body', 'From the second clone.'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(written.status, 0, written.stdout);
+  // The same key again is a no-op success, not a second replacement.
   const again = run(clone, ['join', '--key-file', exported, '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: state });
   assert.equal(again.status, 0, again.stdout);
   assert.match(again.stdout, /same key was already here/);
-  assert.equal(fs.readFileSync(keyFile, 'utf8').trim() === fs.readFileSync(exported, 'utf8').trim(), true, 'the key is untouched');
+  assert.doesNotMatch(again.stdout, /it replaced the stored one/);
+
+  // Without the line there is nothing to check the incoming key against, so a
+  // stored key is not replaced even by a key that verifies the whole log.
+  const legacy = keyed();
+  // Cloned before the export, so the clone's log is the one without the line.
+  const legacyClone = duplicateProject(legacy);
+  const { exported: legacyKey } = exportFrom(legacy);
+  const legacyState = freshState();
+  const legacyFile = keyFileIn(legacyState, legacyClone);
+  fs.mkdirSync(path.dirname(legacyFile), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(legacyFile, 'cd'.repeat(32), { mode: 0o600 });
+  const noLine = run(legacyClone, ['join', '--key-file', legacyKey, '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: legacyState });
+  assert.equal(noLine.status, 1, noLine.stdout);
+  assert.match(noLine.stdout, /A different key is already at/);
+  assert.match(noLine.stdout, /nothing was copied/);
+  assert.equal(fs.readFileSync(legacyFile, 'utf8') === 'cd'.repeat(32), true, 'the key that was here is kept');
+});
+
+// SQ-294 (F4): a clone of a project whose log names its key has no key of its
+// own, and init is the one thing it must not do — the key is held elsewhere
+// even when no entry is sealed yet.
+test('a keyless clone whose log names the key is sent to join by log and doctor, not to init', () => {
+  const root = freshProject();
+  assert.notEqual(seal.keyLineOf(logOf(root)), null, 'the log names the key, and no entry is sealed yet');
+  const clone = duplicateProject(root);
+  const state = freshState();
+  const written = run(clone, ['log', 'DISCOVERY', '7', '--body', 'x'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(written.status, 1, written.stdout);
+  assert.match(written.stdout, /the project's key is held elsewhere/);
+  assert.match(written.stdout, /research-harness join --key-file/);
+  assert.doesNotMatch(written.stdout, /research-harness init/, 'init would make the log read as broken');
+  const doctor = run(clone, ['doctor'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(doctor.status, 1, doctor.stdout);
+  assert.match(doctor.stdout, /^- project state: no sealing key for this project on this machine, and the project's key is held elsewhere; get the key file from the person who shared the project and run `research-harness join --key-file <file> --name "<your name>"`$/m);
+  // init refuses here too, so the advice and the command agree.
+  assert.equal(run(clone, ['init', '--project', 'voice-uptake', '--mode', 'seed'], { RESEARCH_HARNESS_STATE_DIR: state }).status, 1);
 });
 
 test('init on a sealed log without a key refuses and points to join', () => {
@@ -321,4 +376,9 @@ test('a wrong key on a log with the line: writes, doctor and review name the cau
   assert.match(doctor.stdout, /the key here is not the project's: the Seal key line in decisions\.md names a different key/);
   const review = run(root, ['review']);
   assert.match(review.stdout, /BROKEN at #0 \(line 3\): this key is not the project's: the Seal key line in decisions\.md names a different key\./);
+  // SQ-294 (F3): the ledger line names the key as the cause and points at the
+  // step that fixes it, not at review, and names no entry.
+  const status = run(root, ['status']);
+  assert.match(status.stdout, /Ledger: this key is not the project's: the Seal key line in decisions\.md names a different key — run research-harness join with the project key/);
+  assert.doesNotMatch(status.stdout, /#0/);
 });

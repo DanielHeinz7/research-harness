@@ -220,6 +220,12 @@ function init(flags) {
   if (flags.variant !== undefined) return initVariant(flags);
   const root = project.projectDir({});
   if (!flags.project || typeof flags.project !== 'string') return fail(`--project is required.\n${USAGE}`, 2);
+  // The name becomes the log's title line and the canvas slug, so a line break
+  // splits it: `init --project "p\nSeal key: 0…"` even made withKeyLine return
+  // null and the write crash on a null payload (SQ-294).
+  if (/[\r\n]/.test(flags.project)) {
+    return fail(`--project must be one line: a name with a line break or a carriage return is not allowed.\n${USAGE}`, 2);
+  }
   if (!MODES.includes(flags.mode)) return fail(`--mode must be one of ${MODES.join(', ')}.\n${USAGE}`, 2);
   const profileId = typeof flags.profile === 'string' ? flags.profile : 'is-qualitative';
   try {
@@ -785,7 +791,20 @@ function join(flags) {
   }
   if (state.keyError) return fail(`${state.keyError}; nothing was copied.`);
   const file = seal.keyPath(state.root);
-  if (state.key && !state.key.equals(key)) return fail(`A different key is already at ${file}; nothing was copied. If it is wrong, the person who set it up decides which key is the project's.`);
+  // A stored key the log's own `Seal key:` line contradicts is replaced — and
+  // only by a key file that matches that line: the file, not the request, is
+  // what decides which key is the project's (SQ-294). Without the line there is
+  // nothing to check the incoming key against, so the refusal stands.
+  const named = seal.keyLineOf(state.decisionsText);
+  let replaced = false;
+  if (state.key && !state.key.equals(key)) {
+    if (!named || named.fingerprint !== seal.keyFingerprint(key)) {
+      return fail(`A different key is already at ${file}; nothing was copied. If it is wrong, the person who set it up decides which key is the project's.`);
+    }
+    fs.writeFileSync(file, key.toString('hex'), { mode: 0o600 });
+    replaced = true;
+    say(`The key already at ${file} does not match the Seal key line in ${rel}; the key file you gave does, so it replaced the stored one.`);
+  }
   if (!state.key) {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     fs.writeFileSync(file, key.toString('hex'), { mode: 0o600, flag: 'wx' });
@@ -796,7 +815,7 @@ function join(flags) {
   if (chain.verified.size === 0 && !seal.keyLineOf(state.decisionsText)) {
     say(`Note: ${rel} has no sealed entry and no Seal key line, so this key could not be checked against it. If the person who shared the project runs research-harness key export again, the line is added to the log.`);
   }
-  say(`${state.key ? 'The same key was already here; kept.' : `Key copied to ${file}.`} Name set: ${flags.name.trim()}.`);
+  say(`${state.key && !replaced ? 'The same key was already here; kept.' : `Key copied to ${file}.`} Name set: ${flags.name.trim()}.`);
   say(`You can delete ${flags['key-file']} now; join does not delete it.`);
   say('research-harness doctor:');
   doctor();
@@ -1071,7 +1090,9 @@ function checkProjectState() {
   if (state.error) return null;
   if (state.keyError) return { ok: false, name: 'project state', detail: state.keyError };
   if (!state.key) {
-    return { ok: false, name: 'project state', detail: 'no sealing key for this project on this machine; run `research-harness init --project <slug> --mode <mode>` once here' };
+    return { ok: false, name: 'project state', detail: stateLib.keyHeldElsewhere(state)
+      ? 'no sealing key for this project on this machine, and the project\'s key is held elsewhere; get the key file from the person who shared the project and run `research-harness join --key-file <file> --name "<your name>"`'
+      : 'no sealing key for this project on this machine; run `research-harness init --project <slug> --mode <mode>` once here' };
   }
   return { ok: true, name: 'project state', detail: `sealing key present at ${seal.keyPath(state.root)}` };
 }

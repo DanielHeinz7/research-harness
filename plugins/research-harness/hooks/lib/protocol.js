@@ -2,7 +2,7 @@
 
 const canvas = require('./canvas');
 const { parseDecisions } = require('./decisions');
-const { verifyChain, logAnchor } = require('./seal');
+const { verifyChain, logAnchor, WRONG_KEY } = require('./seal');
 const { textHash } = require('./hash');
 const { findQuestion } = require('./state');
 const { openChecks } = require('./accept');
@@ -37,10 +37,15 @@ function protocolOf({ decisionsText, canvasText, key = null, seq } = {}) {
   const last = section[section.length - 1];
 
   const chain = verifyChain(text, key);
-  const brokenHere = chain.broken && chain.broken.seq <= last.seq;
-  const sealLine = brokenHere
-    ? `broken at #${chain.broken.seq} (${chain.broken.why})`
-    : section.every((e) => chain.verified.has(e.seq)) ? 'verified' : 'unverifiable here (no key)';
+  // A wrong key breaks no entry: the section is not checked on this machine
+  // rather than broken at an entry, and no entry number is named (SQ-294).
+  const keyBreak = !!(chain.broken && chain.broken.why === 'key');
+  const brokenHere = !keyBreak && chain.broken && chain.broken.seq <= last.seq;
+  const sealLine = keyBreak
+    ? `not checked here (${WRONG_KEY})`
+    : brokenHere
+      ? `broken at #${chain.broken.seq} (${chain.broken.why})`
+      : section.every((e) => chain.verified.has(e.seq)) ? 'verified' : 'unverifiable here (no key)';
 
   const parsed = canvasText ? canvas.parseCanvas(canvasText) : null;
   const statementOf = (e, questionId) => {
@@ -50,7 +55,8 @@ function protocolOf({ decisionsText, canvasText, key = null, seq } = {}) {
   };
 
   const out = [];
-  if (brokenHere) out.push(`**BROKEN at #${chain.broken.seq}** — the log does not verify from this entry on; read what follows as unconfirmed.`, '');
+  if (keyBreak) out.push(`**Not checked on this computer** — ${WRONG_KEY}; read what follows as unconfirmed.`, '');
+  else if (brokenHere) out.push(`**BROKEN at #${chain.broken.seq}** — the log does not verify from this entry on; read what follows as unconfirmed.`, '');
   out.push(`# Session protocol — ${marker.ref}`, '', `Date: ${marker.date}`, `Participants: ${[...new Set(section.map(who))].join(', ')}`, '');
 
   const accepted = section.filter((e) => e.kind === 'DECISION');

@@ -161,6 +161,26 @@ test('status, review and log take --variant and read and write only that variant
   assert.equal(run(root, ['log', 'DISCOVERY', '1.1', '--body', 'x', '--variant', '../../x']).status, 2);
 });
 
+// SQ-294 (F1): a variant's log carries no `Seal key:` line of its own — the key
+// belongs to the root — so a variant write checked nothing and sealed with a
+// key the project does not have. It asks the main log, in the main log's words.
+test('a variant write with a key that is not the project\'s is refused in the main log\'s words', () => {
+  const root = projectWithVariants();
+  const keyFile = path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), seal.KEY_FILE);
+  fs.writeFileSync(keyFile, 'ab'.repeat(32), { mode: 0o600 });
+  const mainBefore = read(file(root, 'decisions.md'));
+  const variantBefore = read(file(root, 'variants', 'power', 'decisions.md'));
+
+  const main = run(root, ['log', 'DISCOVERY', '1.1', '--body', 'x']);
+  const variant = run(root, ['log', 'DISCOVERY', '1.1', '--body', 'x', '--variant', 'power']);
+  assert.equal(main.status, 1, main.stdout);
+  assert.equal(variant.status, 1, variant.stdout);
+  assert.match(variant.stdout, /^Cannot log: The sealing key on this machine is not the project's: the Seal key line in research\/decisions\.md names a different key; nothing is written\. Get the project's key from the person who shared the project and join with it\.$/m);
+  assert.equal(variant.stdout, main.stdout, 'the same sentence the main log uses');
+  assert.equal(read(file(root, 'decisions.md')), mainBefore);
+  assert.equal(read(file(root, 'variants', 'power', 'decisions.md')), variantBefore, 'the variant log is untouched');
+});
+
 test('accept works on the main canvas only', () => {
   const root = projectWithVariants();
   const before = read(file(root, 'variants', 'power', 'canvas.md'));

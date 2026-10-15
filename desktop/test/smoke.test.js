@@ -25,6 +25,8 @@ test('the app opens, shows the first-start page and keeps the token off disk', {
     const minSize = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getMinimumSize());
     assert.equal(minSize[0], 960);
     await win.getByRole('button', { name: 'New project…' }).waitFor({ timeout: 90000 });
+    assert.equal(await win.evaluate(() => typeof window.harnessHost.onUpdate), 'function');
+    assert.equal(await win.evaluate(() => window.harnessHost.restartToUpdate().then(() => 'ok')), 'ok'); // a checkout has no updater; the call is a no-op
     assert.equal(new URL(win.url()).hash, '');
     const token = await win.evaluate(() => fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"code":"x"}' }).then((r) => r.status));
     assert.equal(token, 403);                                     // the code was already redeemed by the shell

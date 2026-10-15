@@ -753,7 +753,7 @@ for (const name of Object.keys(routes)) {
 
 and after `say(url);`: `for (const line of startLines) say(line);` (declare `let startLines = [];` at the top of `serve`). `installCli`, first line: `const refusal = host.installCliRefusal(process.platform); if (refusal) return fail(refusal, 2);`.
 
-Node floor check: run the plugin suite once with the oldest Node on this Mac at or above 20, as a lower bound for the floor of 22: `ls ~/.nvm/versions/node`; use a `v22*` if present, else `v20.20.2`: `NODE_PATH=/tmp/rh-playwright/node_modules ~/.nvm/versions/node/<v>/bin/node --test --test-timeout=120000 test/*.test.js` (shell glob, since `node --test` globs need Node 21+). Write in the commit body which version ran and what failed; a failure only below 22 does not block.
+Node floor check: run the plugin suite once with the oldest Node on this Mac at or above 20, as a lower bound for the floor of 22: `ls "$NVM_DIR/versions/node"`; use a `v22*` if present, else `v20.20.2`: `"$NVM_DIR/versions/node/<v>/bin/node" --test --test-timeout=120000 test/*.test.js` after `npm ci` in the repository root (Playwright is a root dev dependency since SQ-231; shell glob, since `node --test` globs need Node 21+). Write in the commit body which version ran and what failed; a failure only below 22 does not block.
 
 - [ ] **Step 4: Run, expect PASS** (files, then the full plugin command).
 

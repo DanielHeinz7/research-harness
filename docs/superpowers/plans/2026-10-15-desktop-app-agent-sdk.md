@@ -38,7 +38,7 @@
 | File | Task | Responsibility |
 |---|---|---|
 | `desktop/agent/sdk/column.js` | 0 | the five contact points with sub-project 2's column code |
-| `desktop/package.json`, `desktop/electron-builder.yml`, `desktop/agent/sdk/binary.js` | 1 | SDK dependency; binary outside the asar archive; where the binary is |
+| `desktop/package.json`, `desktop/lib/distribution.js`, `desktop/agent/sdk/binary.js` | 1 | SDK dependency; binary outside the asar archive; where the binary is |
 | `desktop/test/support/fake-model.js`, `desktop/test/support/logging-proxy.js` | 1 | Messages API stand-in; proxy that records which hosts the binary contacts |
 | `desktop/scripts/check-agent-sdk.js` | 1 | the spec's "Assumed, not checked" list, run against the real binary |
 | `desktop/agent/store.js` (sub-project 2's) | 2 | `agent.way` may be `"sdk"`; the `N.k` matcher stays sub-project 2's `statement-links.js` |
@@ -125,7 +125,7 @@ git commit -m "Agent SDK way: one module for the contact points with the agent c
 The spec lists six assumptions it could not check (§3) and says this task checks each with the real binary before anything is built on it. It also checks what later tasks need to know: the order of start-up messages, which tools ask, the shape of failures, resume of a missing session, and how usage is counted.
 
 **Files:**
-- Modify: `desktop/package.json`, `desktop/electron-builder.yml`
+- Modify: `desktop/package.json`, `desktop/lib/distribution.js` (the electron-builder settings live there as `BASE`; there is no `electron-builder.yml`)
 - Create: `desktop/agent/sdk/binary.js`, `desktop/test/support/fake-model.js`, `desktop/test/support/logging-proxy.js`, `desktop/test/support/shim-env.js`, `desktop/test/fake-model.test.js`, `desktop/scripts/check-agent-sdk.js`, `desktop/test/fixtures/sdk-messages/guard.jsonl`
 
 **Interfaces:**
@@ -141,10 +141,9 @@ ls node_modules/@anthropic-ai/
 ```
 Expected: `claude-agent-sdk` and `claude-agent-sdk-darwin-arm64` (on an Apple silicon Mac). Add a script to `package.json`: `"check-agent-sdk": "node scripts/check-agent-sdk.js"`.
 
-In `electron-builder.yml`, add `agent/**` to `files` and the binary to `asarUnpack`:
-```yaml
-files: [main.js, preload.js, server.js, git-path.js, package.json, "agent/**"]
-asarUnpack: ["node_modules/dugite/**", "node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"]
+There is no `electron-builder.yml`: the builder settings are `BASE` in `desktop/lib/distribution.js`, and `agent/**` is already in its `files`. Add the binary to `asarUnpack` there:
+```js
+asarUnpack: ['node_modules/dugite/**', 'node_modules/node-pty/**', 'node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**'],
 ```
 
 - [ ] **Step 2: Write `binary.js`**
@@ -335,7 +334,7 @@ The script copies `plugins/research-harness/test/fixtures/voice-uptake` and the 
 | C13 | test turn (`tools: []`, no plugin, `maxTurns: 1`, prompt "Reply with the word ready.") against: a fake with `status` 401 `authentication_error`; `ANTHROPIC_BASE_URL=http://127.0.0.1:9`; a fake with `missingModel: 'fake-model'` | INFO: for each, the assistant message's `error` field, the result `subtype` and the time until the query ended |
 | C14 | two plain turns in one conversation | INFO: `usage` and `total_cost_usd` of both results: per turn or cumulative |
 | C15 | send `/research-harness:canvas` as the message | INFO: whether the fake's last request contains text from `skills/canvas/SKILL.md` |
-| C16 | after `npm run dist`: run `dist/mac-arm64/research-harness.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude --version`, then `codesign -dv` on it | runs and prints the version; INFO: the signing authority |
+| C16 | after `npm run dist` (the app is `Placet.app`, in `dist/arm64/mac-arm64/`): run `dist/arm64/mac-arm64/Placet.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude --version`, then `codesign -dv` on it | runs and prints the version; INFO: the signing authority |
 
 - [ ] **Step 6: Run the checks and record the results**
 
@@ -352,7 +351,7 @@ Add a section `## Task 1 results` at the end of this plan with the printed lines
 - [ ] **Step 7: Commit**
 
 ```bash
-git add desktop/package.json desktop/package-lock.json desktop/electron-builder.yml desktop/agent/sdk/binary.js desktop/test/support desktop/test/fake-model.test.js desktop/scripts/check-agent-sdk.js desktop/test/fixtures/sdk-messages docs/superpowers/plans/2026-10-15-desktop-app-agent-sdk.md
+git add desktop/package.json desktop/package-lock.json desktop/lib/distribution.js desktop/agent/sdk/binary.js desktop/test/support desktop/test/fake-model.test.js desktop/scripts/check-agent-sdk.js desktop/test/fixtures/sdk-messages docs/superpowers/plans/2026-10-15-desktop-app-agent-sdk.md
 git commit -m "Agent SDK way: SDK package, fake model, and the checks the spec left open"
 ```
 
@@ -2323,8 +2322,8 @@ Same frame as `desktop/test/smoke.test.js` (Playwright's Electron launcher, `RES
 
 ```bash
 cd desktop && npm run dist
-ls dist/mac-arm64/research-harness.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude
-du -sh dist/mac-arm64/research-harness.app
+ls dist/arm64/mac-arm64/Placet.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude
+du -sh dist/arm64/mac-arm64/Placet.app
 ```
 Write the app's size before and after this sub-project into "Task 1 results" (spec §10 expects about +240 MB).
 
@@ -2354,4 +2353,66 @@ git commit -m "Agent SDK way: Electron smoke test against the fake model"
 
 ## Task 1 results
 
-(Filled in by Task 1, Step 6: the printed lines of `npm run check-agent-sdk`, the date, the SDK version; then C10 from Task 3 and the app size from Task 10.)
+Run on 2026-10-16 on an Apple silicon Mac, Node 24.16, with the fake model only (no key, gateway or account). Still to add: C10 at the end of Task 3 and the app size from Task 10.
+
+SDK 0.3.295 pinned on 2026-10-16 at 7 days old, an exception to the 14-day rule because 2.1.295 is the guard's floor (`onFailure`). It meets the rule from 2026-10-22; no release with sub-project 3 before then.
+
+**Stop rule: C2 FAILS as written.** C1, C3, C4, C5, C6 and C9 pass. The owner decides what C2 means for spec 5.6 before Task 5 starts; see "What C2 shows" below.
+
+SDK `@anthropic-ai/claude-agent-sdk` 0.3.295, bundled binary "2.1.295 (Claude Code)". The lines are the script's output, unchanged, except that the C16 lines come from a second run after `node scripts/dist.js --arch arm64` (C16 needs the built app; the first run's "no built app" line is left out):
+
+```text
+INFO C0 SDK 0.3.295; node v24.16.0; darwin-arm64; 2026-10-15
+PASS C1 binary says "2.1.295 (Claude Code)"; needs 2.1.295 or later; SDK 0.3.295
+FAIL C2 no user message for 20 s; order of system messages: hook_started(SessionStart), hook_response(SessionStart:success); SessionStart outcome success, context starts "research-harness · paper project "voice-..."; init lists no research-harness plugin; model requests before a message: 0
+INFO C2 asked with no message yet: initializationResult answered (plugins_applied undefined, hooks_applied undefined, 7 research-harness commands such as research-harness:accept, research-harness:canvas, 6 models); reloadPlugins listed research-harness 0.6.0 /plugin; cc-plugin-agents-md  builtin; cc-plugin-plugin-authoring  builtin
+INFO C2 with a first message: message order system/hook_started, system/hook_response, system/init, system/status, assistant, result/success; SessionStart response at index 1, init at index 2; init arrived -58 ms before the first model request
+PASS C3 Bash result "PreToolUse:Bash hook error: Accepting a statement is the researcher's act, so `research-ha..."; Edit result "PreToolUse:Edit hook error: A [proposed] statement cannot be promoted to [accepted] by the..."; canvas bytes unchanged; canUseTool called for: nothing
+INFO C3 45 messages written to test/fixtures/sdk-messages/guard.jsonl
+PASS C4 tool result is not an error: "research-harness · paper project "voice-uptake" · profile is-qualitative · mode seed Elements: 1 stated (+1 proposal) · 2 open (1 proposal) ..."
+PASS C5 "env" printed 61 lines, secret absent; the echo printed "[]"; ANTHROPIC_AUTH_TOKEN in "env": not listed
+PASS C6 3 files under the config folder, 0 contain the secret; 2 files in the project folder, 0 contain it
+PASS C7 hosts the binary tried to reach through the proxy: none; the turn finished
+INFO C8 WebFetch: canUseTool called (blockedPath none); the model was shown "denied by the check script"
+INFO C8 Read: canUseTool called (blockedPath none); the model was shown "1 ## 2 # Host Database 3 # 4 # localhost is used to configure the loopback interface 5 # w..."
+INFO C8 Write: canUseTool not called; the model was shown "File created successfully at: /project/research/notes-check.md (file state is current in y..."
+INFO C8 Skill: canUseTool not called; the model was shown "Launching skill: research-harness:canvas"
+INFO C8 Task: canUseTool not called; the model was shown "Async agent launched successfully. (This tool result is internal metadata — never quote or..."
+INFO C8 canUseTool saw, in order: WebFetch,Read; tool calls the model made: WebFetch, Read, Write, Skill, Agent; result success, 7 turns
+PASS C9 the subagent's Bash result: "PreToolUse:Bash hook error: Accepting a statement is the researcher's act, so `research-harness accept` cannot..." (subagent tool "Task")
+INFO C10 not run: agent/sdk/keychain.js does not exist yet; this check runs at the end of Task 3
+PASS C11 16 requests reached the fake; 16 carried "authorization: Bearer fake-bedrock-..."; paths: /inference-profiles, /model/<id>/invoke, /model/<id>/invoke-with-response-stream; real Bedrock stays untested; query ended with: Claude Code returned an error result: There's an issue with the selected model (fake-model). It may not exist or you may not have access to it.
+INFO C12 resume of a session that does not exist: messages result/error_during_execution (error); result error_during_execution errors=["No conversation found with session ID: 347fe209-70cd-40d6-9201-80ed5031a110"]; the query threw "Claude Code returned an error result: No conversation found with session ID: 347fe209-70cd-40d6-9201-80ed5031a110"; stderr "No conversation found with session ID: 347fe209-70cd-40d6-9201-80ed5031a110"; 929 ms
+INFO C13 401 authentication_error: assistant error "none"; result subtype "none"; api retry messages 9 (first: attempt 1 of 10, status 401, error authentication_failed, wait 545 ms); ended after 122007 ms (cut off by the script, still running)
+INFO C13 connection refused (127.0.0.1:9): assistant error "none"; result subtype "none"; api retry messages 10 (first: attempt 1 of 10, status null, error unknown, wait 547 ms); ended after 152120 ms (cut off by the script, still running)
+INFO C13 404 model not found: assistant error "model_not_found"; result subtype "success, is_error"; api retry messages 0; ended after 2114 ms; threw "Claude Code returned an error result: There's an issue with the selected model (fake-model). It may not exist or you may not have access to it."
+INFO C13 401 authentication_error with CLAUDE_CODE_MAX_RETRIES=1: assistant error "authentication_failed"; result subtype "success, is_error"; api retry messages 1 (first: attempt 1 of 1, status 401, error authentication_failed, wait 587 ms); ended after 1107 ms; threw "Claude Code returned an error result: Not logged in · Please run /login"
+INFO C13 connection refused with CLAUDE_CODE_MAX_RETRIES=1: assistant error "server_error"; result subtype "success, is_error"; api retry messages 1 (first: attempt 1 of 1, status null, error unknown, wait 555 ms); ended after 1056 ms; threw "Claude Code returned an error result: API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)"
+INFO C14 2 results; turn 1: usage in/out 10/5, total_cost_usd 0.000105, num_turns 1; turn 2: usage in/out 10/5, total_cost_usd 0.00021, num_turns 1; the fake reports 10/5 tokens per request, so usage is per turn for usage; total_cost_usd is cumulative
+INFO C15 main-model requests 1; the last contains text from skills/canvas/SKILL.md ("You are filling"); any request contains it: true; init slash_commands include research-harness:canvas: true; result success
+PASS C16 unpacked binary runs and prints "2.1.295 (Claude Code)"
+INFO C16 codesign: Signature=adhoc; Identifier=claude-555549444c4c441055553144a1ff5d6d733a67f3
+```
+
+Information only: the same script on SDK 0.3.287 (the newest release that met the 14-day rule on the day, binary "2.1.287 (Claude Code)") gave the same status on every line except C1, which failed (2.1.287 is below the floor). Only timings and session IDs differed. That is why the pin moved to 0.3.295.
+
+### What C2 shows
+
+- The SessionStart hook runs when the binary starts, not when the first message arrives: its `hook_response` (outcome `success`, `additionalContext` starting `research-harness · paper project ...`) came with no message sent and no model request made.
+- The `system/init` message does not come until the first message. With a message, the order is `hook_started`, `hook_response`, `init`, `status`, then the first assistant message. So the plan's wording "init listing `research-harness` before any user message" cannot hold; the person's first message is what releases `init`.
+- What the host can ask before the first message: `query.initializationResult()` answers (7 `research-harness:*` commands, the model list) and `query.reloadPlugins()` lists `research-harness` 0.6.0 with the bundled plugin's path. The fields `plugins_applied` and `hooks_applied` of `initializationResult()` are absent on 2.1.295.
+- Spec 5.6 ("the guard has to be seen to start before the person's first message goes out") can therefore be built from the SessionStart `hook_response` plus `reloadPlugins()`, not from `init`. Task 5 (`guard-check.js`) and Task 7 (start-up order) must use those two. The owner decides whether that meets 5.6.
+
+### What the later tasks must know
+
+- **Start-up order** (C2): `hook_started(SessionStart)`, `hook_response(SessionStart)` before any message; `init` only after the first message, a few tens of milliseconds before the first model request. The recorded messages of the guard run are in `desktop/test/fixtures/sdk-messages/guard.jsonl` (45 messages, paths replaced by `/project`, `/plugin`, `/config`, `/home`).
+- **The guard decides before `canUseTool`** (C3, C9): a denied `research-harness accept` and a denied promotion to `[accepted]` come back as tool results starting `PreToolUse:Bash hook error:` and `PreToolUse:Edit hook error:`, and `canUseTool` is never called for them. A subagent's Bash call is guarded the same way. The sandbox, the node shim and the plugin's `bin/` work together (C4), and a sandboxed `env` shows no secret (C5, C6).
+- **Which tools ask** (C8, `permissionMode: 'acceptEdits'`, the tool list of spec 5.3): `canUseTool` was called for `WebFetch` and for `Read` of a file outside the project (`blockedPath` was empty for both). It was not called for `Write` inside the project, `Skill` or the subagent tool. The binary lists the subagent tool as `Task` in `init.tools` but shows it to the model as `Agent`; Task 7 should treat both names as one.
+- **Test connection must lower the retry count** (C13): by default the binary retries a 401 and a refused connection ten times and was still retrying after 122 s and 152 s. With `CLAUDE_CODE_MAX_RETRIES=1` a 401 ends in about one second (assistant `error: 'authentication_failed'`, text "Not logged in · Please run /login", which says nothing about keys, so Task 4 needs its own words) and a refused connection ends as `server_error` with "API Error: Connection refused ... (ECONNREFUSED)". A missing model ends at once as `model_not_found` ("There's an issue with the selected model (...)"), without any retry. In each case the query iterator throws after the result message.
+- **Resume of a missing session** (C12): a result with subtype `error_during_execution` and `errors: ["No conversation found with session ID: <id>"]`, then the iterator throws the same text, in under a second. Task 7 can show "The last conversation could not be found; started a new one." on that text.
+- **Usage** (C14): `usage` of a result is per turn; `total_cost_usd` is cumulative over the query, so a per-turn figure is the difference of two results.
+- **Skill as the message** (C15): sending `/research-harness:canvas` puts the skill's text into the model's request.
+- **Bedrock** (C11): `AWS_BEARER_TOKEN_BEDROCK` with `CLAUDE_CODE_USE_BEDROCK=1` is sent as `authorization: Bearer ...` to `ANTHROPIC_BEDROCK_BASE_URL`; the binary also asks `/inference-profiles`. Real Bedrock stays untested.
+- **No traffic to other hosts** (C7): a plain turn with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and a refusing proxy reached no host other than the fake model, so nothing goes into spec 10 for C7.
+- **Packaging** (C16): the builder configuration is `BASE` in `desktop/lib/distribution.js` (there is no `electron-builder.yml`), and `asarUnpack` there now names `node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**`. In the arm64 build the unpacked binary runs from `Placet.app/Contents/Resources/app.asar.unpacked/...` and was re-signed ad hoc by the builder. `npm run dist` builds both processors, but only the `darwin-arm64` package is installed, so an x64 build would carry the arm64 binary: the release build has to install the other processor's package first, as `dist.js` does for dugite's git. The unsigned arm64 app is 719 MB (dmg 288 MB); the SDK adds about 224 MB for its binary and 83 packages.
+- **Run time**: `npm run check-agent-sdk` takes about six minutes; more than four of them are the two C13 cases that run into the script's cut-off. The arm64 build was made with `node scripts/dist.js --arch arm64` instead of `npm run dist`, to skip the x64 build.

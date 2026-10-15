@@ -2542,7 +2542,7 @@ git add desktop/test/fixtures/fake-claude desktop/test/smoke.test.js desktop/ele
 git commit -m "Desktop agent: smoke test with a fake claude, packaging of shims and node-pty"
 ```
 
-### Task 12: Owner check (Daniel, last)
+### Task 12: Owner check (the owner, last)
 
 Not a ticket. Spec §1, success items 1 to 4, once on a fresh macOS user account without developer tools and once on the owner's own account, where the plugin is installed at user scope:
 

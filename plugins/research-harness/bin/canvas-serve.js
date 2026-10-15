@@ -295,7 +295,10 @@ function start({ root, pluginRoot = stateLib.defaultPluginRoot(), log = () => {}
       return send(res, appStatusOf(result), result);
     }
     const result = route(body, ctx);
-    return send(res, statusOf(result), result);
+    // The app has no terminal: a refusal that names a command is shown in the
+    // app's words. The command line and a plain `serve` keep theirs.
+    const shown = appCtx ? appApi.appRefusal(result, currentRoot) : result;
+    return send(res, statusOf(shown), shown);
   };
 
   const server = http.createServer((req, res) => {

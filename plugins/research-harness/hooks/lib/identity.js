@@ -4,6 +4,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const appGit = require('./app-git');
 const { stateRoot } = require('./ledger');
 const { fieldLabelIn } = require('./decisions');
 
@@ -54,7 +55,11 @@ function readName(root) {
     const bad = nameRefusal(raw);
     return bad ? { name: null, error: `the name in ${namePath()} is not usable (${bad}); run research-harness name "<your name>"` } : { name: raw, source: 'file' };
   }
-  const git = childProcess.spawnSync('git', ['config', 'user.name'], { cwd: root, encoding: 'utf8' });
+  // The git the app gave the server (RESEARCH_HARNESS_GIT) when it gave one:
+  // the app started from Finder has /usr/bin in PATH, where git on a Mac
+  // without the developer tools is a stub that opens the system installer.
+  // Without the variable this is git from PATH, as it was.
+  const git = childProcess.spawnSync(appGit.gitBinary(), ['config', 'user.name'], { cwd: root, encoding: 'utf8' });
   const fromGit = git.status === 0 ? String(git.stdout).trim() : '';
   if (fromGit && !nameRefusal(fromGit)) return { name: fromGit, source: 'git' };
   return { name: null, error: UNSET };

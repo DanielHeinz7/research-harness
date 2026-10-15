@@ -555,6 +555,32 @@ test('app mode serves the shell page and project mode does not', async (t) => {
   assert.equal((await get(plain, '/api/app/projects', plain.token)).status, 404);
 });
 
+test('app mode: a view refusal for a project without a key names no command, and the CLI keeps its sentence', async (t) => {
+  // Today's sentence for a project with no key and an unsealed log: the bytes
+  // the app replaces and the command line keeps.
+  const NO_KEY = 'No sealing key for this project on this machine, so nothing is written: an entry counts only if it verifies (§4.7). Run `research-harness init --project <slug> --mode <mode>` once here to create the key, then retry.';
+  const root = copyFixture();
+  const srv = await start({ root, pluginRoot, app: { dataDir: appDataDir() } });
+  t.after(() => srv.close());
+  const token = await redeem(srv);
+  const refused = await post(srv, '/api/comment', { ref: '1.2', body: 'Ask about chairing.' }, { 'X-Harness-Token': token });
+  assert.equal(refused.status, 422, refused.text);
+  assert.equal(refused.json.code, 'no-key');
+  assert.equal(refused.json.error, 'Join this project first. The key file comes from the co-author who created the project: they save it with Invite co-author… and give it to you by mail or on a USB stick.');
+  assert.equal(read(root, 'decisions.md'), fs.readFileSync(path.join(fixtureDir, 'decisions.md'), 'utf8'), 'nothing was written');
+
+  // The same project served the way the CLI serves it, and the CLI itself.
+  const plain = await start({ root, pluginRoot });
+  t.after(() => plain.close());
+  const served = await post(plain, '/api/comment', { ref: '1.2', body: 'Ask about chairing.' });
+  assert.equal(served.status, 422);
+  assert.equal(served.json.code, 'ledger');
+  assert.equal(served.json.error, `Cannot log: ${NO_KEY}`);
+  const cli = run(root, ['log', 'DISCOVERY', '1.2', '--body', 'Ask about chairing.']);
+  assert.equal(cli.status, 1, cli.stderr);
+  assert.equal(cli.stdout, `Cannot log: ${NO_KEY}\n`);
+});
+
 test('research-harness serve --app starts without a project and prints the app URL', { skip: process.platform === 'win32' }, async (t) => {
   const cwd = appDataDir();
   const dataDir = appDataDir();

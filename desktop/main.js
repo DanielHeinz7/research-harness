@@ -2,11 +2,17 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } = require('electron');
 const path = require('node:path');
 const { gitPath } = require('./git-path');
+const { setUpAgent } = require('./agent');
 
 if (process.env.RESEARCH_HARNESS_TEST_USER_DATA) app.setPath('userData', process.env.RESEARCH_HARNESS_TEST_USER_DATA);
 
 const pluginRoot = app.isPackaged ? path.join(process.resourcesPath, 'plugin') : path.join(__dirname, '..', 'plugins', 'research-harness');
 const askpass = app.isPackaged ? path.join(process.resourcesPath, 'askpass.sh') : path.join(__dirname, 'askpass.sh');
+const shimsDir = app.isPackaged ? path.join(process.resourcesPath, 'shims') : path.join(__dirname, 'agent', 'shims');
+
+function pluginVersion() {
+  try { return JSON.parse(require('node:fs').readFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version || null; } catch (_) { return null; }
+}
 
 // The bundled git only finds its helpers (https transport, credential
 // manager) with the environment dugite would give it. In the built app it is
@@ -84,7 +90,8 @@ ipcMain.handle('host:open-external', (e, url) => { if (typeof url === 'string' &
 app.whenReady().then(async () => {
   try {
     const { child, url } = await startServer();
-    window(url);
+    const win = window(url);
+    setUpAgent({ win, pluginRoot, pluginVersion: pluginVersion(), gitEnv, dataDir: app.getPath('userData'), shimsDir });
     app.on('before-quit', () => child.kill());
   } catch (err) {
     dialog.showErrorBox('research-harness could not start', err.message);

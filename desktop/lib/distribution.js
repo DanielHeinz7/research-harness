@@ -16,15 +16,21 @@ const PREFIX = 'Developer ID Application: ';
 const FIELDS = { none: ['signing'], 'developer-id': ['signing', 'identity', 'teamId', 'notaryProfile'] };
 const RUNBOOK = 'docs/desktop-signing.md';
 
-// What electron-builder.yml held before this sub-project (sub-project 1, Task 8),
-// except the name: an app program called research-harness looks like the CLI
-// to the plugin's guard, which then refuses the rest of the line.
+// What electron-builder.yml held when this sub-project replaced it with this
+// file, except the name: an app program called research-harness looks like the
+// CLI to the plugin's guard, which then refuses the rest of the line. The
+// agent's own files, the shims and node-pty come from sub-project 2's
+// packaging; they moved here when Task 4 deleted the yml.
 const BASE = {
   appId: 'org.research-harness.desktop',
   productName: 'Placet',
-  files: ['main.js', 'preload.js', 'server.js', 'git-path.js', 'package.json'],
-  extraResources: [{ from: 'build/plugin', to: 'plugin' }, { from: 'askpass.sh', to: 'askpass.sh' }],
-  asarUnpack: ['node_modules/dugite/**'],
+  files: ['main.js', 'preload.js', 'server.js', 'git-path.js', 'package.json', 'agent/**', '!agent/shims/**'],
+  extraResources: [
+    { from: 'build/plugin', to: 'plugin' },
+    { from: 'askpass.sh', to: 'askpass.sh' },
+    { from: 'agent/shims', to: 'shims' },
+  ],
+  asarUnpack: ['node_modules/dugite/**', 'node_modules/node-pty/**'],
   // electron-builder 26 drops dugite's `.dll` files on macOS, and the credential
   // manager does not start without them; see scripts/after-pack.js.
   afterPack: path.join(ROOT, 'scripts', 'after-pack.js'),
@@ -63,8 +69,11 @@ const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function builderSettings(dist, { version, keep, outDir, keychain = LOGIN_KEYCHAIN }) {
   const signed = dist.signing === 'developer-id';
   const entitlements = path.join(ROOT, signed ? 'entitlements.mac.plist' : 'entitlements.adhoc.plist');
+  // electron-builder rewrites config.files in place, replacing the patterns
+  // with objects; a copy keeps BASE whole for the second processor, whose
+  // build would otherwise read `.from` on the nulls it left behind.
   const config = {
-    ...BASE,
+    ...structuredClone(BASE),
     directories: { output: outDir },
     extraMetadata: { version, harnessSigning: dist.signing },
     mac: {

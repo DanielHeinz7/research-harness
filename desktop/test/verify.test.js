@@ -119,6 +119,25 @@ test('node-pty binaries and the shims are checked when they are in the build', (
   assert.ok(problems.some((p) => /pty\.node is not built for arm64/.test(p)), problems.join('\n'));
 });
 
+test('node-pty prebuilds for other processors are carried but not checked', (t) => {
+  const app = fakeApp(t);
+  const other = NODEPTY.replace('darwin-arm64', 'darwin-x64');
+  for (const dir of [NODEPTY, other]) {
+    put(app, `${dir}/spawn-helper`, MACHO, 0o755);
+    put(app, `${dir}/pty.node`, MACHO, 0o755);
+  }
+  const sig = { 'codesign -dvvv spawn-helper': { stderr: ADHOC_RT }, 'codesign -dvvv pty.node': { stderr: ADHOC_RT } };
+  const inner = fakeRun(sig);
+  const run = (cmd, args) => {
+    const file = args[args.length - 1];
+    if (path.basename(cmd) === 'file' && file.includes('node-pty')) {
+      return { status: 0, stdout: `Mach-O 64-bit executable ${file.includes('darwin-arm64') ? 'arm64' : 'x86_64'}\n`, stderr: '' };
+    }
+    return inner(cmd, args);
+  };
+  assert.deepEqual(verifyApp(app, { dist: { signing: 'none' }, arch: 'arm64', run }).problems, []);
+});
+
 test('a shim that cannot run is a problem; absent node-pty and shims are skipped', (t) => {
   const app = fakeApp(t);
   assert.deepEqual(verifyApp(app, { dist: { signing: 'none' }, arch: 'arm64', run: fakeRun() }).problems, []);

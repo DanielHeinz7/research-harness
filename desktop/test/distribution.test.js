@@ -57,6 +57,13 @@ test('none: ad-hoc with hardened runtime, no notarization, no publishing, no App
   assert.deepEqual(Object.keys(env).filter((k) => k.startsWith('APPLE_')), []);
 });
 
+test('a second build gets fresh patterns, not the ones electron-builder rewrote in place', () => {
+  const first = builderSettings({ signing: 'none' }, { version: '0.6.0', keep: [], outDir: '/o' }).config;
+  first.files[0] = { filter: ['main.js'] };
+  const second = builderSettings({ signing: 'none' }, { version: '0.6.0', keep: [], outDir: '/o' }).config;
+  assert.deepEqual(second.files, ['main.js', 'preload.js', 'server.js', 'git-path.js', 'package.json', 'agent/**', '!agent/shims/**']);
+});
+
 test('developer-id: identity without prefix, notarization, GitHub feed, keychain profile only in env', () => {
   const { config, env } = builderSettings(SIGNED, { version: '0.6.0', keep: [], outDir: '/tmp/out', keychain: '/k/login.keychain-db' });
   assert.equal(config.mac.identity, 'A. Researcher (AB12CD34EF)');

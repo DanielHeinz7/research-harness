@@ -8,7 +8,8 @@
     "test": "node --test --test-concurrency=1 test/*.test.js",
     "check-git": "node scripts/check-git.js",
     "bundle": "node scripts/bundle-plugin.js",
-    "dist": "npm run bundle && electron-builder --mac dir",
+    "dist": "node scripts/dist.js",
+    "verify-app": "node scripts/verify-app.js",
     "postinstall": "node -e \"const fs=require('fs');const p='node_modules/node-pty/prebuilds/'+process.platform+'-'+process.arch+'/spawn-helper';if(fs.existsSync(p))fs.chmodSync(p,0o755)\""
   },
   "dependencies": {

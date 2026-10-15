@@ -241,3 +241,21 @@ test('ours without a seal and a theirs without entries is refused before the wri
   assert.match(out.stdout, /no seal that verifies/);
   assert.equal(fs.readFileSync(file, 'utf8'), before, 'the refusal writes nothing');
 });
+
+// SQ-286: a log that names its key in a `Seal key:` line refuses a merge under
+// another key and says so in a sentence, before any seal is compared.
+test('merge-log refuses a key the Seal key line does not name', () => {
+  const KEY = Buffer.alloc(32, 9);
+  const wrong = Buffer.from('ab'.repeat(32), 'hex');
+  const header = seal.withKeyLine('# Decision log — voice-uptake\n', KEY);
+  const append = (text, body) => {
+    const fields = { seq: decisions.parseDecisions(text).maxSeq + 1, date: '2026-10-15', kind: 'DISCOVERY', ref: '1.1', body, by: 'A' };
+    return text + decisions.separatorAfter(text) + seal.sealEntry(seal.lastSealOf(text), fields, KEY).text;
+  };
+  const opts = { by: 'A', theirsCommit: 'abc1234' };
+  const ok = mergeLogs(append(header, 'Ours.'), append(header, 'Theirs.'), KEY, opts);
+  assert.equal(ok.ok, true, ok.error);
+  const refused = mergeLogs(append(header, 'Ours.'), append(header, 'Theirs.'), wrong, opts);
+  assert.equal(refused.code, 'broken');
+  assert.equal(refused.error, 'The sealing key on this machine is not the one ours was started with: its Seal key line names a different key; nothing is merged.');
+});

@@ -84,6 +84,9 @@ function ledgerRefusal(state) {
       : 'No sealing key for this project on this machine, so nothing is written: an entry counts only if it verifies (§4.7). Run `research-harness init --project <slug> --mode <mode>` once here to create the key, then retry.');
   }
   const chain = seal.verifyChain(state.decisionsText, state.key);
+  if (chain.status === 'broken' && chain.broken.why === 'key') {
+    return refuse(`The sealing key on this machine is not the project's: the Seal key line in ${path.relative(state.root, state.paths.decisions)} names a different key; nothing is written. Get the project's key from the person who shared the project and join with it.`);
+  }
   if (chain.status === 'broken') {
     return refuse(`${path.relative(state.root, state.paths.decisions)} is broken at #${chain.broken.seq} (line ${chain.broken.line}); nothing is written. The harness never repairs a ledger — run research-harness review, then decide which version is true.`);
   }

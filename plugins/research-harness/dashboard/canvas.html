@@ -174,8 +174,8 @@
   .chips li { display: flex; flex: calc(1 + var(--n, 0)) 1 3.25rem; min-width: 3rem; }
   .chip {
     container-type: inline-size;
-    flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem;
-    min-height: 2.75rem; padding: 0 0.5rem; min-width: 0;
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.3rem;
+    min-height: 2.75rem; padding: 0 0.3rem; min-width: 0;
     border: 1px solid var(--edge); border-radius: 6px;
     background: var(--paper); color: var(--ink); text-decoration: none;
     font-size: var(--t-label); font-weight: 600;
@@ -184,8 +184,11 @@
   .chip.empty { border-style: dashed; color: var(--ink-2); font-weight: 500; }
   .chip[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
   .chip-num { font-variant-numeric: tabular-nums; font-family: var(--sans); }
-  .chip-name { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-  @container (min-width: 7rem) { .chip-name { display: block; } }
+  .chip-name { display: none; min-width: 0; overflow: hidden; font-weight: 500; line-height: 1.1; text-align: left; hyphens: auto; overflow-wrap: break-word; }
+  /* The name shows as soon as it has room for a few letters; wide windows
+     give every chip that room, narrow ones keep the number alone. */
+  @container (min-width: 4.5rem) { .chip-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; } }
+  @media (min-width: 65rem) { .chips li { flex-basis: 6rem; min-width: 5rem; } }
   .chip .mark { width: 0.8em; height: 0.8em; }
   .chip.accent { box-shadow: inset 0 -3px 0 var(--ink); }
 
@@ -207,6 +210,7 @@
   .column { max-width: calc(var(--sidw) + 64ch); }
   .lane-head { display: none; font-family: var(--sans); font-size: var(--t-label); color: var(--ink-2); }
   .lane-head b { color: var(--ink); }
+  .lane-jump { display: block; margin-top: 0.4rem; text-align: left; }
   .group-label { font-family: var(--sans); font-size: var(--t-label); color: var(--ink-3); padding-top: 1.75rem; }
   .group-label span { margin-left: 0.5rem; }
   .field { padding-top: 1.5rem; }
@@ -447,7 +451,22 @@
     .proof { padding-right: 0 !important; column-count: 2; column-gap: 1.2rem; }
     .field { break-inside: avoid-column; }
     .query { position: static !important; width: auto !important; break-inside: avoid; }
-    .slot .anchor { display: none; }
+    .slot .anchor, .query::before { display: none; }
+    #chrome { display: none !important; }
+    /* The poster is one A4 landscape page: three columns, type set for paper
+       (about 8 pt), the slot lines dropped because the query follows its
+       statement in the flow. A canvas fuller than the showcase fixture runs on
+       to a second page rather than set smaller. */
+    #poster { --t-col: 11px; --t-body: 10px; --t-label: 9.5px; --t-head: 13px; --t-title: 18px; --sidw: 2.2rem; }
+    #poster .poster-head { padding-top: 0; }
+    #poster .proof { column-count: 3; column-gap: 1.1rem; margin-top: 0.4rem; min-height: 0 !important; }
+    #poster .group-label { padding-top: 0.5rem; break-after: avoid; }
+    #poster .field { padding-top: 0.6rem; }
+    #poster .st, #poster .quiet { padding-top: 0.3rem; }
+    #poster .field-sub { padding-top: 0.15rem; }
+    #poster .slot { display: none; }
+    #poster .slotpair { margin-top: 0.2rem; }
+    #poster .query { margin-top: 0.2rem; padding: 0.3rem 0.5rem; }
   }
   @page { size: A4; margin: 2cm; }
   @page poster { size: A4 landscape; margin: 1.2cm; }
@@ -1008,11 +1027,30 @@
     return n;
   }
 
-  function laneHead(elements) {
+  // The number of the first open query in the column, in reading order.
+  function firstAskNumber(elements) {
+    for (var a = 0; a < elements.length; a++) {
+      var qs = elements[a].questions;
+      for (var b = 0; b < qs.length; b++) {
+        for (var c = 0; c < qs[b].statements.length; c++) {
+          if (qs[b].statements[c].marker === 'proposed') return statementNumber(qs[b], c);
+        }
+      }
+    }
+    return null;
+  }
+
+  // A query sits beside its slot, so the first one can be far down the poster.
+  // On the poster the margin's head says so and jumps to it (jump = false in
+  // the presentation, where the field's queries are all on screen).
+  function laneHead(elements, jump) {
     var n = openAsks(elements);
+    var first = jump && n ? firstAskNumber(elements) : null;
     return '<p class="lane-head"><b>In the margin</b> &middot; ' + (n
       ? n + (n === 1 ? ' query' : ' queries') + ' from the agent'
-      : 'nothing waits for you') + '</p>';
+      : 'nothing waits for you')
+      + (first ? '<button type="button" class="field-link lane-jump" data-view-target="poster" data-scroll-to="st-' + esc(first) + '">Go to the first query, ' + esc(first) + ' <span aria-hidden="true">&darr;</span></button>' : '')
+      + '</p>';
   }
 
   // The poster: the whole paper as one set column, the agent's queries in the
@@ -1044,7 +1082,7 @@
       + (outlet ? '<p class="poster-eyebrow">' + esc(outlet) + '</p>' : '')
       + '<p class="view-sub poster-orientation">The paper&rsquo;s argument in nine fields. Open a field to comment, mark a statement as said, or accept it with your own sentence. Agents propose; you decide.</p>'
       + '</div>'
-      + '<div class="proof">' + laneHead(s.elements) + '<div class="column">' + fields + '</div><svg class="leaders" aria-hidden="true"></svg></div></div>'
+      + '<div class="proof">' + laneHead(s.elements, true) + '<div class="column">' + fields + '</div><svg class="leaders" aria-hidden="true"></svg></div></div>'
       + '</section>';
   }
 

@@ -133,6 +133,7 @@
   .proj-name { font-size: var(--t-head); font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
   .proj-name:focus-visible { outline-offset: 3px; }
   .path { font-family: var(--mono); font-size: 0.8em; color: var(--ink-2); overflow-wrap: anywhere; }
+  #proj-path { direction: rtl; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
   .side-btn { width: 100%; justify-content: flex-start; }
   .side-btn .badge { margin-left: auto; }
   .row-btn {
@@ -552,7 +553,14 @@
 
   function renderSidebar(state) {
     $('proj-name').textContent = projectName(state, current);
-    $('proj-path').textContent = current;
+    // One line, cut at the front: the end of a path is the part a person
+    // recognises. The <bdi> keeps the path itself left to right.
+    var pathLine = $('proj-path');
+    var pathText = document.createElement('bdi');
+    pathText.textContent = current;
+    pathLine.textContent = '';
+    pathLine.appendChild(pathText);
+    pathLine.title = current;
     var list = $('people');
     list.textContent = '';
     var names = peopleOf(state);

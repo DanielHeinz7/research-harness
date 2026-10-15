@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-15T03:22:22.243Z",
+  "title": "Design System: Research harness",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "dark": "#141416",
+        "tonalRamp": [
+          "#595959",
+          "#898989",
+          "#b8b8b8",
+          "#e7e7e7",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "#f5f5f7",
+        "dark": "#1d1d20",
+        "tonalRamp": [
+          "#565656",
+          "#838384",
+          "#b1b1b2",
+          "#dedee0",
+          "#f6f6f8",
+          "#f9f9fa",
+          "#fbfbfc",
+          "#fefefe"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1a1a1a",
+        "dark": "#ececee",
+        "tonalRamp": [
+          "#090909",
+          "#0e0e0e",
+          "#131313",
+          "#181818",
+          "#373737",
+          "#727272",
+          "#adadad",
+          "#e8e8e8"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "#474747",
+        "dark": "#c9c9ce",
+        "tonalRamp": [
+          "#191919",
+          "#262626",
+          "#333333",
+          "#404040",
+          "#5f5f5f",
+          "#8e8e8e",
+          "#bdbdbd",
+          "#ededed"
+        ]
+      },
+      "ink-quiet": {
+        "role": "neutral",
+        "displayName": "Quiet Ink",
+        "canonical": "#4e4e55",
+        "dark": "#b3b3ba",
+        "tonalRamp": [
+          "#1b1b1e",
+          "#2a2a2e",
+          "#38383d",
+          "#47474d",
+          "#65656b",
+          "#929297",
+          "#c0c0c2",
+          "#ededee"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#dadadd",
+        "dark": "#36363c",
+        "tonalRamp": [
+          "#4c4c4d",
+          "#757576",
+          "#9d9d9f",
+          "#c6c6c8",
+          "#dfdfe1",
+          "#e8e8ea",
+          "#f2f2f3",
+          "#fbfbfc"
+        ]
+      },
+      "edge": {
+        "role": "neutral",
+        "displayName": "Edge",
+        "canonical": "#85858c",
+        "dark": "#84848c",
+        "tonalRamp": [
+          "#2f2f31",
+          "#47474b",
+          "#606065",
+          "#79797f",
+          "#95959b",
+          "#b4b4b8",
+          "#d3d3d6",
+          "#f3f3f4"
+        ]
+      },
+      "red-pencil": {
+        "role": "primary",
+        "displayName": "Red Pencil",
+        "canonical": "#d2232a",
+        "dark": "#ff7176",
+        "tonalRamp": [
+          "#4a0c0f",
+          "#711317",
+          "#98191e",
+          "#bf2026",
+          "#d83f45",
+          "#e3787c",
+          "#efb0b3",
+          "#fbe9ea"
+        ]
+      },
+      "red-pencil-hover": {
+        "role": "primary",
+        "displayName": "Red Pencil, hovered",
+        "canonical": "#b81d23",
+        "dark": "#ff8e92",
+        "tonalRamp": [
+          "#400a0c",
+          "#631013",
+          "#851519",
+          "#a71a20",
+          "#c13a3f",
+          "#d37478",
+          "#e6aeb0",
+          "#f8e8e9"
+        ]
+      },
+      "red-wash": {
+        "role": "primary",
+        "displayName": "Red Wash",
+        "canonical": "#fdf0f0",
+        "dark": "#2b1b1d",
+        "tonalRamp": [
+          "#595454",
+          "#888181",
+          "#b7adad",
+          "#e6dada",
+          "#fdf2f2",
+          "#fef6f6",
+          "#fefafa",
+          "#fffefe"
+        ]
+      },
+      "link-blue": {
+        "role": "secondary",
+        "displayName": "Link Blue",
+        "canonical": "#0b5cad",
+        "dark": "#74b6ff",
+        "tonalRamp": [
+          "#04203d",
+          "#06315d",
+          "#08427d",
+          "#0a539d",
+          "#2a71b8",
+          "#699bcd",
+          "#a8c5e2",
+          "#e7eff7"
+        ]
+      },
+      "link-wash": {
+        "role": "secondary",
+        "displayName": "Link Wash",
+        "canonical": "#e7f0f9",
+        "dark": "#1a2a3d",
+        "tonalRamp": [
+          "#515457",
+          "#7c8185",
+          "#a7adb4",
+          "#d2dae2",
+          "#eaf2fa",
+          "#f0f6fb",
+          "#f6fafd",
+          "#fdfefe"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "The paper title on the poster and the shell start page heading."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Field headings, the project name in the sidebar, dialog titles."
+      },
+      "column": {
+        "displayName": "Column",
+        "purpose": "Statements the authors said or decided; serif, max 64ch."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Tab names, query text, dialog explanations."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, chips, status words, hints, the sidebar. 14px floor."
+      },
+      "path": {
+        "displayName": "Path",
+        "purpose": "Folder paths in the shell, one line, cut at the front."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "moved-query",
+        "value": "0.45s cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "An accepted query moves into the column (view transition); instant under prefers-reduced-motion."
+      },
+      {
+        "name": "leader-retract",
+        "value": "0.3s cubic-bezier(0.4, 0, 1, 1)",
+        "purpose": "The leader line retracts after an accept."
+      },
+      {
+        "name": "leader-weight",
+        "value": "0.15s ease-out",
+        "purpose": "The leader line thickens when its query is focused or hovered."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stacked-shell",
+        "value": "52rem",
+        "purpose": "At and below, the shell stacks the sidebar above the session view."
+      },
+      {
+        "name": "margin",
+        "value": "1100px",
+        "purpose": "At and above, queries sit in the margin with leader lines; below, under their slots."
+      },
+      {
+        "name": "chip-names",
+        "value": "65rem",
+        "purpose": "At and above, every field chip gets at least 6rem so its name shows."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default control: Paper fill, Edge border, 44px high.",
+      "html": "<button class=\"ds-btn\">Open project…</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.4em;min-height:44px;padding:0 .9em;border:1px solid #85858c;border-radius:6px;background:#fff;color:#1a1a1a;font:600 14px/1.1 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;cursor:pointer;}.ds-btn:hover{background:#f5f5f7}.ds-btn:focus-visible{outline:3px solid #0b5cad;outline-offset:2px;border-radius:3px;}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one confirming act on a page or dialog; Ink fill.",
+      "html": "<button class=\"ds-btn-primary\">Create project</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:.4em;min-height:44px;padding:0 .9em;border:1px solid #85858c;border-radius:6px;background:#fff;color:#1a1a1a;font:600 14px/1.1 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;cursor:pointer;background:#1a1a1a;border-color:#1a1a1a;color:#fff}.ds-btn-primary:hover{background:#474747;border-color:#474747}.ds-btn-primary:focus-visible{outline:3px solid #0b5cad;outline-offset:2px;border-radius:3px;}"
+    },
+    {
+      "name": "Query",
+      "kind": "card",
+      "refersTo": "query",
+      "description": "The agent's proposal in the margin: red border, status word, text, three actions. The first open one has a filled Accept.",
+      "html": "<article class=\"ds-query\"><p class=\"ds-q-status\"><span aria-hidden=\"true\">◇</span> <b>Suggestion 1</b> <span class=\"ds-q-for\">for 6.1 · 1 of 2</span></p><p class=\"ds-q-text\">The data are the de-identified transcripts of 13 interviews.</p><div class=\"ds-q-acts\"><button class=\"ds-q-accept\">Accept…</button><button class=\"ds-q-other\">Mark as said</button><button class=\"ds-q-other\">Comment</button></div></article>",
+      "css": ".ds-query{font-family:\"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;background:#fff;border:1px solid #d2232a;border-radius:6px;padding:.7rem .85rem .85rem;width:320px;color:#1a1a1a}.ds-query:hover,.ds-query:focus-within{background:#fdf0f0;outline:2px solid #d2232a}.ds-q-status{margin:0 0 .2rem;font-size:14px;color:#d2232a}.ds-q-for{color:#4e4e55;font-weight:400}.ds-q-text{margin:0;font-size:16px;line-height:1.4}.ds-q-acts{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem}.ds-q-accept,.ds-q-other{display:inline-flex;align-items:center;justify-content:center;gap:.4em;min-height:44px;padding:0 .9em;border:1px solid #85858c;border-radius:6px;background:#fff;color:#1a1a1a;font:600 14px/1.1 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;cursor:pointer;padding:0 .7em}.ds-q-accept{background:#d2232a;border-color:#d2232a;color:#fff}.ds-q-accept:hover{background:#b81d23;border-color:#b81d23}.ds-q-accept:focus-visible,.ds-q-other:focus-visible{outline:3px solid #0b5cad;outline-offset:2px;border-radius:3px;}"
+    },
+    {
+      "name": "Field Chip",
+      "kind": "chip",
+      "refersTo": "field-chip",
+      "description": "One of nine fields: number, then name once there is room. Current is Ink; empty is dashed.",
+      "html": "<ol class=\"ds-chips\"><li><a class=\"ds-chip\" href=\"#\"><span>1</span><span class=\"ds-chip-name\">Puzzle</span></a></li><li><a class=\"ds-chip ds-chip-empty\" href=\"#\"><span>2</span><span class=\"ds-chip-name\">Audience and Prior Research</span></a></li><li><a class=\"ds-chip ds-chip-now\" href=\"#\"><span>3</span><span class=\"ds-chip-name\">Research Question</span></a></li></ol>",
+      "css": ".ds-chips{display:flex;gap:.375rem;list-style:none;margin:0;padding:0;width:420px}.ds-chips li{display:flex;flex:1 1 6rem}.ds-chip{flex:1;display:flex;align-items:center;justify-content:center;gap:.3rem;min-height:2.75rem;padding:0 .3rem;min-width:0;border:1px solid #85858c;border-radius:6px;background:#fff;color:#1a1a1a;text-decoration:none;font:600 14px/1.1 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif}.ds-chip:hover{background:#f5f5f7}.ds-chip-empty{border-style:dashed;color:#474747;font-weight:500}.ds-chip-now{background:#1a1a1a;border-color:#1a1a1a;color:#fff}.ds-chip-name{min-width:0;overflow:hidden;font-weight:500;line-height:1.1;text-align:left;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}.ds-chip:focus-visible{outline:3px solid #0b5cad;outline-offset:2px;border-radius:3px;}"
+    },
+    {
+      "name": "Set Statement",
+      "kind": "custom",
+      "refersTo": "column",
+      "description": "A statement in the set column: number gutter, status icon and word, serif text, decision line when accepted.",
+      "html": "<div class=\"ds-st\"><span class=\"ds-sid\">1.1</span><div><p class=\"ds-status\"><b>■ Decided</b> · Authors</p><p class=\"ds-stext\">Developers who use an AI assistant every day say they still do not take its output on trust.</p><p class=\"ds-note\"><b>6 Oct 2026 · A. Author</b> — “The puzzle is what they do instead.”</p></div></div>",
+      "css": ".ds-st{display:grid;grid-template-columns:3.25rem 1fr;column-gap:.5rem;width:520px;color:#1a1a1a}.ds-sid{font:14px \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;color:#4e4e55;text-align:right;padding-top:.2rem}.ds-status{margin:0 0 .2rem;font:14px/1.2 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif}.ds-stext{margin:0;font:400 18px/1.45 \"Source Serif 4\", \"Iowan Old Style\", \"Palatino Linotype\", Georgia, serif;max-width:64ch}.ds-note{margin:.5rem 0 0;padding-top:.45rem;border-top:1px solid #85858c;font:16px/1.4 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;color:#474747}.ds-note b{color:#1a1a1a}"
+    },
+    {
+      "name": "Sidebar Group",
+      "kind": "nav",
+      "refersTo": "sidebar",
+      "description": "A group in the project sidebar: Ink rule, heading, controls, outcome line under the control that caused it.",
+      "html": "<aside class=\"ds-side\"><section class=\"ds-group\"><h2>Project</h2><p class=\"ds-name\">Voice uptake</p><p class=\"ds-path\"><bdi>…zhr0000gn/T/rh-shot/voice-uptake</bdi></p><button class=\"ds-sbtn\">Get updates <span class=\"ds-badge\">2 new</span></button><p class=\"ds-out\">Got 2 changes from B. Supervisor. Yours are kept.</p></section></aside>",
+      "css": ".ds-side{width:272px;background:#f5f5f7;padding:1rem;font:14px \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;color:#1a1a1a}.ds-group{border-top:1px solid #1a1a1a;padding-top:.6rem;display:flex;flex-direction:column;gap:.5rem}.ds-group h2{margin:0;font:700 14px \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;color:#474747}.ds-name{margin:0;font:700 22px/1.15 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif}.ds-path{margin:0;direction:rtl;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:11px ui-monospace,Menlo,monospace;color:#474747}.ds-sbtn{display:inline-flex;align-items:center;justify-content:center;gap:.4em;min-height:44px;padding:0 .9em;border:1px solid #85858c;border-radius:6px;background:#fff;color:#1a1a1a;font:600 14px/1.1 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;cursor:pointer;width:100%;justify-content:flex-start}.ds-sbtn:hover{background:#fff;background:#f5f5f7}.ds-sbtn:focus-visible{outline:3px solid #0b5cad;outline-offset:2px;border-radius:3px;}.ds-badge{margin-left:auto;background:#0b5cad;color:#fff;border-radius:999px;font-size:.85em;font-weight:700;padding:0 .55em;line-height:1.5}.ds-out{margin:0;padding:.5rem .65rem;border:1px solid #85858c;border-radius:6px;background:#fff;font:14px/1.4 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif}"
+    },
+    {
+      "name": "Dialog",
+      "kind": "card",
+      "refersTo": "dialog",
+      "description": "Native dialog: says what will happen before it happens; Cancel beside a primary button that repeats the act.",
+      "html": "<div class=\"ds-dlg\"><h2>Send my changes</h2><p class=\"ds-sub\">This does three things, in this order:</p><ul><li>Saves the changes in your research folder as one step in the project's history.</li><li>Uploads them to the shared copy.</li></ul><div class=\"ds-acts\"><button class=\"ds-cancel\">Cancel</button><button class=\"ds-go\">Send changes</button></div></div>",
+      "css": ".ds-dlg{width:440px;padding:1.4rem 1.6rem;border:1px solid #1a1a1a;border-radius:8px;background:#fff;color:#1a1a1a;font:16px/1.5 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif}.ds-dlg h2{margin:0;font:700 22px/1.2 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif}.ds-sub{margin:.4rem 0 0;color:#474747}.ds-dlg ul{margin:.8rem 0 0;padding-left:1.1rem;list-style:disc}.ds-acts{margin-top:1.2rem;display:flex;justify-content:flex-end;gap:.5rem}.ds-cancel,.ds-go{display:inline-flex;align-items:center;justify-content:center;gap:.4em;min-height:44px;padding:0 .9em;border:1px solid #85858c;border-radius:6px;background:#fff;color:#1a1a1a;font:600 14px/1.1 \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;cursor:pointer;}.ds-go{background:#1a1a1a;border-color:#1a1a1a;color:#fff}.ds-cancel:focus-visible,.ds-go:focus-visible{outline:3px solid #0b5cad;outline-offset:2px;border-radius:3px;}"
+    },
+    {
+      "name": "View Tab",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "Poster / To talk about / History: Soft Ink, active is Ink and bold with a 3px Link Blue underline; the count is a Hairline pill.",
+      "html": "<nav class=\"ds-tabs\"><a class=\"ds-tab ds-tab-on\" href=\"#\">Poster</a><a class=\"ds-tab\" href=\"#\">To talk about <span class=\"ds-count\">19</span></a><a class=\"ds-tab\" href=\"#\">History</a></nav>",
+      "css": ".ds-tabs{display:flex;gap:.25rem}.ds-tab{display:inline-flex;align-items:center;gap:.5rem;min-height:44px;padding:0 .9rem;color:#474747;font:500 16px \"Hanken Grotesk\", system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif;text-decoration:none;border-bottom:3px solid transparent}.ds-tab:hover{color:#1a1a1a;background:#f5f5f7}.ds-tab-on{color:#1a1a1a;font-weight:700;border-bottom-color:#0b5cad}.ds-count{background:#dadadd;color:#1a1a1a;border-radius:999px;font-size:14px;font-weight:700;padding:0 .5rem;line-height:1.5}.ds-tab:focus-visible{outline:3px solid #0b5cad;outline-offset:2px;border-radius:3px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Galley Proof",
+    "overview": "The paper is a galley proof. What the authors said or decided is set in one typeset column; everything the agent proposes stays in the margin as a red query until a person accepts it. One sheet, one ink, one pencil. The researcher should see at a glance which statements are theirs and which are the agent's questions, and believe that nothing enters the column without them.\n\nThe same world holds two surfaces: the session view (canvas.html) and the app window around it (app.html: project sidebar, start page, dialogs). The sidebar is set like an index beside the proof, not like a dashboard: a panel tint, hairline-ruled groups, plain controls. The mode is Operate: scanability, native controls and the real usage scene (a desk, or a projector three to four metres away) outrank expression.\n\nIt refuses the category default of a dashboard of cards with a chat panel bolted on. There are no cards, shadows, gradients or cream in the system, and no toasts: an outcome is a line under the control that caused it and stays until the next action.",
+    "keyCharacteristics": [
+      "White sheet, near-black ink, hairline rules; red and blue are marks, not decoration.",
+      "Serif for what the authors set, sans for everything the tool says.",
+      "Status is always icon plus word plus typographic setting, never colour alone.",
+      "Type grows with the window (18 px column at 1440 wide, larger on a projector); the floor for visible text is 14 px.",
+      "Flat. Depth comes from rules, tint and a single outline on the focused query.",
+      "Fonts ship with the plugin (SIL OFL 1.1); no hosted font service."
+    ],
+    "rules": [
+      {
+        "name": "The Red Pencil Rule",
+        "body": "Red marks what waits for a person: queries, the one next decision, a problem next to the control that caused it. It never decorates, never marks an accepted statement, and appears on one screen only as often as there are open queries.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Link Rule",
+        "body": "Blue is for things you can follow or focus. If it is not a link or a focus ring, it is not blue.",
+        "section": "colors"
+      },
+      {
+        "name": "The Authors' Hand Rule",
+        "body": "Serif is for statements that were said or decided by the authors, and for the start page's plain explanations. A model's suggestion is never set in the column's serif outside its margin box.",
+        "section": "typography"
+      },
+      {
+        "name": "The Growing Type Rule",
+        "body": "Sizes are clamp() against the viewport. Do not pin a size in px; print sets its own smaller sizes in an explicit block.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Nothing lifts. State is shown by outline, fill swap or line weight, never by a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep what the authors set in the serif column and what the agent proposes in the margin box, with the status word, icon and typographic setting all present.",
+      "Do write every outcome and error as a plain sentence with the next step, in a line under the control that caused it.",
+      "Do keep every control a native element (button, input, dialog, link) with a visible 3 px blue focus ring and a 44 px target.",
+      "Do size type with clamp() and keep visible text at 14 px or more; check at 1440 and 1920 wide.",
+      "Do say in each dialog what will happen before it happens, and repeat the act on its confirm button.",
+      "Do show names with every field number; a bare number is only the narrow-window fallback."
+    ],
+    "donts": [
+      "Don't use cards, shadows, gradients, cream paper or a chat panel in the chrome; the world is a white proof.",
+      "Don't colour anything red that is not a query, the one next decision or a problem; don't colour anything blue that is not a link or a focus ring.",
+      "Don't show status by colour alone, and don't show model suggestions in the column.",
+      "Don't use toasts, timers that dismiss messages, or modal alerts for outcomes.",
+      "Don't load fonts from a hosted service or show raw markers, seals or src: paths as codes.",
+      "Don't show a full temporary path across several lines in the sidebar; the path is one line, cut at the front."
+    ]
+  }
+}

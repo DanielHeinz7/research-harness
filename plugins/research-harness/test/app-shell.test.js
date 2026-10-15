@@ -89,17 +89,46 @@ async function openPage(t, srv, { viewport = { width: 1440, height: 900 }, color
   page.on('pageerror', (err) => t.diagnostic(`pageerror: ${err.message}`));
   if (host) {
     await page.addInitScript(() => {
+      window.__agent = { bounds: [], projects: [], setups: 0, shown: null, lookup: null, reveal: null, focusView: null };
       window.harnessHost = {
         pickFolder: async () => window.__picked || null,
         pickFile: async () => window.__picked || null,
         saveFile: async () => window.__picked || null,
         reveal: async () => {},
         openExternal: async () => {},
+        agentBounds: (rect) => { window.__agent.bounds.push(rect); },
+        agentProject: (folder) => { window.__agent.projects.push(folder); },
+        setUpAgent: () => { window.__agent.setups++; },
+        onAgentShown: (cb) => { window.__agent.shown = cb; },
+        onAgentLookup: (cb) => { window.__agent.lookup = cb; },
+        onAgentReveal: (cb) => { window.__agent.reveal = cb; },
+        onAgentFocusView: (cb) => { window.__agent.focusView = cb; },
       };
     });
   }
   await page.goto(srv.appUrl);
   return page;
+}
+
+// A copy of test/fixtures/<name> in a fresh folder, and its path.
+function copyFixture(name) {
+  const root = path.join(tmp(), name);
+  fs.cpSync(path.join(__dirname, 'fixtures', name), root, { recursive: true });
+  return root;
+}
+
+// Open a folder through Open project…: with the host bridge by Choose…, in a
+// plain browser by typing the path into the field. Waits for the session view.
+async function openFixture(page, root) {
+  await page.getByRole('button', { name: 'Open project…' }).click();
+  if (await page.evaluate(() => Boolean(window.harnessHost))) {
+    await page.evaluate((picked) => { window.__picked = picked; }, root);
+    await page.getByRole('button', { name: 'Choose…' }).click();
+  } else {
+    await page.getByLabel('Project folder').fill(root);
+  }
+  await page.locator('#dlg').getByRole('button', { name: 'Open project' }).click();
+  await sessionView(page).locator('#poster.active').waitFor();
 }
 
 const sessionView = (page) => page.frameLocator('iframe[title="Session view"]');
@@ -257,15 +286,9 @@ test('with a host bridge, Choose… fills the field from the native picker', { s
 });
 
 test('the session view reveals a statement by number and answers lookups', { skip, timeout: 120000 }, async (t) => {
-  const root = path.join(tmp(), 'voice-uptake');
-  fs.cpSync(path.join(__dirname, 'fixtures', 'voice-uptake'), root, { recursive: true });
-  const srv = await startApp(t);
-  const page = await openPage(t, srv, { host: true });
-  await page.getByRole('button', { name: 'Open project…' }).click();
-  await page.evaluate((picked) => { window.__picked = picked; }, root);
-  await page.getByRole('button', { name: 'Choose…' }).click();
-  await page.locator('#dlg').getByRole('button', { name: 'Open project' }).click();
-  await sessionView(page).locator('#poster.active').waitFor();
+  const root = copyFixture('voice-uptake');
+  const page = await openPage(t, await startApp(t), { host: true });
+  await openFixture(page, root);
 
   const ask = (num) => page.evaluate((n) => new Promise((resolve) => {
     const frame = document.getElementById('session-frame');
@@ -280,6 +303,73 @@ test('the session view reveals a statement by number and answers lookups', { ski
   await page.evaluate(() => document.getElementById('session-frame').contentWindow.postMessage({ type: 'harness-reveal', num: '1.2b' }, location.origin));
   await sessionView(page).locator('[id="st-1.2b"]:focus').waitFor();
 });
+
+test('the agent column appears beside the session view when the app shows it, and reports its bounds', { skip, timeout: 120000 }, async (t) => {
+  const root = copyFixture('voice-uptake');
+  const page = await openPage(t, await startApp(t), { host: true });
+  await openFixture(page, root);
+  assert.equal((await page.evaluate(() => window.__agent.projects)).length, 1, 'the shell tells the app once which folder is open');
+  assert.equal(await page.locator('#agent-slot').isVisible(), false);
+  await page.evaluate(() => window.__agent.shown(true));
+  await page.locator('#agent-slot').waitFor();
+  const last = await page.evaluate(() => window.__agent.bounds[window.__agent.bounds.length - 1]);
+  const box = await page.locator('#agent-slot').boundingBox();
+  assert.deepEqual(last, { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) });
+  const frameBox = await page.locator('#session-frame').boundingBox();
+  assert.ok(frameBox.x + frameBox.width <= box.x + 1, 'the column sits right of the session view');
+  await page.evaluate(() => window.__agent.shown(false));
+  assert.equal(await page.evaluate(() => window.__agent.bounds[window.__agent.bounds.length - 1]), null);
+  await page.getByRole('button', { name: 'Set up the agent…' }).click();
+  assert.equal(await page.evaluate(() => window.__agent.setups), 1);
+});
+
+test('the shell answers number lookups from the session view and reveals the statement', { skip, timeout: 120000 }, async (t) => {
+  const root = copyFixture('voice-uptake');
+  const page = await openPage(t, await startApp(t), { host: true });
+  await openFixture(page, root);
+  assert.match(await page.evaluate(() => window.__agent.lookup('1.2b')), /^Uptake may be a property/);
+  assert.equal(await page.evaluate(() => window.__agent.lookup('2.1.300')), null);
+  await page.evaluate(() => window.__agent.reveal('2.2'));
+  await sessionView(page).locator('[id="st-2.2"]:focus').waitFor();
+});
+
+test('in a plain browser there is no agent column and no set-up entry', { skip, timeout: 120000 }, async (t) => {
+  const root = copyFixture('voice-uptake');
+  const page = await openPage(t, await startApp(t), { host: false });
+  await openFixture(page, root);
+  assert.equal(await page.locator('#agent-slot').isVisible(), false);
+  assert.equal(await page.getByRole('button', { name: 'Set up the agent…' }).count(), 0);
+});
+
+for (const colorScheme of ['light', 'dark']) {
+  test(`the agent entries follow the sidebar in reading order, pass focus contrast, and fold at 320 px in ${colorScheme}`, { skip, timeout: 120000 }, async (t) => {
+    const root = copyFixture('voice-uptake');
+    const page = await openPage(t, await startApp(t), { host: true, colorScheme });
+    await openFixture(page, root);
+    await page.locator('#btn-new').focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-agent-setup', 'Set up the agent… follows New project…');
+    const setup = (await focusContrastRatios(page)).find((item) => item.label === 'Set up the agent…');
+    assert.ok(setup && setup.ratio >= 3, `Set up the agent…: focus contrast >= 3:1 (${setup && setup.ratio.toFixed(2)})`);
+
+    await page.evaluate(() => window.__agent.shown(true));
+    assert.equal(await page.locator('#btn-agent-setup').isVisible(), false, 'the entry goes while the column is shown');
+    assert.equal(await page.locator('#agent-toggle').isVisible(), false, 'the toggle is for narrow windows only');
+    await page.setViewportSize({ width: 320, height: 700 });
+    const widths = await documentWidths(page);
+    assert.equal(widths.document, widths.viewport, 'the page with the column reflows at 320 px');
+    const toggle = page.getByRole('button', { name: 'Hide the agent' });
+    assert.equal(await toggle.isVisible(), true, 'narrow windows get the toggle');
+    assert.ok(await page.locator('#agent-slot').isVisible() && (await page.evaluate(() => window.__agent.bounds[window.__agent.bounds.length - 1])) !== null);
+    await toggle.focus();
+    const toggleRatio = (await focusContrastRatios(page)).find((item) => item.label === 'Hide the agent');
+    assert.ok(toggleRatio && toggleRatio.ratio >= 3, `the toggle: focus contrast >= 3:1 (${toggleRatio && toggleRatio.ratio.toFixed(2)})`);
+    await toggle.click();
+    assert.equal(await page.locator('#agent-slot').isVisible(), false, 'folded, the slot goes');
+    assert.equal(await page.evaluate(() => window.__agent.bounds[window.__agent.bounds.length - 1]), null, 'and the app is told there is no room for the column');
+    assert.equal(await page.getByRole('button', { name: 'Show the agent' }).isVisible(), true);
+  });
+}
 
 test('the whole flow from a browser tab: new project, session, agenda, minutes, invitation', { skip, timeout: 180000 }, async (t) => {
   const srv = await startApp(t);

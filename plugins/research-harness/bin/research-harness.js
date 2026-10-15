@@ -177,6 +177,24 @@ function initVariant(flags) {
   return 0;
 }
 
+// Why init must not create a key here, or null. A log that already carries
+// seals was sealed with a key this machine does not have, and a seal
+// recomputes under that key alone: a fresh key here would report an intact log
+// as BROKEN (SQ-122). A log whose `Seal key:` line names a key is the same case
+// before its first seal (SQ-286). init refuses to make one and names where the
+// project's key comes from instead.
+function foreignLog(root, decisionsFile) {
+  if (fs.existsSync(seal.keyPath(root))) return null;
+  const logText = fs.existsSync(decisionsFile) ? fs.readFileSync(decisionsFile, 'utf8') : '';
+  const rel = path.relative(root, decisionsFile);
+  const join = `ask the person who shared the project to run research-harness key export --out <file>${EXPORT_SUFFIX}, then run research-harness join --key-file <file> --name "<your name>". Nothing was changed.`;
+  if (decisions.parseDecisions(logText).entries.some((e) => e.seal !== null)) {
+    return `${rel} is sealed on another machine. Do not create a new key here: ${join}`;
+  }
+  if (seal.keyLineOf(logText)) return `${rel} names the project's key in its Seal key line, and this machine does not have it. Do not create a new key here: ${join}`;
+  return null;
+}
+
 function init(flags) {
   if (flags.variant !== undefined) return initVariant(flags);
   const root = project.projectDir({});
@@ -201,15 +219,8 @@ function init(flags) {
     if (typeof flags.title === 'string') {
       say(`--title was not applied: ${path.relative(root, canvasFile)} already exists; run research-harness title "<text>" to set it.`);
     }
-    // A log that already carries seals was sealed with a key this machine does
-    // not have, and a seal recomputes under that key alone: a fresh key here
-    // would report an intact log as BROKEN (SQ-122). init refuses to make one
-    // and names where the sealing machine's key comes from instead.
-    const keyFile = seal.keyPath(root);
-    const logText = fs.existsSync(decisionsFile) ? fs.readFileSync(decisionsFile, 'utf8') : '';
-    if (!fs.existsSync(keyFile) && decisions.parseDecisions(logText).entries.some((e) => e.seal !== null)) {
-      return fail(`${path.relative(root, decisionsFile)} is sealed on another machine. Do not create a new key here: ask whoever holds the key to run research-harness key export --out <file>${EXPORT_SUFFIX}, then run research-harness join --key-file <file> --name "<your name>". Nothing was changed.`);
-    }
+    const foreign = foreignLog(root, decisionsFile);
+    if (foreign) return fail(foreign);
     const key = seal.createKey(root);
     if (!key.created) return fail(`${path.relative(root, canvasFile)} already exists; nothing written.`);
     say(`${path.relative(root, canvasFile)} already exists; kept.`);
@@ -217,6 +228,8 @@ function init(flags) {
     return 0;
   }
 
+  const foreign = foreignLog(root, decisionsFile);
+  if (foreign) return fail(foreign);
   const body = templateBody();
   const frontmatterLines = [
     '---',
@@ -235,10 +248,18 @@ function init(flags) {
     '',
   );
   const frontmatter = frontmatterLines.join('\n');
+  // The key comes first, so the new log names it in its `Seal key:` line: a
+  // wrong key is then refused even while the log has no seal (SQ-286).
+  const key = seal.createKey(root);
+  let keyBytes;
+  try {
+    keyBytes = seal.readKey(root);
+  } catch (err) {
+    return fail(err.message);
+  }
   fs.mkdirSync(path.dirname(canvasFile), { recursive: true });
   fs.writeFileSync(canvasFile, `${frontmatter}${body}`);
-  if (!fs.existsSync(decisionsFile)) fs.writeFileSync(decisionsFile, decisions.header(flags.project));
-  const key = seal.createKey(root);
+  if (!fs.existsSync(decisionsFile)) fs.writeFileSync(decisionsFile, seal.withKeyLine(decisions.header(flags.project), keyBytes));
   say(`Created ${path.relative(root, canvasFile)} and ${path.relative(root, decisionsFile)} (profile ${profileId}, mode ${flags.mode}).`);
   say(keyLine(key));
   say('Every element is empty. That is the correct starting state.');
@@ -696,7 +717,23 @@ function keyCommand(positional, flags) {
     throw err;
   }
   say(`Key written to ${flags.out} (mode 0600). Hand it to the second person yourself — not as plain-text mail, not into the repository. They run: research-harness join --key-file <file> --name "<their name>"`);
+  stampKeyLine(root, key);
   return 0;
+}
+
+// A log from before the `Seal key:` line, with no seal yet, cannot tell a wrong
+// key from the right one at join (SQ-286). The exporting machine holds the
+// project's key, so this is where the line goes in. A sealed log keeps its
+// bytes: its seals already tell keys apart, and the line would break them.
+function stampKeyLine(root, key) {
+  const file = project.decisionsPath(root);
+  const text = project.readIfExists(file);
+  if (text === null || seal.verifyChain(text, key).status === 'broken') return;
+  const stamped = seal.withKeyLine(text, key);
+  if (stamped === null) return;
+  fs.writeFileSync(file, stamped);
+  const rel = path.relative(root, file);
+  say(`${rel} had no Seal key line, so join could not check a key against it; the line is added now. Commit and push ${rel} before you hand over the key file.`);
 }
 
 // The second person's one step: check the key against this clone's log, copy
@@ -716,6 +753,10 @@ function join(flags) {
   const state = loadState();
   if (state.error) return fail(state.error);
   const chain = seal.verifyChain(state.decisionsText, key);
+  const rel = path.relative(state.root, state.paths.decisions);
+  if (chain.status === 'broken' && chain.broken.why === 'key') {
+    return fail(`This key file does not hold the project's key: the Seal key line in ${rel} names a different key. It belongs to another project; ask the person who shared this one for theirs. Nothing was copied.`);
+  }
   if (chain.status === 'broken') {
     return fail(`This key does not verify ${path.relative(state.root, state.paths.decisions)}: it fails at #${chain.broken.seq} (${chain.broken.why}). It belongs to another project, or the log was changed. Nothing was copied.`);
   }
@@ -727,6 +768,11 @@ function join(flags) {
     fs.writeFileSync(file, key.toString('hex'), { mode: 0o600, flag: 'wx' });
   }
   identity.writeName(flags.name);
+  // Option (b) of SQ-286: an old log with no seal and no Seal key line is
+  // joined, but the person is told that nothing checked the key.
+  if (chain.verified.size === 0 && !seal.keyLineOf(state.decisionsText)) {
+    say(`Note: ${rel} has no sealed entry and no Seal key line, so this key could not be checked against it. If the person who shared the project runs research-harness key export again, the line is added to the log.`);
+  }
   say(`${state.key ? 'The same key was already here; kept.' : `Key copied to ${file}.`} Name set: ${flags.name.trim()}.`);
   say(`You can delete ${flags['key-file']} now; join does not delete it.`);
   say('research-harness doctor:');
@@ -1080,10 +1126,15 @@ function checkKeyVerifies() {
   const state = loadState();
   if (state.error || state.keyError || !state.key) return null;
   const chain = seal.verifyChain(state.decisionsText, state.key);
+  if (chain.status === 'broken' && chain.broken.why === 'key') {
+    return { ok: false, name: 'key verifies', detail: 'the key here is not the project\'s: the Seal key line in decisions.md names a different key; run research-harness join with the project key' };
+  }
   if (chain.status === 'broken') {
     return { ok: false, name: 'key verifies', detail: `the key here does not verify decisions.md (fails at #${chain.broken.seq}); run research-harness join with the project key` };
   }
-  return { ok: true, name: 'key verifies', detail: chain.status === 'verified' ? 'the key here verifies decisions.md' : 'no sealed entry yet for the key here to verify' };
+  if (chain.verified.size) return { ok: true, name: 'key verifies', detail: 'the key here verifies decisions.md' };
+  if (seal.keyLineOf(state.decisionsText)) return { ok: true, name: 'key verifies', detail: 'the key here matches the Seal key line of decisions.md' };
+  return { ok: true, name: 'key verifies', detail: 'no sealed entry yet for the key here to verify' };
 }
 
 // Notes about the git clone the project sits in (spec §7), never failures: a

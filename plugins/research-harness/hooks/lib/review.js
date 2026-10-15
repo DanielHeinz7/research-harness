@@ -6,7 +6,7 @@ const path = require('node:path');
 const { allStatements, COMMITTED, compareByCodePoint, normalizeText } = require('./canvas');
 const { textHash } = require('./hash');
 const { parseDecisions, MARKER_KINDS } = require('./decisions');
-const { verifyChain } = require('./seal');
+const { verifyChain, WRONG_KEY } = require('./seal');
 const { dependencyViolations, statusByNumber } = require('./profile');
 const glossaryLib = require('./glossary');
 
@@ -690,6 +690,7 @@ const WHY = {
   anchor: 'its own content or the unsealed block before it changed',
   chain: 'entries before it are missing or were removed',
   content: 'its own heading or body changed',
+  key: WRONG_KEY,
   'line-endings': 'the file has Windows line endings (CRLF), which the harness does not read (see the README, "Windows line endings")',
 };
 

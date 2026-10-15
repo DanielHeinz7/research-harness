@@ -92,10 +92,12 @@ test('init creates canvas.md from the template and an empty decision log; refuse
   assert.match(parsed.frontmatter.created, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(parsed.elements.length, 9);
   assert.equal(canvas.allStatements(parsed).length, 0);
-  assert.equal(fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8'), decisions.header('voice-uptake'));
   // The sealing key lives outside the repository, mode 0600, and init says so.
   const keyFile = path.join(stateDirOf(root), path.basename(path.dirname(seal.keyPath(root))), 'seal.key');
   assert.ok(fs.existsSync(keyFile), keyFile);
+  // The log names that key by its fingerprint, never by the key (SQ-286).
+  const fingerprint = seal.keyFingerprint(Buffer.from(fs.readFileSync(keyFile, 'utf8').trim(), 'hex'));
+  assert.equal(fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8'), `${decisions.header('voice-uptake')}\nSeal key: ${fingerprint}\n`);
   assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600);
   assert.match(out.stdout, /Sealing key created/);
   assert.match(out.stdout, /0600/);

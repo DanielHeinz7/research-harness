@@ -54,6 +54,9 @@ function mergeLogs(ours, theirs, key, { by, theirsCommit, skip = [] } = {}) {
   if (!key) return refuse('ledger', 'No sealing key for this project on this machine; nothing is merged.');
   for (const [side, text] of [['ours', ours], ['theirs', theirs]]) {
     const chain = seal.verifyChain(text, key);
+    if (chain.status === 'broken' && chain.broken.why === 'key') {
+      return refuse('broken', `The sealing key on this machine is not the one ${side} was started with: its Seal key line names a different key; nothing is merged.`);
+    }
     if (chain.status === 'broken') {
       return refuse('broken', `${side} is broken at #${chain.broken.seq} (line ${chain.broken.line}, ${chain.broken.why}); nothing is merged. The harness never repairs a ledger.`);
     }

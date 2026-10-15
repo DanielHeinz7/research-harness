@@ -207,3 +207,118 @@ test('doctor notes a missing remote and pull.rebase=true, and fails when the key
   assert.match(bad.stdout, /does not verify/);
   assert.match(bad.stdout, /research-harness join/);
 });
+
+// SQ-286: a project init starts names its key in a `Seal key:` line, so an
+// empty log tells a wrong key file apart before anything is sealed.
+function freshProject() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-new-'));
+  fs.writeFileSync(path.join(stateDirOf(root), 'name'), 'A. Researcher\n');
+  const out = run(root, ['init', '--project', 'voice-uptake', '--mode', 'seed']);
+  assert.equal(out.status, 0, out.stdout);
+  return root;
+}
+
+function wrongKeyFile() {
+  const wrong = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-k-')), 'w.seal.key');
+  fs.writeFileSync(wrong, 'ab'.repeat(32));
+  return wrong;
+}
+
+function exportFrom(root) {
+  const exported = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-k-')), 'voice.seal.key');
+  const out = run(root, ['key', 'export', '--out', exported]);
+  assert.equal(out.status, 0, out.stdout);
+  return { exported, out };
+}
+
+const logOf = (root) => fs.readFileSync(path.join(root, 'research', 'decisions.md'), 'utf8');
+const keyOf = (file) => Buffer.from(fs.readFileSync(file, 'utf8').trim(), 'hex');
+
+test('init names the new key in a Seal key line under the log title', () => {
+  const root = freshProject();
+  const key = keyOf(keyFileIn(stateDirOf(root), root));
+  assert.equal(logOf(root), `# Decision log — voice-uptake\n\nSeal key: ${seal.keyFingerprint(key)}\n`);
+});
+
+test('join on an empty log refuses a key file of ab x 32 and copies nothing; the right key joins without a note', () => {
+  const root = freshProject();
+  const clone = duplicateProject(root);
+  const state = freshState();
+  const r = run(clone, ['join', '--key-file', wrongKeyFile(), '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stdout, /does not hold the project's key: the Seal key line in research\/decisions\.md names a different key/);
+  assert.match(r.stdout, /Nothing was copied/);
+  assert.deepEqual(fs.readdirSync(state), [], 'no key and no name were written');
+  const { exported } = exportFrom(root);
+  const ok = run(clone, ['join', '--key-file', exported, '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(ok.status, 0, ok.stdout);
+  assert.doesNotMatch(ok.stdout, /could not be checked/);
+  assert.match(ok.stdout, /research-harness doctor: ok/);
+});
+
+test('init on a clone whose log names a key refuses to create a second key and points to join', () => {
+  const root = freshProject();
+  const clone = duplicateProject(root);
+  const state = freshState();
+  const before = logOf(clone);
+  const r = run(clone, ['init', '--project', 'voice-uptake', '--mode', 'seed'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stdout, /names the project's key in its Seal key line/);
+  assert.match(r.stdout, /research-harness join --key-file/);
+  assert.deepEqual(fs.readdirSync(state), [], 'no key was created');
+  assert.equal(logOf(clone), before);
+  // The same refusal without a canvas: the new-canvas branch checks the log too.
+  fs.rmSync(path.join(clone, 'research', 'canvas.md'));
+  const bare = run(clone, ['init', '--project', 'voice-uptake', '--mode', 'seed'], { RESEARCH_HARNESS_STATE_DIR: state });
+  assert.equal(bare.status, 1, bare.stdout);
+  assert.match(bare.stdout, /Seal key line/);
+  assert.equal(fs.existsSync(path.join(clone, 'research', 'canvas.md')), false, 'nothing was written');
+  assert.deepEqual(fs.readdirSync(state), []);
+});
+
+test('an old unsealed log without the line: join notes the key was not checked; key export adds the line', () => {
+  const root = keyed();
+  const legacy = logOf(root);
+  assert.equal(seal.keyLineOf(legacy), null, 'the fixture predates the line');
+  const before = duplicateProject(root);
+  const noted = run(before, ['join', '--key-file', wrongKeyFile(), '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: freshState() });
+  assert.equal(noted.status, 0, noted.stdout);
+  assert.match(noted.stdout, /no sealed entry and no Seal key line, so this key could not be checked/);
+  const { out } = exportFrom(root);
+  assert.match(out.stdout, /line is added now\. Commit and push research\/decisions\.md/);
+  const key = keyOf(keyFileIn(stateDirOf(root), root));
+  assert.equal(logOf(root), legacy.replace(/\n/, `\n\nSeal key: ${seal.keyFingerprint(key)}\n`));
+  // The clone that receives the stamped log refuses the same wrong key.
+  const after = duplicateProject(root);
+  const refused = run(after, ['join', '--key-file', wrongKeyFile(), '--name', 'B'], { RESEARCH_HARNESS_STATE_DIR: freshState() });
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.match(refused.stdout, /Seal key line/);
+  // A second export leaves the log alone.
+  const stamped = logOf(root);
+  const again = exportFrom(root);
+  assert.doesNotMatch(again.out.stdout, /line is added/);
+  assert.equal(logOf(root), stamped);
+});
+
+test('a sealed log without the line keeps its bytes on key export', () => {
+  const root = sealedProject();
+  const sealed = logOf(root);
+  const { out } = exportFrom(root);
+  assert.doesNotMatch(out.stdout, /line is added/);
+  assert.equal(logOf(root), sealed);
+});
+
+test('a wrong key on a log with the line: writes, doctor and review name the cause', () => {
+  const root = freshProject();
+  fs.writeFileSync(keyFileIn(stateDirOf(root), root), 'ab'.repeat(32), { mode: 0o600 });
+  const before = logOf(root);
+  const written = run(root, ['log', 'DISCOVERY', '7', '--body', 'x']);
+  assert.equal(written.status, 1, written.stdout);
+  assert.match(written.stdout, /The sealing key on this machine is not the project's: the Seal key line in research\/decisions\.md names a different key; nothing is written/);
+  assert.equal(logOf(root), before);
+  const doctor = run(root, ['doctor']);
+  assert.equal(doctor.status, 1, doctor.stdout);
+  assert.match(doctor.stdout, /the key here is not the project's: the Seal key line in decisions\.md names a different key/);
+  const review = run(root, ['review']);
+  assert.match(review.stdout, /BROKEN at #0 \(line 3\): this key is not the project's: the Seal key line in decisions\.md names a different key\./);
+});

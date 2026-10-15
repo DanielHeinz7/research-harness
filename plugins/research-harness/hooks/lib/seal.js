@@ -84,6 +84,49 @@ function anchorOf(prefix) {
   return crypto.createHash('sha256').update(prefix, 'utf8').digest('hex');
 }
 
+// The `Seal key:` line init writes under the log's title (SQ-286). It names the
+// key the log was started with, so a wrong key is caught on a log that has no
+// seal yet to recompute. The value is a keyed hash over a fixed label, 64 bits
+// of it, and gives nothing away about the key. Only the text above #1 counts:
+// an entry body cannot claim a key for the log.
+const KEY_LABEL = 'research-harness seal key';
+const KEY_LINE_RE = /^Seal key: ([0-9a-f]{16})$/m;
+// What every refusal of a 'key' break says, in one wording.
+const WRONG_KEY = 'this key is not the project\'s: the Seal key line in decisions.md names a different key';
+
+function keyFingerprint(key) {
+  return crypto.createHmac('sha256', key).update(KEY_LABEL, 'utf8').digest('hex').slice(0, SEAL_HEX);
+}
+
+function keyLine(key) {
+  return `Seal key: ${keyFingerprint(key)}`;
+}
+
+// The fingerprint the log names and the line it sits on, or null.
+function keyLineOf(text) {
+  const source = String(text || '');
+  const first = decisions.parseDecisions(source).entries[0];
+  const above = first ? source.slice(0, first.offset) : source;
+  const m = KEY_LINE_RE.exec(above);
+  return m ? { fingerprint: m[1], line: above.slice(0, m.index).split('\n').length } : null;
+}
+
+// The log with a `Seal key:` line added under its title, or null when it gets
+// none: it names a key already, or a sealed entry anchors on the bytes above
+// #1, so adding a line now would break the chain. Only for a log the given key
+// is known to belong to (init, key export).
+function withKeyLine(text, key) {
+  const source = String(text || '');
+  if (!source || keyLineOf(source)) return null;
+  const { entries } = decisions.parseDecisions(source);
+  if (entries.some((e) => e.seal !== null)) return null;
+  if (entries.length && entries[0].offset === 0) return `${keyLine(key)}\n\n${source}`;
+  const nl = source.indexOf('\n');
+  const title = nl < 0 ? source : source.slice(0, nl);
+  const rest = nl < 0 ? '' : source.slice(nl + 1);
+  return `${title}\n\n${keyLine(key)}\n${rest && !rest.startsWith('\n') ? '\n' : ''}${rest}`;
+}
+
 // The head of the record as one line, for the reviewer who compares what they
 // received with what the authors published: the last seal, the highest
 // sequence number, and the SHA-256 of decisions.md as received. It needs no
@@ -122,9 +165,11 @@ function result(status, reason, legacy, broken, verified) {
 // predates the seal), broken (a seal does not recompute, or an unsealed entry
 // follows a sealed one). `broken` names the first failing entry and why:
 // 'unsealed', 'anchor' (the first sealed entry — its own content or the legacy
-// block before it changed), 'chain' (entries are missing before it), or
-// 'content' (its own heading or body changed). `verified` holds the sequence
-// numbers whose seals recomputed, which is what gives an acceptance cover.
+// block before it changed), 'chain' (entries are missing before it),
+// 'content' (its own heading or body changed), or 'key' (seq 0: the given key
+// is not the one the log's `Seal key:` line names, so no entry counts under
+// it). `verified` holds the sequence numbers whose seals recomputed, which is
+// what gives an acceptance cover.
 function verifyChain(text, key) {
   const source = String(text || '');
   // Checked before the empty-log shortcut: a header-only CRLF log is not
@@ -138,6 +183,12 @@ function verifyChain(text, key) {
   const verified = new Set();
   const firstSealed = entries.findIndex((e) => e.seal !== null);
   const legacy = (firstSealed < 0 ? entries : entries.slice(0, firstSealed)).map((e) => e.seq);
+  // Before the empty-log shortcut too: an empty log is where a wrong key has
+  // no seal to fail on, and the line is what tells it apart (SQ-286).
+  const named = key ? keyLineOf(source) : null;
+  if (named && named.fingerprint !== keyFingerprint(key)) {
+    return result('broken', null, legacy, { seq: 0, line: named.line, why: 'key' }, verified);
+  }
   if (!entries.length) return result('verified', null, [], null, verified);
   if (firstSealed < 0) return result('unverifiable', 'legacy', legacy, null, verified);
 
@@ -190,6 +241,7 @@ function sealedAppend(filePath, fields, key, { decision = false } = {}) {
     if (!err || err.code !== 'ENOENT') throw err;
   }
   const chain = verifyChain(current, key);
+  if (chain.status === 'broken' && chain.broken.why === 'key') throw new Error(`${WRONG_KEY}; nothing is appended`);
   if (chain.status === 'broken') {
     throw new Error(`decisions.md is broken at #${chain.broken.seq} (line ${chain.broken.line}, ${chain.broken.why}); nothing is appended to a broken ledger`);
   }
@@ -199,4 +251,4 @@ function sealedAppend(filePath, fields, key, { decision = false } = {}) {
   return { seq, seal: s };
 }
 
-module.exports = { KEY_FILE, keyPath, readKey, readKeyFile, createKey, anchorOf, logAnchor, sealOf, verifyChain, lastSealOf, sealEntry, sealedAppend };
+module.exports = { KEY_FILE, WRONG_KEY, keyPath, readKey, readKeyFile, createKey, anchorOf, keyFingerprint, keyLine, keyLineOf, withKeyLine, logAnchor, sealOf, verifyChain, lastSealOf, sealEntry, sealedAppend };

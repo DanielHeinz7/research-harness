@@ -344,3 +344,48 @@ test('a seal over an entry with By recomputes, and changing the name breaks it',
   assert.equal(seal.verifyChain(text, key).status, 'verified');
   assert.equal(seal.verifyChain(text.replace('A. Researcher', 'B. Supervisor'), key).status, 'broken');
 });
+
+// SQ-286: the `Seal key:` line init writes under the title names the key the
+// log was started with, so a wrong key is caught before the log has a seal.
+test('a log whose Seal key line names another key is broken (key) under that key, even with no entry', () => {
+  const wrong = Buffer.from('ab'.repeat(32), 'hex');
+  const text = seal.withKeyLine(decisions.header('p'), KEY);
+  assert.equal(text, `# Decision log — p\n\nSeal key: ${seal.keyFingerprint(KEY)}\n`);
+  assert.match(seal.keyFingerprint(KEY), /^[0-9a-f]{16}$/);
+  assert.equal(text.includes(KEY.toString('hex').slice(0, 16)), false, 'the line is not the key');
+  const bad = seal.verifyChain(text, wrong);
+  assert.equal(bad.status, 'broken');
+  assert.deepEqual(bad.broken, { seq: 0, line: 3, why: 'key' });
+  assert.equal(seal.verifyChain(text, KEY).status, 'verified', 'the right key verifies the empty log');
+  assert.equal(seal.verifyChain(text, null).status, 'verified', 'without a key nothing is compared');
+  // After the first seal the line sits inside the anchor, and the key check
+  // still comes first.
+  const file = path.join(tempProject(), 'decisions.md');
+  fs.writeFileSync(file, text);
+  seal.sealedAppend(file, { date: '2026-10-15', kind: 'DISCOVERY', ref: '7', body: 'A finding.', by: 'A. Researcher' }, KEY);
+  const sealed = fs.readFileSync(file, 'utf8');
+  assert.equal(seal.verifyChain(sealed, KEY).status, 'verified');
+  assert.equal(seal.verifyChain(sealed, wrong).broken.why, 'key');
+  assert.throws(
+    () => seal.sealedAppend(file, { date: '2026-10-15', kind: 'DISCOVERY', ref: '7', body: 'Another.', by: 'B' }, wrong),
+    (err) => err.message === `${seal.WRONG_KEY}; nothing is appended`,
+  );
+  assert.equal(fs.readFileSync(file, 'utf8'), sealed, 'nothing was appended under the wrong key');
+});
+
+test('only a Seal key line above #1 counts, and withKeyLine leaves a sealed or named log alone', () => {
+  const wrong = Buffer.from('ab'.repeat(32), 'hex');
+  const inBody = `${decisions.header('p')}\n## [#1] 2026-10-15 · DISCOVERY · 7\nSeal key: ${seal.keyFingerprint(KEY)}\n`;
+  assert.equal(seal.keyLineOf(inBody), null);
+  assert.equal(seal.verifyChain(inBody, wrong).reason, 'legacy', 'an entry body cannot claim a key for the log');
+  // A legacy log gets the line under its title; its entries keep their bytes.
+  const stamped = seal.withKeyLine(legacyLog, KEY);
+  assert.equal(stamped, legacyLog.replace(/\n/, `\n\nSeal key: ${seal.keyFingerprint(KEY)}\n`));
+  assert.deepEqual(decisions.parseDecisions(stamped).entries.map((e) => e.body), decisions.parseDecisions(legacyLog).entries.map((e) => e.body));
+  assert.equal(seal.verifyChain(stamped, wrong).broken.why, 'key');
+  assert.equal(seal.verifyChain(stamped, KEY).reason, 'legacy');
+  assert.equal(seal.withKeyLine(stamped, KEY), null, 'a log that names a key is not stamped twice');
+  assert.equal(seal.withKeyLine(prechangeLog, PRECHANGE_KEY), null, 'a sealed log keeps its bytes');
+  assert.equal(seal.withKeyLine('', KEY), null);
+  assert.equal(seal.withKeyLine('## [#1] 2026-10-15 · DISCOVERY · 7\nx\n', KEY), `Seal key: ${seal.keyFingerprint(KEY)}\n\n## [#1] 2026-10-15 · DISCOVERY · 7\nx\n`);
+});

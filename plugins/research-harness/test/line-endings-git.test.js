@@ -58,10 +58,18 @@ test('an older project cloned by hand gets CRLF, is refused, and the README repa
   const b = path.join(p.dir, 'b');
   assert.equal(hasCr(path.join(b, 'research', 'decisions.md')), true);
   for (const cmd of ['status', 'review']) assert.match(((r) => r.stdout + r.stderr)(rh(b, p.stateDir, cmd)), /Windows line endings \(CRLF\)/, cmd);
+  // A clone a second old: its index entries are no longer racily clean, so git
+  // skips files it thinks unchanged. Right after a clone it would rewrite them on
+  // any checkout, and a weaker repair would pass by timing alone.
+  const past = new Date(Date.now() - 10_000);
+  for (const f of ['canvas.md', 'decisions.md']) fs.utimesSync(path.join(b, 'research', f), past, past);
   assert.equal(sh(b, 'status', '--porcelain'), '');            // the README's precondition
-  sh(b, 'config', 'core.autocrlf', 'false');                   // the README's two commands
-  sh(b, 'checkout', '--', 'research');
+  sh(b, 'config', 'core.autocrlf', 'false');                   // the README's three commands
+  sh(b, 'rm', '-r', '-q', '--cached', 'research');
+  sh(b, 'checkout', 'HEAD', '--', 'research');
   assert.equal(hasCr(path.join(b, 'research', 'decisions.md')), false);
+  assert.equal(hasCr(path.join(b, 'research', 'canvas.md')), false);
+  assert.equal(sh(b, 'status', '--porcelain'), '');
   assert.doesNotMatch(((r) => r.stdout + r.stderr)(rh(b, p.stateDir, 'review')), /Windows line endings/);
 });
 

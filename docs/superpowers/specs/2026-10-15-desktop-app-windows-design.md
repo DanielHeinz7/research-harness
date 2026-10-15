@@ -121,7 +121,10 @@ the command line outranks the clone's own config and gives a false result.
 
 The message says what happened and that nothing was changed, then points to a README section with the
 repair for a hand-made clone: when `git status` shows no changes of the person's own, run
-`git config core.autocrlf false` and `git checkout -- research` in the project folder. The plan runs
+`git config core.autocrlf false`, `git rm -r -q --cached research` and `git checkout HEAD -- research`
+in the project folder. A plain `git checkout -- research` is not enough: once the clone's index is
+no longer racily clean, git skips files it considers unchanged and the CRLF stays (found at the
+integration of SQ-289). The plan runs
 this sequence in a test (section 9) before the README claims it. A clone made by the app never gets
 there, because of layer 2.
 

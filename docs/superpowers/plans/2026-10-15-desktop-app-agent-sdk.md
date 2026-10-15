@@ -10,9 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-desktop-app-agent-sdk-design.md` (approved, `5a0b7ea`). Also read: sub-project 2 spec `docs/superpowers/specs/2026-10-15-desktop-app-claude-code-design.md` §5 (column contract), the direction contract `.impeccable/surfaces/plugins-research-harness-dashboard-canvas-html.md`, the mock `.impeccable/mocks/decision/sketches/model-pick.html`.
 
+**Execution:** subagent-driven, one Sidequest ticket per task, chosen by the owner on 2026-10-15. Not started; it begins once sub-project 2 has landed on `main` (Task 0).
+
 ## Global Constraints
 
-- Build only after sub-project 2 has landed on `main` (Task 0 checks). Do not change `plugins/research-harness/`.
+- Build only after sub-project 2 has landed on `main` (Task 0 checks). Do not change `plugins/research-harness/`. Sub-project 2's files change only where Tasks 0, 2 and 8 say.
 - `@anthropic-ai/claude-agent-sdk` is pinned exactly (no `^`), the newest release older than 14 days (`npm view @anthropic-ai/claude-agent-sdk time --json`); its bundled binary must report Claude Code 2.1.295 or later.
 - A secret (API key, gateway token, Bedrock key) never appears in an argument list, a file, a log, the utility process's environment or the panel after saving. It travels main process → host over the host's message port and lives in the agent binary's environment only.
 - Query options never set `allowDangerouslySkipPermissions`, `permissionMode: 'bypassPermissions'`, a replaced system prompt, or `settings` that touch hooks. `settingSources` is always `[]`.
@@ -39,7 +41,7 @@
 | `desktop/package.json`, `desktop/electron-builder.yml`, `desktop/agent/sdk/binary.js` | 1 | SDK dependency; binary outside the asar archive; where the binary is |
 | `desktop/test/support/fake-model.js`, `desktop/test/support/logging-proxy.js` | 1 | Messages API stand-in; proxy that records which hosts the binary contacts |
 | `desktop/scripts/check-agent-sdk.js` | 1 | the spec's "Assumed, not checked" list, run against the real binary |
-| `desktop/agent/statement-links.js`, `desktop/agent/way.js` | 2 | the shared `N.k` matcher; `agent.way` |
+| `desktop/agent/store.js` (sub-project 2's) | 2 | `agent.way` may be `"sdk"`; the `N.k` matcher stays sub-project 2's `statement-links.js` |
 | `desktop/agent/sdk/keychain.js` | 3 | Keychain items through `security -i` |
 | `desktop/agent/sdk/connection.js` | 4 | the four kinds; environment; model list; test connection; error words |
 | `desktop/agent/sdk/options.js`, `desktop/agent/sdk/guard-check.js` | 5 | query options (pure); has the guard started |
@@ -59,7 +61,7 @@ The spec (5.1) keeps sub-project 2's column contract and uses its names. This ta
 - Create: `desktop/agent/sdk/column.js`
 
 **Interfaces:**
-- Produces: `column.js` exporting `showPage(file: string): void` (load a page into the column view and show it), `lookupStatement(number: string): Promise<string | null>` (first words of the statement, or null), `revealStatement(number: string): Promise<void>`, `hide(): void` (hide the column, as sub-project 2's "Not now" does), `currentProject(): string | null`, `onProjectChange(cb: (root: string | null) => void): void`, `shimEnv(): Record<string, string>` (the variables sub-project 2's shims need, e.g. `RH_ELECTRON`, the git variables).
+- Produces: `column.js` exporting `showPage(file: string): void` (load a page into the column view and show it), `lookupStatement(number: string): Promise<string | null>` (first words of the statement, or null), `revealStatement(number: string): Promise<void>`, `hide(): void` (hide the column, as sub-project 2's "Not now" does), `currentProject(): string | null`, `onProjectChange(cb: (root: string | null) => void): void`, `shimEnv(): Record<string, string>` (the `RH_*` variables sub-project 2's shims read), `useGitEnv(fn: () => object): void` (main.js hands over its `gitEnv`).
 
 - [ ] **Step 1: Check that sub-project 2 has landed**
 
@@ -73,7 +75,7 @@ Expected: all four files exist; the grep lists the column's channels. If any fil
 
 - [ ] **Step 2: Write down what sub-project 2 named**
 
-From the output and the files it names, find: the main-process function that loads a page into the column view; the one that hides the column; the one that asks the shell page whether a statement number exists; the one that reveals a statement; how the column learns the current project and its changes; the environment its `launch.js` gives the shims; and where it stores `agent.way`. Add them as a comment block at the top of `desktop/agent/sdk/column.js`.
+Sub-project 2's plan (`docs/superpowers/plans/2026-10-15-desktop-app-claude-code.md`, `a9f778d`) names these; check each against the code as built: `desktop/agent/index.js` (`setUpAgent`) owns the column view and answers `column:lookup` (number → first words) and `column:reveal`; its controller learns the project through `setProject(folder)`; `agentEnv(...)` in `desktop/agent/launch.js` sets the shim variables `RH_ELECTRON`, `RH_GIT`, `RH_GIT_EXEC_PATH`, `RH_GIT_CONFIG_SYSTEM`, `RH_GIT_TEMPLATE_DIR`, with the git paths from `gitEnv()` in `main.js`; `desktop/agent/store.js` keeps `way` and `notNow` in `<userData>/agent.json`; `desktop/agent/statement-links.js` exports `findStatementTokens`. From the code, find: the main-process function that loads a page into the column view; the one that hides the column; the one that asks the shell page whether a statement number exists; the one that reveals a statement; how the column learns the current project and its changes; the environment its `launch.js` gives the shims; and where it stores `agent.way`. Add them as a comment block at the top of `desktop/agent/sdk/column.js`.
 
 - [ ] **Step 3: Write `column.js`**
 
@@ -84,8 +86,10 @@ Each export is one line that calls sub-project 2's function. Shape (the right-ha
 // The agent column belongs to sub-project 2 (its spec §5). This module is
 // the only place the SDK way touches it, so both ways keep one contract.
 // <comment block from Step 2>
-const columnHost = require('../column/host');      // sub-project 2's main-process module, per Step 2
-const launch = require('../launch');
+const columnHost = require('../index');            // sub-project 2's main-process module, per Step 2
+const { agentEnv } = require('../launch');
+
+let gitEnv = null;                                 // set by main.js through useGitEnv
 
 module.exports = {
   showPage: (file) => columnHost.load(file),
@@ -94,7 +98,14 @@ module.exports = {
   revealStatement: (number) => columnHost.revealStatement(number),
   currentProject: () => columnHost.currentProject(),
   onProjectChange: (cb) => columnHost.onProjectChange(cb),
-  shimEnv: () => launch.shimEnv(),
+  useGitEnv: (fn) => { gitEnv = fn; },
+  // The shims' variables, taken from agentEnv so the names live in one place.
+  shimEnv: () => {
+    const g = gitEnv();
+    const env = agentEnv({ base: {}, loginPath: '', shimsDir: '', electronPath: process.execPath, markerPath: '',
+      git: { bin: g.RESEARCH_HARNESS_GIT, execPath: g.GIT_EXEC_PATH, configSystem: g.GIT_CONFIG_SYSTEM, templateDir: g.GIT_TEMPLATE_DIR } });
+    return Object.fromEntries(Object.entries(env).filter(([k]) => k.startsWith('RH_')));
+  },
 };
 ```
 
@@ -282,17 +293,22 @@ module.exports = { startLoggingProxy };
 
 - [ ] **Step 4b: Shim variables for plain-Node tests**
 
-`column.shimEnv()` runs in Electron's main process. Tests and the check script run in plain Node, so they take the same variables from `desktop/test/support/shim-env.js`. Use the names Task 0 recorded; `RH_ELECTRON` is the one sub-project 2's spec (5.3) names:
+`column.shimEnv()` runs in Electron's main process. Tests and the check script run in plain Node, so they take the same variables from `desktop/test/support/shim-env.js`. It builds them with sub-project 2's `agentEnv`, so the names stay in one place:
 
 ```js
 'use strict';
 // The variables sub-project 2's shims read, for tests in plain Node: the
-// shim's "Electron" is this Node, and git is the bundled one. Names as in
-// desktop/agent/sdk/column.js (Task 0).
+// shim's "Electron" is this Node, and git is the bundled one.
+const path = require('node:path');
 const { gitPath } = require('../../git-path');
+const { agentEnv } = require('../../agent/launch');
 
 function shimEnv() {
-  return { RH_ELECTRON: process.execPath, RESEARCH_HARNESS_GIT: gitPath() };
+  const bin = gitPath();
+  const dir = path.resolve(bin, '..', '..');
+  const env = agentEnv({ base: {}, loginPath: '', shimsDir: '', electronPath: process.execPath, markerPath: '',
+    git: { bin, execPath: path.join(dir, 'libexec', 'git-core'), configSystem: path.join(dir, 'etc', 'gitconfig'), templateDir: path.join(dir, 'share', 'git-core', 'templates') } });
+  return Object.fromEntries(Object.entries(env).filter(([k]) => k.startsWith('RH_')));
 }
 
 module.exports = { shimEnv };
@@ -342,44 +358,19 @@ git commit -m "Agent SDK way: SDK package, fake model, and the checks the spec l
 
 ---
 
-### Task 2: Statement links and the way store
+### Task 2: The SDK way in sub-project 2's way store
+
+Sub-project 2's plan (`docs/superpowers/plans/2026-10-15-desktop-app-claude-code.md`, `a9f778d`) already puts the `N.k` matcher in `desktop/agent/statement-links.js` (`findStatementTokens`), so the move in spec 5.1 is done there, and it keeps `agent.way` in `desktop/agent/store.js`, which accepts only `"claude-code"`. This task lets the store hold `"sdk"` and pins what the SDK way relies on from both files.
 
 **Files:**
-- Create: `desktop/agent/statement-links.js`, `desktop/agent/way.js`, `desktop/test/statement-links.test.js`, `desktop/test/way.test.js`
-- Modify: `desktop/agent/column/column.js` and `desktop/agent/column/column.html` if sub-project 2 kept the matcher there (spec 5.1); sub-project 2's code that writes `agent.way`
+- Modify: `desktop/agent/store.js` (the `way` line in `readAgentStore`)
+- Create: `desktop/test/sdk-way.test.js`
 
 **Interfaces:**
-- Produces: `findNumbers(text: string): Array<{ number: string, index: number, length: number }>`, usable from Node (`require`) and from a page (`<script src>` sets `window.statementLinks`); `readWay(dataDir): 'claude-code' | 'sdk' | null`, `writeWay(dataDir, way): void`.
+- Consumes: `readAgentStore(dataDir)`, `writeAgentStore(dataDir, patch)` (sub-project 2, file `<userData>/agent.json`); `findStatementTokens(text) -> Array<{ num, start, end }>` (sub-project 2; `end` exclusive; also `window.statementLinks` in a page).
+- Produces: `readAgentStore(dataDir).way` is `'claude-code' | 'sdk' | null`.
 
-- [ ] **Step 1: Write the failing tests**
-
-`desktop/test/statement-links.test.js`:
-
-```js
-'use strict';
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { findNumbers } = require('../agent/statement-links');
-const nums = (s) => findNumbers(s).map((m) => m.number);
-
-test('statement numbers are found where they stand alone', () => {
-  assert.deepEqual(nums('See 3.4.'), ['3.4']);
-  assert.deepEqual(nums('3.4, 1.12 and 9.999'), ['3.4', '1.12', '9.999']);
-  assert.deepEqual(nums('(2.1) §5.3'), ['2.1', '5.3']);
-});
-
-test('parts of longer numbers and words are not statement numbers', () => {
-  assert.deepEqual(nums('version 2.1.300 and 0.5.0'), []);
-  assert.deepEqual(nums('13.4 v3.4 3.4567 0.3 3.0 10.2'), []);
-});
-
-test('index and length point at the token', () => {
-  const [m] = findNumbers('see 3.4.');
-  assert.equal('see 3.4.'.slice(m.index, m.index + m.length), '3.4');
-});
-```
-
-`desktop/test/way.test.js`:
+- [ ] **Step 1: Write the failing test**
 
 ```js
 'use strict';
@@ -388,99 +379,45 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { readWay, writeWay } = require('../agent/way');
+const { readAgentStore, writeAgentStore } = require('../agent/store');
+const { findStatementTokens } = require('../agent/statement-links');
 
-test('no way until one is chosen; the choice is kept', () => {
+test('the store keeps the SDK way as well as Claude Code', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-way-'));
-  assert.equal(readWay(dir), null);
-  writeWay(dir, 'sdk');
-  assert.equal(readWay(dir), 'sdk');
-  writeWay(dir, 'claude-code');
-  assert.equal(readWay(dir), 'claude-code');
+  assert.equal(readAgentStore(dir).way, null);
+  writeAgentStore(dir, { way: 'sdk' });
+  assert.equal(readAgentStore(dir).way, 'sdk');
+  writeAgentStore(dir, { way: 'claude-code' });
+  assert.equal(readAgentStore(dir).way, 'claude-code');
+  writeAgentStore(dir, { way: 'cloud' });
+  assert.equal(readAgentStore(dir).way, null);
 });
 
-test('an unknown way is refused, a damaged file reads as no way', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-way-'));
-  assert.throws(() => writeWay(dir, 'cloud'), /Unknown way/);
-  fs.writeFileSync(path.join(dir, 'agent.json'), '{not json');
-  assert.equal(readWay(dir), null);
+test('the matcher finds the numbers the SDK thread links', () => {
+  assert.deepEqual(findStatementTokens('See 3.4.'), [{ num: '3.4', start: 4, end: 7 }]);
+  assert.deepEqual(findStatementTokens('version 2.1.300 and 0.5.0'), []);
 });
 ```
 
-If Task 0 found that sub-project 2 stores `agent.way` in another file or key, use that file and key in `way.js` and in this test instead of `agent.json` / `way`.
-
-- [ ] **Step 2: Run, expect FAIL** (`Cannot find module`): `cd desktop && node --test test/statement-links.test.js test/way.test.js`
+- [ ] **Step 2: Run, expect FAIL** on the first test (`'sdk'` reads as `null`): `cd desktop && node --test test/sdk-way.test.js`
 
 - [ ] **Step 3: Implement**
 
-`desktop/agent/statement-links.js`:
+In `readAgentStore`, change the `way` line to:
 
 ```js
-// Statement numbers in agent text: N.k with N 1 to 9 and k 1 to 999, not part
-// of a longer number (2.1.300, 0.5.0) and not inside a word. Both agent ways
-// link the same tokens. Loads in Node and as a plain page script.
-(function (root) {
-  'use strict';
-  const PATTERN = /(?<![\w.])([1-9])\.([1-9]\d{0,2})(?![\w]|\.\d)/g;
-
-  function findNumbers(text) {
-    const found = [];
-    for (const m of String(text).matchAll(PATTERN)) found.push({ number: `${m[1]}.${m[2]}`, index: m.index, length: m[0].length });
-    return found;
-  }
-
-  const api = { findNumbers };
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.statementLinks = api;
-})(typeof self !== 'undefined' ? self : this);
+      way: j.way === 'claude-code' || j.way === 'sdk' ? j.way : null,
 ```
 
-`desktop/agent/way.js`:
+Then find where sub-project 2 acts on `way` at start-up (its `desktop/agent/index.js` and `controller.js`): with `way === 'sdk'` it must not check, install or start Claude Code. Make it skip its own first run in that case and leave the column to Task 8's controller; add one case to sub-project 2's `desktop/test/agent-controller.test.js` that pins this (state stays idle, no `locate` call, with `way: 'sdk'`).
 
-```js
-'use strict';
-// Which way the agent connects: "claude-code" (sub-project 2) or "sdk".
-// Kept in the app's data folder, never in a project.
-const fs = require('node:fs');
-const path = require('node:path');
+- [ ] **Step 4: Run all desktop tests, expect PASS**: `cd desktop && npm test`
 
-const WAYS = ['claude-code', 'sdk'];
-const file = (dataDir) => path.join(dataDir, 'agent.json');
-
-function readJson(dataDir) {
-  try { return JSON.parse(fs.readFileSync(file(dataDir), 'utf8')); } catch (err) {
-    if (err.code === 'ENOENT' || err instanceof SyntaxError) return {};
-    throw err;
-  }
-}
-
-function readWay(dataDir) {
-  const way = readJson(dataDir).way;
-  return WAYS.includes(way) ? way : null;
-}
-
-function writeWay(dataDir, way) {
-  if (!WAYS.includes(way)) throw new Error(`Unknown way: ${way}`);
-  fs.mkdirSync(dataDir, { recursive: true });
-  const tmp = `${file(dataDir)}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify({ ...readJson(dataDir), way }, null, 2)}\n`);
-  fs.renameSync(tmp, file(dataDir));
-}
-
-module.exports = { readWay, writeWay, WAYS };
-```
-
-- [ ] **Step 4: One matcher for both ways**
-
-If `desktop/agent/column/column.js` has its own `N.k` pattern: delete it there, add `<script src="../statement-links.js"></script>` before `column.js` in `column.html`, and call `statementLinks.findNumbers(line)` where the old pattern was used. Where sub-project 2 writes `agent.way` itself, call `writeWay` instead.
-
-- [ ] **Step 5: Run all desktop tests, expect PASS**: `cd desktop && npm test`
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add desktop/agent/statement-links.js desktop/agent/way.js desktop/test/statement-links.test.js desktop/test/way.test.js desktop/agent/column
-git commit -m "Agent column: one statement-number matcher and one way store for both ways"
+git add desktop/agent/store.js desktop/test/sdk-way.test.js desktop/agent desktop/test/agent-controller.test.js
+git commit -m "Agent column: the way store holds the SDK way; Claude Code stays off when it is chosen"
 ```
 
 ---
@@ -1070,7 +1007,7 @@ git commit -m "Agent SDK way: pinned query options and the guard start check"
 - Create: `desktop/agent/sdk/events.js`, `desktop/test/events.test.js`
 
 **Interfaces:**
-- Consumes: `findNumbers` (Task 2).
+- Consumes: `findStatementTokens` (sub-project 2, `desktop/agent/statement-links.js`).
 - Produces: `createMapper({ cwd }): (msg) => Event[]` and `toolLine(name, input, cwd): string`. Events (all plain JSON):
   - `{ kind: 'session', sessionId, model }` from `init`
   - `{ kind: 'delta', text }` streamed text of the main agent (not of subagents)
@@ -1152,7 +1089,7 @@ If the recording from Task 1 used other script text, change only the expected `l
 // SDK messages → thread events for the panel. Pure apart from remembering
 // each tool call's input until its result arrives.
 const path = require('node:path');
-const { findNumbers } = require('../statement-links');
+const { findStatementTokens } = require('../statement-links');
 
 const GUARD_REFUSAL = /^PreToolUse:(\w+) hook error: ([\s\S]*)$/;
 
@@ -1207,8 +1144,8 @@ function createMapper({ cwd }) {
         const m = GUARD_REFUSAL.exec(resultText(b));
         if (!m) continue;
         const call = inputs.get(b.tool_use_id) || { input: {} };
-        const found = m[1] === 'Bash' ? findNumbers(call.input.command || '') : [];
-        out.push({ kind: 'refusal', id: b.tool_use_id, tool: m[1], reason: m[2], statement: found.length ? found[0].number : null });
+        const found = m[1] === 'Bash' ? findStatementTokens(call.input.command || '') : [];
+        out.push({ kind: 'refusal', id: b.tool_use_id, tool: m[1], reason: m[2], statement: found.length ? found[0].num : null });
       }
       return out;
     }
@@ -1739,7 +1676,8 @@ port.on('message', async ({ data }) => {
 const os = require('node:os');
 const path = require('node:path');
 const { BrowserWindow, dialog, shell } = require('electron');
-const { readWay, writeWay } = require('../way');
+const { readAgentStore, writeAgentStore } = require('../store');
+const { findStatementTokens } = require('../statement-links');
 const { readSettings, writeSettings } = require('./settings');
 const keychain = require('./keychain');
 const connection = require('./connection');
@@ -1776,12 +1714,13 @@ function registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir, plugi
   handle('sdk:state', () => {
     const { connection: conn } = readSettings(dataDir);
     const project = column.currentProject();
-    return { way: readWay(dataDir), connection: conn, kindName: conn ? connection.KIND_NAMES[conn.kind] : null, project, canResume: Boolean(project && readSettings(dataDir).sessions[project]) };
+    return { way: readAgentStore(dataDir).way, connection: conn, kindName: conn ? connection.KIND_NAMES[conn.kind] : null, project, canResume: Boolean(project && readSettings(dataDir).sessions[project]) };
   });
 
   handle('sdk:choose-way', (way) => {
-    writeWay(dataDir, way);
-    if (way === 'claude-code') { endConversation(); column.showPage(path.join(__dirname, '..', 'column', 'column.html')); }
+    if (way !== 'claude-code' && way !== 'sdk') return { ok: false };
+    writeAgentStore(dataDir, { way });
+    if (way === 'claude-code') { endConversation(); column.showPage(path.join(__dirname, '..', 'column', 'column.html')); }  // sub-project 2's page, per Task 0
     return { ok: true };
   });
 
@@ -1838,8 +1777,9 @@ function registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir, plugi
   handle('sdk:send', (text) => { if (host) host.postMessage({ type: 'send', text: String(text) }); });
   handle('sdk:stop', () => { if (host) host.postMessage({ type: 'stop' }); });
   handle('sdk:answer', (id, allow) => { if (host) host.postMessage({ type: 'answer', id: String(id), allow: allow === true }); });
-  handle('sdk:lookup', (number) => (/^[1-9]\.[1-9]\d{0,2}$/.test(number) ? column.lookupStatement(number) : null));
-  handle('sdk:reveal', (number) => (/^[1-9]\.[1-9]\d{0,2}$/.test(number) ? column.revealStatement(number) : undefined));
+  const isNumber = (n) => { const t = findStatementTokens(String(n)); return t.length === 1 && t[0].num === n; };
+  handle('sdk:lookup', (number) => (isNumber(number) ? column.lookupStatement(number) : null));
+  handle('sdk:reveal', (number) => (isNumber(number) ? column.revealStatement(number) : undefined));
   handle('sdk:pick-file', async () => {
     const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), { properties: ['openFile'] });
     return r.canceled ? null : r.filePaths[0];
@@ -1864,10 +1804,11 @@ In `desktop/main.js`, after the window is created and sub-project 2's column is 
 ```js
 const column = require('./agent/sdk/column');
 const { registerAgentSdk } = require('./agent/sdk/controller');
-const { readWay } = require('./agent/way');
+const { readAgentStore } = require('./agent/store');
 // …inside app.whenReady, after the column exists:
+column.useGitEnv(gitEnv);
 const agentSdk = registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir: app.getPath('userData'), pluginRoot });
-if (readWay(app.getPath('userData')) !== 'claude-code') column.showPage(agentSdk.panelPage);
+if (readAgentStore(app.getPath('userData')).way !== 'claude-code') column.showPage(agentSdk.panelPage);
 app.on('before-quit', () => { agentSdk.shutdown(); });
 ```
 
@@ -1894,7 +1835,7 @@ The column page for the SDK way: the first-run choice, "Connect a model", the th
 - Create: `desktop/agent/panel/panel.html`, `desktop/agent/panel/panel.css`, `desktop/agent/panel/panel.js`, `desktop/agent/panel/render.js`, `desktop/agent/panel/preload.js`, `desktop/test/render.test.js`, `desktop/test/panel.rendered.test.js`
 
 **Interfaces:**
-- Consumes: `findNumbers` (Task 2, as `window.statementLinks`), the `sdk:*` channels (Task 8).
+- Consumes: `findStatementTokens` (sub-project 2, as `window.statementLinks`), the `sdk:*` channels (Task 8).
 - Produces: `window.agentPanel` from the preload: `state()`, `chooseWay(way)`, `hide()`, `listModels(draft, secret)`, `connect(draft, secret)`, `removeConnection()`, `start({ resume })`, `send(text)`, `stop()`, `answer(id, allow)`, `lookup(number)`, `reveal(number)`, `pickFile()`, `openExternal(url)`, `onEvent(cb)`. `render.js`: `renderBlocks(markdown): Block[]` where `Block = { tag: 'p' | 'ul' | 'ol', items: Inline[][] }` (`p` has one item) and `Inline = { type: 'text' | 'strong' | 'em' | 'code' | 'number' | 'url', value: string }`.
 
 - [ ] **Step 1: Write the failing render test**
@@ -1937,14 +1878,14 @@ test('HTML in model output is text', () => {
 // page builds DOM nodes from it with textContent, never innerHTML.
 (function (root) {
   'use strict';
-  const findNumbers = (t) => (root.statementLinks || require('../statement-links')).findNumbers(t);
+  const tokens = (t) => (root.statementLinks || require('../statement-links')).findStatementTokens(t);
   const URL_RE = /https:\/\/[^\s<>()]+[^\s<>().,;:!?'"]/g;
 
   function plain(text) {
     const out = [];
     const marks = [];
     for (const m of text.matchAll(URL_RE)) marks.push({ type: 'url', index: m.index, length: m[0].length, value: m[0] });
-    for (const n of findNumbers(text)) if (!marks.some((u) => n.index >= u.index && n.index < u.index + u.length)) marks.push({ type: 'number', index: n.index, length: n.length, value: n.number });
+    for (const n of tokens(text)) if (!marks.some((u) => n.start >= u.index && n.start < u.index + u.length)) marks.push({ type: 'number', index: n.start, length: n.end - n.start, value: n.num });
     marks.sort((a, b) => a.index - b.index);
     let at = 0;
     for (const m of marks) {

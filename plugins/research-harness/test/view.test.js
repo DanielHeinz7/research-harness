@@ -728,8 +728,9 @@ for (const colorScheme of ['light', 'dark']) {
       if (pathname === '/api/session') return route.fulfill({ json: { ok: true, token: 'T' } });
       return route.fulfill({ contentType: pathname === '/api/state' ? 'application/json' : 'text/html', body: pathname === '/api/state' ? JSON.stringify(variantsState) : html });
     });
-    await page.goto('http://session.test/');
+    await page.goto('http://session.test/#c=abc123');
     await page.locator('#poster.active').waitFor();
+    assert.equal(await page.locator('#notice').isVisible(), false, 'the authenticated fixture starts without a session-link error');
     await page.evaluate(() => document.fonts.ready);
     for (const width of [1440, 1024, 900, 320]) {
       await page.setViewportSize({ width, height: 900 });

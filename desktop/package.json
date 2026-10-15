@@ -1,0 +1,21 @@
+{
+  "name": "research-harness-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "check-git": "node scripts/check-git.js"
+  },
+  "dependencies": {
+    "dugite": "3.2.3"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.17.0"
+  },
+  "allowScripts": {
+    "dugite@3.2.3": true
+  }
+}

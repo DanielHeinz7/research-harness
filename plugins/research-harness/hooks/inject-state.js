@@ -36,6 +36,25 @@ function pluginRoot() {
   return process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
 }
 
+// The desktop app asks for a marker to show that the plugin's hooks are loaded
+// in its Claude Code session (spec 2026-10-15-desktop-app-claude-code §5.4).
+// Without the variable nothing changes. A marker that cannot be written is the
+// app's problem to report, never a reason to stop the session.
+function writeAppMarker() {
+  const file = process.env.RESEARCH_HARNESS_APP_MARKER;
+  if (!file || !path.isAbsolute(file)) return;
+  try {
+    const root = pluginRoot();
+    let version = null;
+    try { version = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8')).version || null; } catch (_) { /* no version to report */ }
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ pluginRoot: root, version, pid: process.pid }));
+    fs.renameSync(tmp, file);
+  } catch (_) {
+    // Fail open, as the summary does.
+  }
+}
+
 // Returns { text, maxSeq } or null when there is nothing to inject. Exported
 // so `research-harness status` (Task 8) prints the same summary the session
 // was given; two renderings of the same state would drift.
@@ -121,6 +140,7 @@ function summarize(projectRoot, { seenSeq = 0, variant, key: releaseKey = undefi
 
 function main() {
   try {
+    writeAppMarker();
     const data = readStdin();
     const projectRoot = project.projectDir(data);
     const sessionId = typeof data.session_id === 'string' ? data.session_id : '';

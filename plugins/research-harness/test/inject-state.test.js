@@ -22,13 +22,15 @@ function makeProject(withCanvas = true) {
   return root;
 }
 
-function run(projectRoot, stateDir, data = {}) {
+function run(projectRoot, stateDir, data = {}, extraEnv = {}) {
   // Claude Code sets CLAUDE_PROJECT_DIR; an inherited value would point every
-  // fixture at the real project, so it is stripped here.
-  const { CLAUDE_PROJECT_DIR: _ignored, ...ambient } = process.env;
+  // fixture at the real project, so it is stripped here. An inherited
+  // RESEARCH_HARNESS_APP_MARKER would write a marker from every test, so it is
+  // stripped too and only the marker tests put it back.
+  const { CLAUDE_PROJECT_DIR: _ignored, RESEARCH_HARNESS_APP_MARKER: _ignoredMarker, ...ambient } = process.env;
   const out = childProcess.spawnSync(process.execPath, [script], {
     cwd: projectRoot,
-    env: { ...ambient, RESEARCH_HARNESS_STATE_DIR: stateDir, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    env: { ...ambient, RESEARCH_HARNESS_STATE_DIR: stateDir, CLAUDE_PLUGIN_ROOT: pluginRoot, ...extraEnv },
     input: JSON.stringify({ cwd: projectRoot, session_id: 'sess-1', hook_event_name: 'SessionStart', ...data }),
     encoding: 'utf8',
   });
@@ -69,6 +71,36 @@ test('the summary lists open proposals by statement number', () => {
   const root = makeProject();
   const text = JSON.parse(run(root, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-'))).stdout).hookSpecificOutput.additionalContext;
   assert.match(text, /^Open proposals by number \(cite statements as 3\.1 or 3\.1b\): 1\.2b, 2\.2$/m);
+});
+
+test('with RESEARCH_HARNESS_APP_MARKER set, the hook writes the marker and its output is unchanged', () => {
+  const root = makeProject();
+  const marker = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-marker-')), 'marker.json');
+  const plain = run(root, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')));
+  const marked = run(root, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')), {}, { RESEARCH_HARNESS_APP_MARKER: marker });
+  assert.equal(marked.stdout, plain.stdout);
+  const written = JSON.parse(fs.readFileSync(marker, 'utf8'));
+  assert.equal(written.pluginRoot, pluginRoot);
+  assert.equal(written.version, require('../.claude-plugin/plugin.json').version);
+  assert.equal(typeof written.pid, 'number');
+});
+
+test('the marker is written in a folder without a canvas too, and the hook stays silent there', () => {
+  const empty = makeProject(false);
+  const marker = path.join(empty, 'marker.json');
+  const out = run(empty, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')), {}, { RESEARCH_HARNESS_APP_MARKER: marker });
+  assert.equal(out.stdout, '');
+  assert.ok(fs.existsSync(marker));
+});
+
+test('an unwritable or relative marker path never stops the hook', () => {
+  const root = makeProject();
+  for (const bad of ['/nonexistent-dir/marker.json', 'relative/marker.json']) {
+    const out = run(root, fs.mkdtempSync(path.join(os.tmpdir(), 'rh-state-')), {}, { RESEARCH_HARNESS_APP_MARKER: bad });
+    assert.equal(out.status, 0);
+    assert.match(out.stdout, /research-harness · paper project/);
+  }
+  assert.equal(fs.existsSync(path.join(root, 'relative')), false, 'a relative path is ignored, not resolved against the project');
 });
 
 test('a second session start with the same session id does not repeat decisions already injected', () => {

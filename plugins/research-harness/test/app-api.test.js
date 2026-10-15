@@ -39,18 +39,19 @@ function context(dataDir, root = null) {
 }
 
 // A creates the project, logs one shared entry, commits, pushes to a bare
-// remote. B clones and joins with A's exported key. merge-log merges two
-// copies of one log and refuses two logs that share no entry, so the logs
-// the tests diverge from hold one entry in common (as in merge-log.test.js).
-async function twoPeopleSharingOneProject() {
+// remote. B clones and joins with A's exported key. With `empty`, A shares
+// the log before anything is logged, the usual path for a new project.
+async function twoPeopleSharingOneProject({ empty = false } = {}) {
   const parent = tmp();
   const created = await routes.init({ parent, folder: 'shared', mode: 'brainstorming', title: 'Shared' }, context(tmp()));
   assert.equal(created.ok, true, created.error);
   const a = created.current;
   const named = await runCli(a, ['name', 'A. Author']);
   assert.equal(named.ok, true, named.error);
-  const shared = await runCli(a, ['log', 'DISCOVERY', '1.1', '--body', 'Shared finding']);
-  assert.equal(shared.ok, true, shared.error);
+  if (!empty) {
+    const shared = await runCli(a, ['log', 'DISCOVERY', '1.1', '--body', 'Shared finding']);
+    assert.equal(shared.ok, true, shared.error);
+  }
   sh(a, 'init', '-b', 'main');
   sh(a, 'add', '.');
   // A one-off identity for the first commit only: A keeps no user.email, so
@@ -104,6 +105,20 @@ test('update merges two people appending to the decision log at once', async () 
   assert.equal(r.ok, true, r.error);
   assert.equal(r.merged, true);
   assert.equal((await runCli(b, ['status'])).ok, true);
+  assert.equal(fs.existsSync(path.join(b, '.git', 'MERGE_HEAD')), false);
+});
+
+test('update merges two people who both log after sharing an empty log', async () => {
+  const { a, b } = await twoPeopleSharingOneProject({ empty: true });
+  assert.equal((await runCli(a, ['log', 'DISCOVERY', '1.1', '--body', 'from A'])).ok, true);
+  assert.equal((await runCli(b, ['log', 'DISCOVERY', '1.1', '--body', 'from B'])).ok, true);
+  assert.equal((await routes.send({}, context(tmp(), a))).ok, true);
+  const r = await routes.update({}, context(tmp(), b));
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.merged, true);
+  assert.equal((await runCli(b, ['status'])).ok, true);
+  const log = fs.readFileSync(path.join(b, 'research', 'decisions.md'), 'utf8');
+  assert.match(log, /from A[\s\S]*from B/);
   assert.equal(fs.existsSync(path.join(b, '.git', 'MERGE_HEAD')), false);
 });
 

@@ -184,6 +184,7 @@
   #start h2 { margin-top: 2rem; font-size: var(--t-head); font-weight: 700; }
   #start .recent { margin-top: 0.5rem; max-width: 40rem; }
   #start .outcome { margin-top: 1rem; max-width: 40rem; }
+  #start-restart { margin-top: 0.5rem; }
   .recent .path { margin-left: 0.5rem; }
 
   @media (max-width: 52rem) {
@@ -286,6 +287,11 @@
         <button type="button" class="row-btn" id="btn-new">New project…</button>
       </div>
     </section>
+    <section class="group" id="app-group" aria-labelledby="h-app" hidden>
+      <h2 id="h-app">This app</h2>
+      <p class="outcome" id="out-app" aria-live="polite"></p>
+      <button type="button" class="btn side-btn" id="btn-restart" hidden>Restart now</button>
+    </section>
   </aside>
 
   <main id="main" tabindex="-1">
@@ -301,6 +307,8 @@
         <li><button type="button" class="btn" id="start-clone" aria-describedby="d-clone">Clone from link…</button><p id="d-clone">Downloads a shared paper from a link your co-author gave you, into a new folder.</p></li>
       </ul>
       <p class="outcome" id="out-start" aria-live="polite"></p>
+      <p class="outcome" id="out-app-start" aria-live="polite"></p>
+      <button type="button" class="btn" id="start-restart" hidden>Restart now</button>
       <section id="recent-section" hidden aria-labelledby="h-recent">
         <h2 id="h-recent">Recent projects</h2>
         <ul class="recent" id="recent"></ul>
@@ -622,6 +630,31 @@
     var box = $(id);
     box.textContent = '';
     delete box.dataset.kind;
+  }
+
+  // -- App updates ----------------------------------------------------------
+  // Only the desktop app signed with a Developer ID sends these (sub-project
+  // 4). A browser tab has no host and never shows the line.
+  var UPDATE_TEXT = {
+    downloading: function (m) { return 'Version ' + m.version + ' is downloading. It installs when you quit Placet.'; },
+    ready: function (m) { return 'Version ' + m.version + ' is ready. It installs when you quit Placet.'; },
+    current: function () { return 'You have the newest version.'; },
+    error: function (m) { return m.message; },
+  };
+  function showAppUpdate(msg) {
+    var text = msg && UPDATE_TEXT[msg.state] ? UPDATE_TEXT[msg.state](msg) : null;
+    if (!text) return;
+    var kind = msg.state === 'error' ? 'problem' : 'ok';
+    $('app-group').hidden = false;
+    say('out-app', kind, text);
+    say('out-app-start', kind, text);
+    $('btn-restart').hidden = $('start-restart').hidden = msg.state !== 'ready';
+  }
+  if (host && typeof host.onUpdate === 'function') {
+    host.onUpdate(showAppUpdate);
+    ['btn-restart', 'start-restart'].forEach(function (id) {
+      $(id).addEventListener('click', function () { host.restartToUpdate(); });
+    });
   }
 
   // -- Page states ------------------------------------------------------------

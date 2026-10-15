@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-desktop-app-distribution-design.md` (approved `e6967d3`, corrected from the live `desktop/` state in `e72d774`).
 
-**Execution:** subagent-driven, one Sidequest ticket per task, chosen by the owner on 2026-10-15. Not started. The lane "Desktop-Bau" holds the board for sub-projects 2 to 5 and is the only integrator; the owner first tests sub-project 1 by hand.
+**Execution:** subagent-driven, one Sidequest ticket per task, chosen by the owner on 2026-10-15. Not started. One orchestrating session holds the board for sub-projects 2 to 5 and is the only integrator; the owner first tests sub-project 1 by hand.
 
 ## Global Constraints
 
@@ -28,7 +28,7 @@
 - The app and its program are called `Placet` (`productName`, so `Placet.app/Contents/MacOS/Placet`); `research-harness` stays the CLI's name. The plugin's guard reads a program called `research-harness` as a CLI call and refuses non-reading commands in the same line. No change to the guard for this. `appId` and the DMG file names stay as they are.
 - The owner named the app `Placet` on 2026-10-15. The guard replay was repeated with that name the same day, in an empty folder and in the repository: `Placet` and `placet` are allowed, `research-harness` is refused.
 
-## Cross-plan notes (lane Desktop-Bau, 2026-10-15)
+## Cross-plan notes (orchestrator, 2026-10-15)
 
 Sub-projects 2, 4 and 5 touch the same build and release files. Checked against the three plans; these orders and owners apply:
 

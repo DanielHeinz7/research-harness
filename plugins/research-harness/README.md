@@ -163,7 +163,7 @@ writes a file only if its size and sha256 match the values pinned in
 
 ```console
 $ research-harness init --project ai-assistants-interviews --mode import --title "How senior developers decide whether to rely on an AI assistant"
-Created research/canvas.md and research/decisions.md (profile is-qualitative, mode import).
+Created research/canvas.md, research/decisions.md and research/.gitattributes (profile is-qualitative, mode import).
 Sealing key created at <key file> (mode 0600, outside the repository). It seals every entry of the decision log written on this machine; it is never committed.
 Every element is empty. That is the correct starting state.
 ```

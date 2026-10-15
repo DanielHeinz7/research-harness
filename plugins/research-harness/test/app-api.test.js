@@ -447,7 +447,7 @@ test('Send commits the research files only, also in a repository that holds othe
   assert.equal(sh(a, 'show', '--name-only', '--format=', 'HEAD').trim(), 'research/canvas.md');
   assert.equal(sh(a, 'status', '--porcelain').trim(), 'A  notes.txt', 'the other staged work is untouched');
   assert.deepEqual(sh(remote.path, 'ls-tree', '-r', '--name-only', 'main').trim().split('\n'),
-    ['research/canvas.md', 'research/decisions.md'], 'and the work outside the research folder was not uploaded');
+    ['research/.gitattributes', 'research/canvas.md', 'research/decisions.md'], 'and the work outside the research folder was not uploaded');
 });
 
 test('a project inside another repository does not inherit that repository\'s shared copy', async (t) => {

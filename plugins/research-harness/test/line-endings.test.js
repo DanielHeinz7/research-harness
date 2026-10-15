@@ -9,6 +9,11 @@ const canvas = require('../hooks/lib/canvas');
 const glossary = require('../hooks/lib/glossary');
 const decisions = require('../hooks/lib/decisions');
 const seal = require('../hooks/lib/seal');
+const childProcess = require('node:child_process');
+const os = require('node:os');
+const guard = require('../hooks/guard-promotion');
+const stateLib = require('../hooks/lib/state');
+const cli = path.join(__dirname, '..', 'bin', 'research-harness.js');
 
 const crlf = (s) => s.replace(/\n/g, '\r\n');
 const CANVAS = fs.readFileSync(path.join(__dirname, 'fixtures', 'constant-checking', 'research', 'canvas.md'), 'utf8');
@@ -65,4 +70,41 @@ test('sealedAppend refuses to extend a CRLF log', (t) => {
   const before = fs.readFileSync(file);
   assert.throws(() => seal.sealedAppend(file, { date: '2026-10-15', kind: 'DISCOVERY', ref: '1.1 check', body: 'x', by: 'A' }, key), /line-endings/);
   assert.ok(fs.readFileSync(file).equals(before));
+});
+
+function crlfProject(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-crlf-project-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'research'));
+  fs.writeFileSync(path.join(root, 'research', 'canvas.md'), crlf(CANVAS));
+  fs.writeFileSync(path.join(root, 'research', 'decisions.md'), crlf(decisions.header('crlf')));
+  return root;
+}
+
+test('loadState refuses a CRLF canvas with code line-endings', (t) => {
+  const s = stateLib.loadState(crlfProject(t));
+  assert.equal(s.code, 'line-endings');
+  assert.match(s.error, /^research\/canvas\.md has Windows line endings \(CRLF\) from line 1/);
+});
+
+test('status and review print the refusal and exit non-zero', (t) => {
+  const root = crlfProject(t);
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-crlf-state-'));
+  for (const cmd of ['status', 'review']) {
+    const { CLAUDE_PROJECT_DIR: _p, RESEARCH_HARNESS_DIR: _d, ...env } = process.env;
+    const r = childProcess.spawnSync(process.execPath, [cli, cmd], { cwd: root, env: { ...env, RESEARCH_HARNESS_STATE_DIR: stateDir }, encoding: 'utf8' });
+    assert.notEqual(r.status, 0, cmd);
+    assert.match(r.stdout + r.stderr, /Windows line endings \(CRLF\)/, cmd);
+  }
+});
+
+test('the guard refuses an edit of a CRLF canvas, also one that rewrites it as LF', () => {
+  assert.match(guard.canvasVerdict(crlf(CANVAS), crlf(CANVAS).replace('[proposed]', '[tentative]')), /Windows line endings/);
+  assert.match(guard.canvasVerdict(crlf(CANVAS), CANVAS), /Windows line endings/);
+  assert.equal(guard.canvasVerdict(CANVAS, CANVAS), null);
+});
+
+test('the guard refuses an edit of a CRLF glossary', () => {
+  const before = crlf('---\nglossary-schema: 1\n---\n');
+  assert.match(guard.glossaryVerdict(before, before.replace(/\r\n/g, '\n')), /Windows line endings/);
 });

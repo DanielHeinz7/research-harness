@@ -46,6 +46,11 @@ function loadState(root, { pluginRoot, variant } = {}) {
     const line = lineEndings.firstCrlfLine(text);
     if (line) return { root, paths, error: lineEndings.crlfRefusal(path.relative(root, file), line), code: 'line-endings' };
   }
+  // Where the project's key is named: the main log. A variant's log carries no
+  // `Seal key:` line of its own — the key belongs to the root — so a write to a
+  // variant asks the main log the same questions (SQ-294).
+  const keyLineFile = variant === undefined ? paths.decisions : project.decisionsPath(root);
+  const keyLineText = variant === undefined ? decisionsText : (project.readIfExists(keyLineFile) || '');
   let graph = null;
   let checks = [];
   let profileError = null;
@@ -69,7 +74,17 @@ function loadState(root, { pluginRoot, variant } = {}) {
   // here, once, so the CLI and the view write the same name and neither holds
   // a second reading of where it comes from.
   const who = identity.readName(root);
-  return { root, variant, paths, canvasText, parsed, decisionsText, graph, checks, profileError, key, keyError, by: who.name, nameError: who.error || null };
+  return { root, variant, paths, canvasText, parsed, decisionsText, keyLineFile, keyLineText, graph, checks, profileError, key, keyError, by: who.name, nameError: who.error || null };
+}
+
+// Whether the project's key is held on another machine: a log carries a seal,
+// or the main log names one in its `Seal key:` line (SQ-286). A variant's log
+// has neither of its own — the key belongs to the root — so the main log
+// answers for it too (SQ-294). init refuses in exactly these cases, so every
+// message that would send the researcher to init asks this first.
+function keyHeldElsewhere(state) {
+  const sealed = [state.decisionsText, state.keyLineText].some((text) => parseDecisions(text).entries.some((e) => e.seal !== null));
+  return sealed || seal.keyLineOf(state.keyLineText) !== null;
 }
 
 // Why the ledger cannot take a new entry right now, or null. Checked before
@@ -78,10 +93,17 @@ function ledgerRefusal(state) {
   const refuse = (error) => ({ error, code: 'ledger' });
   if (state.keyError) return refuse(`${state.keyError}; nothing is written.`);
   if (!state.key) {
-    const sealed = parseDecisions(state.decisionsText).entries.some((e) => e.seal !== null);
-    return refuse(sealed
-      ? 'No sealing key for this project on this machine, and the log is already sealed elsewhere; nothing is written. Get the project key from whoever holds it and run research-harness join --key-file <file> --name "<your name>". Do not run init: a new key would make the log read as broken.'
+    return refuse(keyHeldElsewhere(state)
+      ? 'No sealing key for this project on this machine, and the project\'s key is held elsewhere; nothing is written. Get the project key from whoever holds it and run research-harness join --key-file <file> --name "<your name>". Do not run init: a new key would make the log read as broken.'
       : 'No sealing key for this project on this machine, so nothing is written: an entry counts only if it verifies (§4.7). Run `research-harness init --project <slug> --mode <mode>` once here to create the key, then retry.');
+  }
+  // A variant's log has no `Seal key:` line of its own to fail on, so a variant
+  // write is checked against the main log's line, in the main log's words.
+  if (state.variant !== undefined) {
+    const named = seal.keyLineOf(state.keyLineText);
+    if (named && named.fingerprint !== seal.keyFingerprint(state.key)) {
+      return refuse(`The sealing key on this machine is not the project's: the Seal key line in ${path.relative(state.root, state.keyLineFile)} names a different key; nothing is written. Get the project's key from the person who shared the project and join with it.`);
+    }
   }
   const chain = seal.verifyChain(state.decisionsText, state.key);
   if (chain.status === 'broken' && chain.broken.why === 'key') {
@@ -133,4 +155,4 @@ function withMarker(canvasText, statement, marker) {
 
 const QUESTION_ID = /^[1-9]\.\d+$/;
 
-module.exports = { loadState, ledgerRefusal, findQuestion, statementsByHash, replaceMarker, withMarker, QUESTION_ID, defaultPluginRoot };
+module.exports = { loadState, ledgerRefusal, keyHeldElsewhere, findQuestion, statementsByHash, replaceMarker, withMarker, QUESTION_ID, defaultPluginRoot };

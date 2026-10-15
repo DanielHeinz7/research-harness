@@ -1462,6 +1462,7 @@
     anchor: 'this entry or earlier unchecked entries changed',
     chain: 'earlier entries are missing or were removed',
     content: 'this entry\'s heading or text changed',
+    key: 'the key on this device is not the project\'s',
     'line-endings': 'the file has Windows line endings, which research-harness cannot read'
   };
 
@@ -1475,9 +1476,13 @@
   function sealFlag(d, s) {
     if (d.kind !== 'DECISION' || !d.sealStatus || d.sealStatus === 'verified') return '';
     var at = brokenAt(s);
-    var why = d.sealStatus === 'legacy' ? 'it predates checks for changes'
-      : d.sealStatus === 'broken' ? (at && at.seq === d.seq ? 'the saved history changed here: ' + (BREAK_WHY[at.why] || 'the saved record no longer matches') : 'it follows a changed entry' + (at ? ' at #' + at.seq : ''))
-      : 'changes cannot be checked on this device';
+    var why;
+    if (d.sealStatus === 'legacy') why = 'it predates checks for changes';
+    else if (d.sealStatus === 'unverifiable') why = 'changes cannot be checked on this device';
+    // A wrong key leaves no entry changed, so no entry number belongs here.
+    else if (at && at.why === 'key') why = BREAK_WHY.key;
+    else if (at && at.seq === d.seq) why = 'the saved history changed here: ' + (BREAK_WHY[at.why] || 'the saved record no longer matches');
+    else why = 'it follows a changed entry' + (at ? ' at #' + at.seq : '');
     return '<p class="seal-flag" role="note"><span aria-hidden="true">&#9888;</span> Decision record cannot be confirmed: ' + esc(why) + '.</p>';
   }
 
@@ -1543,8 +1548,12 @@
     if (s.keyError) notices.push('<p>Decision history check: ' + esc(s.keyError) + '</p>');
     var broken = brokenAt(s);
     if (broken) {
-      notices.push('<p>Decision history has changed. The first affected entry is <button type="button" class="seq-link" data-view-target="log" data-scroll-to="entry-' + esc(broken.seq) + '">#' + esc(broken.seq) + '</button> ('
-        + esc(BREAK_WHY[broken.why] || 'the saved record no longer matches') + '). Every entry from there on is marked in History. The original record is not restored automatically.</p>');
+      // A wrong key leaves every entry unconfirmed without any entry having
+      // changed, so this notice names the key and links to no entry (SQ-294).
+      notices.push(broken.why === 'key'
+        ? '<p>Decision history cannot be checked here: ' + esc(BREAK_WHY.key) + '.</p>'
+        : '<p>Decision history has changed. The first affected entry is <button type="button" class="seq-link" data-view-target="log" data-scroll-to="entry-' + esc(broken.seq) + '">#' + esc(broken.seq) + '</button> ('
+          + esc(BREAK_WHY[broken.why] || 'the saved record no longer matches') + '). Every entry from there on is marked in History. The original record is not restored automatically.</p>');
     }
     if (!notices.length) return '';
     return '<div class="notices-banner" role="alert">' + notices.join('') + '</div>';

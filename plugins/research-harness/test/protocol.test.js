@@ -110,6 +110,25 @@ test('a broken chain still gives a protocol, headed BROKEN; no marker refuses', 
   assert.match(none.error, /session start/);
 });
 
+// SQ-294 (F3): a key that is not the project's changes no entry, so the section
+// is "not checked here" and names the key — never BROKEN at #0, an entry that
+// no key question was ever asked about.
+test('a key that is not the project\'s is named as the cause, with no entry number', () => {
+  const text = append(`# Decision log — t\n\n${seal.keyLine(KEY)}\n`, [
+    { kind: 'SESSION', ref: 'First supervision', body: 'Session started.', by: 'A. Researcher' },
+    d('5'),
+  ]);
+  const md = protocolOf({ decisionsText: text, canvasText, key: Buffer.alloc(32, 7) }).markdown;
+  assert.match(md, /^\*\*Not checked on this computer\*\* — this key is not the project's: the Seal key line in decisions\.md names a different key; read what follows as unconfirmed\.$/m);
+  assert.match(md, /^Seal: not checked here \(this key is not the project's: the Seal key line in decisions\.md names a different key\)\. Entries #1–#2\.$/m);
+  assert.doesNotMatch(md, /BROKEN at #/);
+  assert.doesNotMatch(md, /#0/);
+  assert.match(md, /finding 5/, 'the section itself is still shown');
+  // The same log under its own key reads as verified, so the header above is
+  // about the key and not about the fixture.
+  assert.match(protocolOf({ decisionsText: text, canvasText, key: KEY }).markdown, /^Seal: verified\. Entries #1–#2\.$/m);
+});
+
 // SQ-203: a glossary acceptance is named by the entry id, and its body is the
 // accepted payload, so the section shows it without reading the glossary the
 // section was written against — and it is never read as a canvas question.

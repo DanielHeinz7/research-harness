@@ -488,6 +488,24 @@ test('History: a changed DECISION carries a visible warning, and the ledger bann
   assert.match(markup, /<div class="notices-banner" role="alert"><p>Decision history has changed\. The first affected entry is <button type="button" class="seq-link" data-view-target="log" data-scroll-to="entry-3">#3<\/button> \(this entry&#39;s heading or text changed\)\./);
 });
 
+// SQ-294 (F3): a key that is not the project's changed no entry, so the banner
+// names the key instead of linking to an entry that was never touched.
+test('History: a key that is not the project\'s is named as the cause, and the banner links to no entry', async () => {
+  const state = JSON.parse(JSON.stringify(brokenState));
+  state.review.ledger.broken = { seq: 0, line: 3, why: 'key' };
+  state.review.ledger.verified = [];
+  state.decisions.forEach((d) => { d.sealStatus = 'broken'; });
+  const markup = (await mount({ state, query: '&view=log' })).app.innerHTML;
+  assert.match(markup, /<div class="notices-banner" role="alert"><p>Decision history cannot be checked here: the key on this device is not the project&#39;s\.<\/p>/);
+  assert.doesNotMatch(markup, /entry-0|data-scroll-to="entry-0"/, 'no link to an entry no key question was asked about');
+  assert.doesNotMatch(markup, /the saved record no longer matches/);
+  assert.match(cardOf(markup, 3), /Decision record cannot be confirmed: the key on this device is not the project&#39;s\./);
+  // The same break in an entry reads as it always did, so the text above is
+  // about the key and not about the banner.
+  const content = (await mount({ state: brokenState, query: '&view=log' })).app.innerHTML;
+  assert.match(content, /The first affected entry is <button[^>]*data-scroll-to="entry-3">#3<\/button>/);
+});
+
 test('History: an intact entry has no integrity status or warning, and a verified log has no banner', async () => {
   const broken = await mount({ state: brokenState, query: '&view=log' });
   for (const seq of [1, 2]) {

@@ -706,7 +706,12 @@ function plural(n, noun) {
 
 // One word for the session summary (§5.2's budget) …
 function ledgerSummary(ledger) {
-  if (ledger.status === 'broken') return `BROKEN at #${ledger.broken.seq} (${ledger.broken.why}) — run research-harness review`;
+  if (ledger.status === 'broken') {
+    // A wrong key breaks no entry: the summary names the key and no entry
+    // number, and points at the step that fixes it (SQ-294).
+    if (ledger.broken.why === 'key') return `${WRONG_KEY} — run research-harness join with the project key`;
+    return `BROKEN at #${ledger.broken.seq} (${ledger.broken.why}) — run research-harness review`;
+  }
   if (ledger.status === 'unverifiable') {
     return ledger.reason === 'no-key' ? 'unverifiable here (no key on this machine)' : `unverifiable (${plural(ledger.legacy.length, 'entry')} predate the seal)`;
   }

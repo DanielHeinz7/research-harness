@@ -7,4 +7,15 @@ contextBridge.exposeInMainWorld('harnessHost', {
   saveFile: (opts) => ipcRenderer.invoke('host:save-file', opts),
   reveal: (p) => ipcRenderer.invoke('host:reveal', p),
   openExternal: (url) => ipcRenderer.invoke('host:open-external', url),
+  agentBounds: (rect) => ipcRenderer.send('agent:bounds', rect),
+  agentProject: (folder) => ipcRenderer.send('agent:project', folder),
+  setUpAgent: () => ipcRenderer.send('agent:setup'),
+  onAgentShown: (cb) => ipcRenderer.on('agent:shown', (e, shown) => cb(shown === true)),
+  onAgentLookup: (cb) => ipcRenderer.on('agent:lookup', async (e, { id, num }) => {
+    let words = null;
+    try { words = await cb(String(num)); } catch (_) { words = null; }
+    ipcRenderer.send('agent:lookup-result', { id, words });
+  }),
+  onAgentReveal: (cb) => ipcRenderer.on('agent:reveal', (e, num) => cb(String(num))),
+  onAgentFocusView: (cb) => ipcRenderer.on('agent:focus-view', () => cb()),
 });

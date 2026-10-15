@@ -121,6 +121,13 @@
   /* -- Frame ------------------------------------------------------------------ */
   #shell { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); height: 100vh; }
   #shell.no-side { grid-template-columns: minmax(0, 1fr); }
+  #shell { --agent: clamp(24rem, 14rem + 22vw, 40rem); }
+  #shell.with-agent { grid-template-columns: var(--side) minmax(0, 1fr) var(--agent); }
+  #shell.no-side.with-agent { grid-template-columns: minmax(0, 1fr) var(--agent); }
+  /* The terminal is drawn by the app over this slot; the page only keeps the room free. */
+  #agent-slot { border-left: 1px solid var(--line); background: var(--paper); min-height: 0; }
+  #agent-slot[hidden] { display: none; }
+  #agent-toggle { display: none; }
   #sidebar {
     min-width: 0; overflow-y: auto;
     background: var(--panel); border-right: 1px solid var(--line);
@@ -178,6 +185,8 @@
     #shell { display: block; height: auto; }
     #sidebar { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
     #session-frame { height: 100vh; min-height: 30rem; }
+    #agent-slot { height: 70vh; border-left: 0; border-top: 1px solid var(--line); }
+    #agent-toggle { display: inline-flex; }
     .start-list li { grid-template-columns: minmax(0, 1fr); }
   }
 
@@ -246,6 +255,8 @@
         <button type="button" class="row-btn" id="btn-clone">Clone from link…</button>
         <button type="button" class="row-btn" id="btn-new">New project…</button>
       </div>
+      <button type="button" class="btn side-btn" id="btn-agent-setup" hidden>Set up the agent…</button>
+      <button type="button" class="btn side-btn" id="agent-toggle" hidden>Hide the agent</button>
       <p class="outcome" id="out-project" aria-live="polite"></p>
     </section>
 
@@ -286,6 +297,8 @@
 
     <iframe id="session-frame" title="Session view" hidden></iframe>
   </main>
+
+  <div id="agent-slot" role="region" aria-label="Agent" hidden></div>
 </div>
 
 <dialog id="dlg" class="dlg" aria-labelledby="dlg-title"></dialog>
@@ -505,6 +518,65 @@
     if (frame.contentWindow) frame.contentWindow.postMessage(message, location.origin);
   }
 
+  // -- Agent column -----------------------------------------------------------
+  // The app draws Claude Code's terminal in its own view over #agent-slot; this
+  // page keeps the room free, reports where it is, and relays statement
+  // numbers between the app and the session view. In a browser there is no
+  // host and so no column. The app gives up on a lookup the session view does
+  // not answer, so the page keeps no timer of its own.
+  var agentShown = false;
+  var agentFolded = false;
+  var lookups = {};
+  var lookupSeq = 0;
+
+  function agentRect() {
+    var slot = $('agent-slot');
+    if (!agentShown || slot.hidden) return null;
+    var r = slot.getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+  }
+  function reportAgent() { if (host && host.agentBounds) host.agentBounds(agentRect()); }
+
+  function showAgent(shown) {
+    agentShown = shown;
+    var narrow = window.matchMedia('(max-width: 52rem)').matches;
+    $('agent-slot').hidden = !shown || (narrow && agentFolded);
+    $('shell').classList.toggle('with-agent', shown && !narrow);
+    $('btn-agent-setup').hidden = shown || !current;
+    $('agent-toggle').textContent = agentFolded ? 'Show the agent' : 'Hide the agent';
+    $('agent-toggle').hidden = !shown;
+    reportAgent();
+  }
+
+  function setUpAgentColumn() {
+    if (!host || !host.onAgentShown) return;
+    host.onAgentShown(showAgent);
+    host.onAgentLookup(function (num) {
+      return new Promise(function (resolve) {
+        if (!current) { resolve(null); return; }
+        var id = ++lookupSeq;
+        lookups[id] = resolve;
+        tellView({ type: 'harness-lookup', id: id, num: num });
+      });
+    });
+    host.onAgentReveal(function (num) { tellView({ type: 'harness-reveal', num: num }); });
+    host.onAgentFocusView(function () { frame.focus(); });
+    window.addEventListener('message', function (event) {
+      if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+      var msg = event.data || {};
+      if (msg.type === 'harness-lookup-result' && lookups[msg.id]) {
+        var resolve = lookups[msg.id];
+        delete lookups[msg.id];
+        resolve(typeof msg.words === 'string' ? msg.words : null);
+      }
+    });
+    new ResizeObserver(reportAgent).observe($('agent-slot'));
+    window.addEventListener('resize', function () { showAgent(agentShown); });
+    $('btn-agent-setup').addEventListener('click', function () { host.setUpAgent(); });
+    $('agent-toggle').addEventListener('click', function () { agentFolded = !agentFolded; showAgent(agentShown); });
+  }
+  setUpAgentColumn();
+
   // -- Outcomes -------------------------------------------------------------
   // One line under the control that caused it. It stays until the next action
   // on that control; nothing here fades or disappears on a timer.
@@ -639,9 +711,11 @@
   async function enterProject(root, reloadView) {
     var changed = root !== current;
     current = root;
+    if (changed && host && host.agentProject) host.agentProject(root);
     lastState = await readState();
     facts = await readFacts();
     renderSidebar(lastState);
+    if (host && host.onAgentShown) showAgent(agentShown);
     show('project');
     if (changed || reloadView || !frame.getAttribute('src')) {
       if (frame.getAttribute('src')) frame.contentWindow.location.replace('/');

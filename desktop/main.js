@@ -56,6 +56,7 @@ function window(url) {
   const origin = new URL(url).origin;
   const win = new BrowserWindow({
     width: 1440,
+    minWidth: 960,
     height: 900,
     title: 'research-harness',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },

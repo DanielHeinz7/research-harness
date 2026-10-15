@@ -20,6 +20,10 @@ test('the app opens, shows the first-start page and keeps the token off disk', {
   const app = await electron.launch({ executablePath: require('electron'), args: [path.join(__dirname, '..')], env: { ...process.env, RESEARCH_HARNESS_TEST_USER_DATA: userData } });
   try {
     const win = await shellPage(app);
+    // The window cannot be dragged narrower than this, so the sidebar and the
+    // session view stay side by side.
+    const minSize = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getMinimumSize());
+    assert.equal(minSize[0], 960);
     await win.getByRole('button', { name: 'New project…' }).waitFor({ timeout: 90000 });
     assert.equal(new URL(win.url()).hash, '');
     const token = await win.evaluate(() => fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"code":"x"}' }).then((r) => r.status));

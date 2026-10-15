@@ -15,8 +15,9 @@ test('narrow navigation reflows instead of using a fixed-width horizontal strip'
   assert.match(html, /#view-tabs\s*\{[^}]*flex-wrap:\s*wrap/);
 });
 
-// Optional, as in showcase-state.test.js: supply the installed Playwright via
-// NODE_PATH. The ordinary plugin suite does not acquire a browser dependency.
+// Optional, as in showcase-state.test.js: Playwright comes from the repository
+// root, installed with `npm install && npm run setup:browsers`. The plugin
+// itself stays dependency-free, so the test skips when it is missing.
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (err) {
   if (err.code !== 'MODULE_NOT_FOUND') throw err;

@@ -11,7 +11,8 @@
 // It serves plugins/research-harness/dashboard/canvas.html and
 // docs/media/showcase-state.json on a free localhost port and opens the page in
 // the mode the view reads fixtures in: `?fixture=<path>`. Playwright is not a
-// dependency of the plugin — it is needed only here (see docs/media/README.md).
+// dependency of the plugin — it is a devDependency of the repository, needed
+// only here and in the rendered tests (see docs/media/README.md).
 
 const fs = require('node:fs');
 const http = require('node:http');
@@ -39,8 +40,9 @@ const USAGE = `Usage: node scripts/capture-session-view.js [options]
   -h, --help       this text
 
 The page is the session view in fixture mode, rendered from
-docs/media/showcase-state.json. Run it from anywhere in the repository;
-the committed screenshots and their commands are listed in docs/media/README.md.`;
+docs/media/showcase-state.json. Run it from anywhere in the repository
+after \`npm install && npm run setup:browsers\`; the committed screenshots
+and their commands are listed in docs/media/README.md.`;
 
 let values;
 try {
@@ -80,7 +82,7 @@ let chromium;
 try {
   ({ chromium } = require('playwright'));
 } catch (_) {
-  console.error('capture-session-view: Playwright is not installed. Get it with `npm i --no-save playwright && npx playwright install chromium`.');
+  console.error('capture-session-view: Playwright is not installed. Get it with `npm install && npm run setup:browsers`.');
   process.exit(1);
 }
 

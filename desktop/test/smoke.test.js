@@ -5,13 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-// Playwright comes through NODE_PATH, as in the plugin's rendered tests; the
-// app does not depend on it. Without it the test is skipped, not failed.
+// Playwright is a devDependency of the repository root, as for the plugin's
+// rendered tests; the app itself does not depend on it. Without it the test is
+// skipped, not failed.
 let electron;
 try { ({ _electron: electron } = require('playwright')); } catch (err) {
   if (err.code !== 'MODULE_NOT_FOUND') throw err;
 }
-const skip = electron ? false : 'Playwright is not installed; run with NODE_PATH pointing at a node_modules that has it.';
+const skip = electron ? false : 'Playwright is not installed; run `npm install && npm run setup:browsers` at the repository root.';
 
 test('the app opens, shows the first-start page and keeps the token off disk', { skip, timeout: 120000 }, async () => {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-desktop-'));

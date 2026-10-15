@@ -63,12 +63,13 @@ wrote:
 | `--out <file>` | PNG to write, default `session-view.png` in the current directory |
 | `--dark` | render the session view in its dark colour scheme |
 
-Playwright is not a dependency of the plugin — only this script needs it. Install
-it where Node can resolve it from the repository, then run the script from
-anywhere in the repository:
+Playwright is not a dependency of the plugin — it is a devDependency of this
+repository, needed by this script and by the rendered tests. Install it and its
+Chromium once from the repository root, then run the script from anywhere in the
+repository:
 
 ```console
-$ npm i --no-save playwright && npx playwright install chromium
+$ npm install && npm run setup:browsers
 ```
 
 ## Committed screenshots
@@ -86,17 +87,16 @@ needed.
 | [element.png](element.png) | Field 3: Research Question | 152417 |
 | [poster-dark.png](poster-dark.png) | Poster, dark | 159932 |
 
-These are the exact capture commands, run from the repository root using an
-existing Playwright installation:
+These are the exact capture commands, run from the repository root after
+`npm install && npm run setup:browsers`:
 
 ```sh
-NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view poster --width 1440 --height 900 --out docs/media/poster.png
-NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view agenda --width 1440 --height 900 --out docs/media/to-talk-about.png
-NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view log --width 1440 --height 900 --out docs/media/history.png
-NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view element-3 --width 1440 --height 900 --out docs/media/element.png
-NODE_PATH=/Users/danielheinz/dh-appdev/dsi-pubs/node_modules node scripts/capture-session-view.js --view poster --dark --width 1440 --height 900 --out docs/media/poster-dark.png
+node scripts/capture-session-view.js --view poster --width 1440 --height 900 --out docs/media/poster.png
+node scripts/capture-session-view.js --view agenda --width 1440 --height 900 --out docs/media/to-talk-about.png
+node scripts/capture-session-view.js --view log --width 1440 --height 900 --out docs/media/history.png
+node scripts/capture-session-view.js --view element-3 --width 1440 --height 900 --out docs/media/element.png
+node scripts/capture-session-view.js --view poster --dark --width 1440 --height 900 --out docs/media/poster-dark.png
 ```
 
-Use your own Playwright installation's path for `NODE_PATH`, or omit it if Node
-can already resolve Playwright. The captures use the committed
+The captures use the committed
 `showcase-state.json`; the people named in them are invented, as described above.

@@ -23,7 +23,9 @@ function toolLine(name, input = {}, cwd) {
     case 'WebFetch': return `Fetched ${input.url}`;
     case 'WebSearch': return `Searched the web for “${input.query}”`;
     case 'Skill': return `Used the skill ${input.skill}`;
-    case 'Task': return `Started a helper: ${input.description}`;
+    // C8: the binary lists the subagent tool as `Task`, the model calls it `Agent`.
+    case 'Task':
+    case 'Agent': return `Started a helper: ${input.description}`;
     default: return `Used ${name}`;
   }
 }

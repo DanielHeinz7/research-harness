@@ -38,6 +38,8 @@ test('tool lines in plain words', () => {
   assert.equal(toolLine('Grep', { pattern: 'uptake' }, '/project'), 'Searched the project for “uptake”');
   assert.equal(toolLine('Skill', { skill: 'research-harness:canvas' }, '/project'), 'Used the skill research-harness:canvas');
   assert.equal(toolLine('Task', { description: 'Check sources' }, '/project'), 'Started a helper: Check sources');
+  // C8: the binary lists the subagent tool as `Task`, the model calls it `Agent`.
+  assert.equal(toolLine('Agent', { description: 'Check sources' }, '/project'), 'Started a helper: Check sources');
   assert.equal(toolLine('Other', {}, '/project'), 'Used Other');
 });
 

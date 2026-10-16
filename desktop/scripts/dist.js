@@ -8,6 +8,7 @@
 //
 // Exit 0 done, 1 a build or a check failed, 2 refused before building.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { readDistribution, builderSettings, preflight, runTool, DistributionError } = require('../lib/distribution');
 const { keepList } = require('../lib/macho');
@@ -16,6 +17,8 @@ const { mergeFeeds } = require('../lib/update-feed');
 
 const ROOT = path.join(__dirname, '..');
 const DUGITE = path.dirname(require.resolve('dugite/package.json'));
+const SDK = path.dirname(require.resolve('@anthropic-ai/claude-agent-sdk'));
+const SDK_MODULES = path.dirname(path.dirname(SDK));
 const PLUGIN_JSON = path.join(ROOT, '..', 'plugins', 'research-harness', '.claude-plugin', 'plugin.json');
 const RELEASE = path.join(ROOT, 'dist', 'release');
 const ROSETTA = '/Library/Apple/usr/share/rosetta/rosetta';
@@ -36,6 +39,30 @@ function fetchGit(arch) {
   if (r.status !== 0) throw new Error(`fetching git${arch ? ` for ${arch}` : ''} failed: ${(r.stderr || r.stdout).trim()}`);
 }
 
+// The agent SDK keeps its Claude Code binary in one package per processor, and
+// npm installs only this Mac's. Like fetchGit, the build for another processor
+// needs its own: the package is unpacked into node_modules, where the app looks
+// for the binary (agent/sdk/binary.js). Already there means nothing to do.
+function fetchAgentBinary(arch) {
+  const name = `@anthropic-ai/claude-agent-sdk-darwin-${arch}`;
+  const dir = path.join(SDK_MODULES, '@anthropic-ai', `claude-agent-sdk-darwin-${arch}`);
+  if (fs.existsSync(dir)) return;
+  const version = JSON.parse(fs.readFileSync(path.join(SDK, 'package.json'), 'utf8')).optionalDependencies?.[name];
+  if (!version) throw new Error(`${name} is not one of the SDK's packages; run npm ci in ${ROOT}`);
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-agent-binary-'));
+  try {
+    const pack = runTool('npm', ['pack', `${name}@${version}`, '--pack-destination', tmp], { cwd: ROOT });
+    if (pack.status !== 0) throw new Error(`fetching ${name}@${version} failed: ${(pack.stderr || pack.stdout).trim()}`);
+    const tarball = fs.readdirSync(tmp).find((f) => f.endsWith('.tgz'));
+    if (!tarball) throw new Error(`npm pack ${name}@${version} wrote no tarball`);
+    fs.mkdirSync(dir, { recursive: true });
+    const unpack = runTool('tar', ['-xzf', path.join(tmp, tarball), '-C', dir, '--strip-components=1']);
+    if (unpack.status !== 0) throw new Error(`unpacking ${name}@${version} failed: ${(unpack.stderr || unpack.stdout).trim()}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 // A rejected notarization names its submission; Apple's log says why.
 function notaryHint(message, dist) {
   const id = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/.exec(message);
@@ -54,9 +81,10 @@ function appIn(dir) {
 async function buildOne(dist, arch, version) {
   const builder = require('electron-builder');
   fetchGit(arch);
+  fetchAgentBinary(arch);
   const outDir = path.join(ROOT, 'dist', arch);
   fs.rmSync(outDir, { recursive: true, force: true });
-  const { config, env } = builderSettings(dist, { version, keep: keepList(path.join(DUGITE, 'git')), outDir });
+  const { config, env } = builderSettings(dist, { version, keep: keepList(path.join(DUGITE, 'git')), outDir, arch });
   const saved = {};
   for (const [k, v] of Object.entries(env)) { saved[k] = process.env[k]; process.env[k] = v; }
   try {

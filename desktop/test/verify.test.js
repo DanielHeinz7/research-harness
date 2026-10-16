@@ -8,6 +8,8 @@ const { verifyApp } = require('../lib/verify');
 
 const GITREL = 'Contents/Resources/app.asar.unpacked/node_modules/dugite/git';
 const NODEPTY = 'Contents/Resources/app.asar.unpacked/node_modules/node-pty/prebuilds/darwin-arm64';
+const SDKPKG = 'Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-';
+const AGENT = `${SDKPKG}arm64`;
 const SIGNED = { signing: 'developer-id', identity: 'Developer ID Application: A. Researcher (AB12CD34EF)', teamId: 'AB12CD34EF', notaryProfile: 'p' };
 const ADHOC_RT = 'CodeDirectory v=20500 flags=0x10002(adhoc,runtime)\nSignature=adhoc\nTeamIdentifier=not set\n';
 const OURS = 'CodeDirectory v=20500 flags=0x10000(runtime)\nAuthority=Developer ID Application: A. Researcher (AB12CD34EF)\nTimestamp=1. Jan 2027 at 10:00:00\nTeamIdentifier=AB12CD34EF\n';
@@ -16,11 +18,11 @@ const MICROSOFT = 'CodeDirectory v=20500 flags=0x10000(runtime)\nAuthority=Devel
 const MACHO = [0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1];
 const SHIM = Buffer.from('#!/bin/sh\nexec true\n');
 
-function fakeApp(t) {
+function fakeApp(t, arch = 'arm64') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-verify-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const app = path.join(dir, 'Placet.app');
-  for (const rel of ['Contents/MacOS/research-harness', `${GITREL}/bin/git`, `${GITREL}/libexec/git-core/git-credential-manager`]) {
+  for (const rel of ['Contents/MacOS/research-harness', `${GITREL}/bin/git`, `${GITREL}/libexec/git-core/git-credential-manager`, `${SDKPKG}${arch}/claude`]) {
     fs.mkdirSync(path.dirname(path.join(app, rel)), { recursive: true });
     fs.writeFileSync(path.join(app, rel), Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1]));
   }
@@ -42,6 +44,7 @@ function fakeRun(over = {}) {
     'codesign -dvvv research-harness': { stderr: ADHOC_RT },
     'codesign -dvvv git': { stderr: ADHOC_RT },
     'codesign -dvvv git-credential-manager': { stderr: MICROSOFT },
+    'codesign -dvvv claude': { stderr: ADHOC_RT },
     'file -b': { stdout: 'Mach-O 64-bit executable arm64\n' },
     'git --version': { stdout: 'git version 2.47.1\n' },
     'git credential-manager': { stdout: '2.9.0\n' },
@@ -74,7 +77,7 @@ test('a Mach-O file without hardened runtime is a problem', (t) => {
 
 test('developer-id: own team plus kept Microsoft signature passes; an ad-hoc file does not', (t) => {
   const accepted = { 'spctl --assess': { status: 0, stderr: 'accepted\nsource=Notarized Developer ID\n' } };
-  const good = fakeRun({ ...accepted, 'codesign -dvvv research-harness': { stderr: OURS }, 'codesign -dvvv git': { stderr: OURS } });
+  const good = fakeRun({ ...accepted, 'codesign -dvvv research-harness': { stderr: OURS }, 'codesign -dvvv git': { stderr: OURS }, 'codesign -dvvv claude': { stderr: OURS } });
   const app = fakeApp(t);
   const ok = verifyApp(app, { dist: SIGNED, arch: 'arm64', run: good });
   assert.deepEqual(ok.problems, []);
@@ -97,9 +100,26 @@ test('git for the wrong processor and a broken credential manager are problems',
   assert.ok(problems.some((p) => /credential manager does not start: Abort trap: 6/.test(p)));
 });
 
+test('the agent binary is checked for the processor this build is for', (t) => {
+  const app = fakeApp(t);
+  const inner = fakeRun();
+  const answering = (stdout) => (cmd, args) => {
+    const file = args[args.length - 1];
+    if (path.basename(cmd) === 'file' && file.includes('claude-agent-sdk')) return { status: 0, stdout, stderr: '' };
+    return inner(cmd, args);
+  };
+  const problems = (stdout) => verifyApp(app, { dist: { signing: 'none' }, arch: 'arm64', run: answering(stdout) }).problems;
+  assert.deepEqual(problems('Mach-O 64-bit executable arm64\n'), []);
+  const wrong = problems('Mach-O 64-bit executable x86_64\n');
+  assert.ok(wrong.some((p) => /claude-agent-sdk-darwin-arm64\/claude is not built for arm64: Mach-O 64-bit executable x86_64/.test(p)), wrong.join('\n'));
+  fs.rmSync(path.join(app, `${AGENT}/claude`)); // a build that fetched no binary for its processor
+  const missing = problems('Mach-O 64-bit executable arm64\n');
+  assert.ok(missing.some((p) => /claude-agent-sdk-darwin-arm64\/claude is missing: this build carries no agent binary for arm64/.test(p)), missing.join('\n'));
+});
+
 test('an Intel build on a Mac without Rosetta is checked but not started', (t) => {
   const run = fakeRun({ 'file -b': { stdout: 'Mach-O 64-bit executable x86_64\n' } });
-  const { problems, notes } = verifyApp(fakeApp(t), { dist: { signing: 'none' }, arch: 'x64', run, rosetta: false });
+  const { problems, notes } = verifyApp(fakeApp(t, 'x64'), { dist: { signing: 'none' }, arch: 'x64', run, rosetta: false });
   assert.deepEqual(problems, []);
   assert.ok(notes.some((n) => /not started/.test(n)));
   assert.ok(!run.calls.some((c) => c.startsWith('git ')));

@@ -39,6 +39,15 @@ const BASE = {
   afterPack: path.join(ROOT, 'scripts', 'after-pack.js'),
 };
 
+// The agent SDK ships its Claude Code binary as one package per processor, and
+// npm installs only this Mac's. scripts/dist.js fetches the package for the
+// processor it is building; the packages for the others stay out of the app.
+const PROCESSORS = ['arm64', 'x64'];
+
+function agentBinaryExcludes(arch) {
+  return PROCESSORS.filter((p) => p !== arch).map((p) => `!node_modules/@anthropic-ai/claude-agent-sdk-darwin-${p}/**`);
+}
+
 class DistributionError extends Error {}
 
 function readDistribution(file = DIST_FILE) {
@@ -69,7 +78,10 @@ function readDistribution(file = DIST_FILE) {
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function builderSettings(dist, { version, keep, outDir, keychain = LOGIN_KEYCHAIN }) {
+// `arch` is the processor this build is for. With one, the app carries the agent
+// SDK's binary for that processor only; without one, the settings leave the
+// packages node_modules holds alone.
+function builderSettings(dist, { version, keep, outDir, arch, keychain = LOGIN_KEYCHAIN }) {
   const signed = dist.signing === 'developer-id';
   const entitlements = path.join(ROOT, signed ? 'entitlements.mac.plist' : 'entitlements.adhoc.plist');
   // electron-builder rewrites config.files in place, replacing the patterns
@@ -77,6 +89,7 @@ function builderSettings(dist, { version, keep, outDir, keychain = LOGIN_KEYCHAI
   // build would otherwise read `.from` on the nulls it left behind.
   const config = {
     ...structuredClone(BASE),
+    files: [...BASE.files, ...(arch ? agentBinaryExcludes(arch) : [])],
     directories: { output: outDir },
     extraMetadata: { version, harnessSigning: dist.signing },
     mac: {

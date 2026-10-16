@@ -12,6 +12,14 @@ function gitDir(app) {
   return path.join(app, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules', 'dugite', 'git');
 }
 
+// The agent SDK's Claude Code binary, the program the app starts as its own
+// agent; agent/sdk/binary.js looks for it under app.asar.unpacked. The SDK
+// ships one package per processor, and scripts/dist.js fetches the one for the
+// processor it is building, so the folder named here has to hold this build's.
+function agentBinary(app, arch) {
+  return path.join(app, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-darwin-${arch}`, 'claude');
+}
+
 // The environment desktop/main.js gives the bundled git.
 function gitEnv(dir) {
   return { ...process.env, GIT_EXEC_PATH: path.join(dir, 'libexec', 'git-core'), GIT_CONFIG_SYSTEM: path.join(dir, 'etc', 'gitconfig'), GIT_TEMPLATE_DIR: path.join(dir, 'share', 'git-core', 'templates') };
@@ -62,6 +70,16 @@ function verifyApp(app, { dist, arch, run = runTool, rosetta = true }) {
   for (const file of nodePtyBinaries(app, arch)) {
     const kind = run('file', ['-b', file]);
     if (!kind.stdout.includes(FILE_ARCH[arch])) problems.push(`${path.relative(app, file)} is not built for ${arch}: ${firstLine(kind.stdout)}`);
+  }
+  // Unlike node-pty, a build that carries no agent binary at all is the fault
+  // this check is here for; the package's own name carries the processor, so
+  // file's error text cannot be asked which processor it is.
+  const agent = agentBinary(app, arch);
+  if (!fs.existsSync(agent)) {
+    problems.push(`${path.relative(app, agent)} is missing: this build carries no agent binary for ${arch}`);
+  } else {
+    const kind = run('file', ['-b', agent]);
+    if (!kind.stdout.includes(FILE_ARCH[arch])) problems.push(`${path.relative(app, agent)} is not built for ${arch}: ${firstLine(kind.stdout)}`);
   }
   for (const name of SHIMS) {
     const file = path.join(app, 'Contents', 'Resources', 'shims', name);

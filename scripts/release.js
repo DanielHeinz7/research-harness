@@ -24,6 +24,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const cp = require("node:child_process");
+const { ASSET, buildWindowsZip } = require("./windows-zip");
 
 const REPO = path.resolve(__dirname, "..");
 const PLUGIN = path.join(REPO, "plugins", "research-harness");
@@ -289,6 +290,8 @@ function main(argv) {
   const message = ["Release " + opt.version + ": " + opt.summary].concat(opt.trailer ? [opt.trailer] : []);
   const commit = ["commit"].concat(message.reduce(function (a, m) { return a.concat(["-m", m]); }, []));
   const moved = fragments();
+  let zipDir = null;
+  let zipFile = null;
   const tasks = [
     { label: "set version " + opt.version + " in .claude-plugin/marketplace.json (twice) and plugins/research-harness/.claude-plugin/plugin.json", do: function () { setVersions(opt.version); return { status: 0, stdout: "", stderr: "" }; } },
     { label: "git add .claude-plugin/marketplace.json plugins/research-harness/.claude-plugin/plugin.json", do: function () { return git(["add", MANIFESTS[0], MANIFESTS[1]]); } },
@@ -306,15 +309,22 @@ function main(argv) {
     { label: "git tag -a " + tag + " -m " + JSON.stringify("Release " + opt.version), do: function () { return git(["tag", "-a", tag, "-m", "Release " + opt.version]); } },
     { label: "git push origin main", do: function () { return git(["push", "origin", "main"]); } },
     { label: "git push origin " + tag, do: function () { return git(["push", "origin", tag]); } },
-    { label: "gh release create " + tag + (app ? " <desktop/dist/release/*>" : "") + " --verify-tag --title " + opt.version + " --notes-file <CHANGELOG.md section " + opt.version + "> --latest", do: function () {
+    { label: "build " + ASSET, do: function () {
+      // Built after the version commit, so the zip carries the released plugin. The gh step removes the folder.
+      zipDir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-release-zip-"));
+      zipFile = buildWindowsZip({ version: opt.version, out: zipDir, repo: REPO });
+      return { status: 0, stdout: "", stderr: "" };
+    } },
+    { label: "gh release create " + tag + " <" + ASSET + ">" + (app ? " <desktop/dist/release/*>" : "") + " --verify-tag --title " + opt.version + " --notes-file <CHANGELOG.md section " + opt.version + "> --latest", do: function () {
       // gh reads the notes from a file; it lives only as long as this call.
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-release-notes-"));
       const notesFile = path.join(dir, tag + ".md");
       try {
         fs.writeFileSync(notesFile, notes);
-        return run("gh", ["release", "create", tag].concat(app ? appFiles() : [], ["--verify-tag", "--title", opt.version, "--notes-file", notesFile, "--latest"]));
+        return run("gh", ["release", "create", tag, zipFile].concat(app ? appFiles() : [], ["--verify-tag", "--title", opt.version, "--notes-file", notesFile, "--latest"]));
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(zipDir, { recursive: true, force: true });
       }
     } },
     { label: "claude plugin marketplace update research-harness", do: function () { return run("claude", ["plugin", "marketplace", "update", "research-harness"]); } },

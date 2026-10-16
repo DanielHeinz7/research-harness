@@ -48,6 +48,10 @@ function fixture(t) {
   }
   fs.mkdirSync(bin);
   fs.copyFileSync(SCRIPT, path.join(repo, "scripts", "release.js"));
+  fs.copyFileSync(path.join(__dirname, "windows-zip.js"), path.join(repo, "scripts", "windows-zip.js"));
+  fs.cpSync(path.join(__dirname, "..", "windows"), path.join(repo, "windows"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "plugins", "research-harness", "bin"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "plugins", "research-harness", "bin", "research-harness.js"), "// stub\n");
   fs.writeFileSync(path.join(repo, ".gitignore"), "verification/local/\n");
   fs.writeFileSync(path.join(repo, "CHANGELOG.md"), CHANGELOG);
   fs.mkdirSync(path.join(repo, ".release", "unreleased"), { recursive: true });
@@ -63,6 +67,7 @@ function fixture(t) {
   const ghNotes = path.join(dir, "gh-notes.md");
   fs.writeFileSync(path.join(bin, "gh"), '#!/bin/sh\n[ -n "$FAKE_GH_FAIL" ] && { echo "gh broke" >&2; exit 1; }\necho "$@" >> "' + ghLog + '"\n'
     + 'if [ "$1 $2" = "release download" ]; then prev=""; for a in "$@"; do [ "$prev" = "--dir" ] && dir="$a"; prev="$a"; done; cp "$FAKE_GH_SERVED"/* "$dir"/; echo "gh ok"; exit 0; fi\n'
+    + 'for a in "$@"; do case "$a" in *research-harness-windows.zip) [ -f "$a" ] && echo "zip existed" >> "' + ghLog + '.zip";; esac; done\n'
     + 'prev=""; for a in "$@"; do [ "$prev" = "--notes-file" ] && cp "$a" "' + ghNotes + '"; prev="$a"; done\necho "gh ok"\n', { mode: 0o755 });
   sh(dir, "git", ["init", "--bare", "-b", "main", remote]);
   sh(repo, "git", ["init", "-b", "main"]);
@@ -182,7 +187,8 @@ test("--dry-run runs the checks, prints the planned commands and writes nothing"
   assert.match(r.stdout, /git mv \.release\/unreleased\/\*\.md \.release\/0\.3\.7\/ \(2 fragments\)/);
   assert.match(r.stdout, /git tag -a v0\.3\.7/);
   assert.match(r.stdout, /git push origin v0\.3\.7/);
-  assert.match(r.stdout, /gh release create v0\.3\.7 --verify-tag --title 0\.3\.7 --notes-file <CHANGELOG\.md section 0\.3\.7> --latest/);
+  assert.match(r.stdout, /build research-harness-windows\.zip/);
+  assert.match(r.stdout, /gh release create v0\.3\.7 <research-harness-windows\.zip> --verify-tag --title 0\.3\.7 --notes-file <CHANGELOG\.md section 0\.3\.7> --latest/);
   assert.match(r.stdout, /The 0\.3\.7 notes\./, "the dry run shows the notes it would publish");
   assert.ok(!r.stdout.includes("Older notes"), "only the version's own section");
   assert.deepStrictEqual(fs.readdirSync(path.join(fx.dir, "tmp")), [], "a dry run writes no notes file");
@@ -251,8 +257,9 @@ test("a full release sets all three versions, commits, pushes, updates the plugi
   assert.strictEqual(sh(fx.repo, "git", ["cat-file", "-t", "v0.4.0"]), "tag", "an annotated tag");
   assert.strictEqual(sh(fx.repo, "git", ["rev-parse", "v0.4.0^{commit}"]), sh(fx.repo, "git", ["rev-parse", "HEAD"]));
   assert.strictEqual(sh(fx.repo, "git", ["--git-dir", fx.remote, "rev-parse", "v0.4.0^{commit}"]), sh(fx.repo, "git", ["rev-parse", "HEAD"]));
-  assert.match(fs.readFileSync(fx.ghLog, "utf8"), /^release create v0\.4\.0 --verify-tag --title 0\.4\.0 --notes-file \S+ --latest\n$/);
-  assert.deepStrictEqual(fs.readdirSync(path.join(fx.dir, "tmp")), [], "the notes file is gone after gh");
+  assert.match(fs.readFileSync(fx.ghLog, "utf8"), /^release create v0\.4\.0 \S+\/research-harness-windows\.zip --verify-tag --title 0\.4\.0 --notes-file \S+ --latest\n$/);
+  assert.strictEqual(fs.readFileSync(fx.ghLog + ".zip", "utf8"), "zip existed\n", "the zip existed when gh ran");
+  assert.deepStrictEqual(fs.readdirSync(path.join(fx.dir, "tmp")), [], "the notes file and the zip are gone after gh");
   assert.strictEqual(fs.readFileSync(fx.ghNotes, "utf8"), "You can now do the big thing.\n\n### Fixed\n\n- A small thing.\n");
 });
 

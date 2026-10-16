@@ -30,7 +30,10 @@ const BASE = {
     { from: 'askpass.sh', to: 'askpass.sh' },
     { from: 'agent/shims', to: 'shims' },
   ],
-  asarUnpack: ['node_modules/dugite/**', 'node_modules/node-pty/**'],
+  // The agent SDK's Claude Code binary is a program the app starts, so it stays
+  // outside app.asar like dugite's git; agent/sdk/binary.js looks for it under
+  // app.asar.unpacked.
+  asarUnpack: ['node_modules/dugite/**', 'node_modules/node-pty/**', 'node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**'],
   // electron-builder 26 drops dugite's `.dll` files on macOS, and the credential
   // manager does not start without them; see scripts/after-pack.js.
   afterPack: path.join(ROOT, 'scripts', 'after-pack.js'),

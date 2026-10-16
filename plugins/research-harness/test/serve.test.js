@@ -593,10 +593,12 @@ test('research-harness serve --app starts without a project and prints the app U
   let stdout = '';
   child.stdout.setEncoding('utf8');
   await new Promise((resolve, reject) => {
-    child.stdout.on('data', (c) => { stdout += c; if (stdout.includes('\n')) resolve(); });
+    child.stdout.on('data', (c) => { stdout += c; if (stdout.includes('Keep this window open')) resolve(); });
     child.once('exit', () => reject(new Error(`serve exited early: ${stdout}`)));
   });
-  const m = /^http:\/\/127\.0\.0\.1:(\d+)\/app#c=([0-9a-f]{32})\n$/.exec(stdout);
+  // The URL first, then what the start says to the person (SQ-313): the
+  // keep-open line, and no Git line while git is found.
+  const m = /^http:\/\/127\.0\.0\.1:(\d+)\/app#c=([0-9a-f]{32})\nresearch-harness is running in your browser\. Keep this window open while you work; close it to stop\.\n$/.exec(stdout);
   assert.ok(m, stdout);
   const srv = { port: Number(m[1]), code: m[2] };
   const token = await redeem(srv);
@@ -610,6 +612,28 @@ test('research-harness serve --app starts without a project and prints the app U
   child.kill('SIGINT');
   assert.equal(await exited, 0);
   assert.ok(!stdout.includes(token));
+});
+
+// Review Focus 5: git missing is a line, not a refusal. The start still prints
+// the URL; the Git line comes before the keep-open line.
+test('serve --app without git still starts and says that git was not found', { skip: process.platform === 'win32' }, async (t) => {
+  const child = childProcess.spawn(process.execPath, [cli, 'serve', '--app', '--app-data', appDataDir(), '--no-open'], {
+    cwd: appDataDir(),
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, RESEARCH_HARNESS_GIT: path.join(os.tmpdir(), 'rh-no-such-dir', 'git') },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  await new Promise((resolve, reject) => {
+    child.stdout.on('data', (c) => { stdout += c; if (stdout.includes('Keep this window open')) resolve(); });
+    child.once('exit', () => reject(new Error(`serve exited early: ${stdout}`)));
+  });
+  const lines = stdout.trimEnd().split('\n');
+  assert.match(lines[0], /^http:\/\/127\.0\.0\.1:\d+\/app#c=[0-9a-f]{32}$/);
+  assert.match(lines[1], /^Git was not found\. /);
+  assert.match(lines[2], /^research-harness is running in your browser\. Keep this window open/);
+  assert.equal(lines.length, 3, stdout);
 });
 
 test('the usage names serve --app', () => {

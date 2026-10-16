@@ -3,12 +3,14 @@
 // mode under /api/app/<name>. Each takes the parsed body and the app context
 // and resolves to { ok: true, ... } or { ok: false, code, error }.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const project = require('./project');
 const identity = require('./identity');
 const seal = require('./seal');
 const appGit = require('./app-git');
 const store = require('./app-store');
+const host = require('./host');
 const { runCli } = require('./app-cli');
 
 const MODES = ['brainstorming', 'seed', 'import'];
@@ -110,6 +112,18 @@ function storeName(b, root) {
   if (b.name.trim() !== personName(root)) identity.writeName(b.name);
 }
 
+const platformOf = (ctx) => ctx.platform || process.platform;
+const envOf = (ctx) => ctx.env || process.env;
+
+// A folder OneDrive syncs gets its .git files changed and locked behind
+// git's back, so New project and Clone refuse one (Open only warns).
+function oneDriveRefusal(ctx, target) {
+  const root = host.oneDriveOf(target, { platform: platformOf(ctx), env: envOf(ctx) });
+  if (!root) return null;
+  const example = path.win32.join(os.homedir(), 'research');
+  return { ok: false, code: 'onedrive', error: `This folder is synced by OneDrive (${root}). Git and OneDrive both change the files in .git and get in each other's way. Choose a folder outside OneDrive, for example ${example}.` };
+}
+
 function makeCurrent(ctx, root) {
   ctx.setRoot(root);
   return { ok: true, current: root, recent: store.remember(ctx.dataDir, root) };
@@ -120,11 +134,15 @@ const routes = {
     ok: true,
     current: ctx.getRoot(),
     recent: store.readStore(ctx.dataDir).recent.filter(isProject),
+    host: host.hostInfo({ platform: platformOf(ctx), home: os.homedir() }),
   }),
 
   open: async (b, ctx) => {
     if (!isProject(b.root)) return { ok: false, code: 'not-project', error: 'This folder has no research canvas (research/canvas.md).' };
-    return makeCurrent(ctx, b.root);
+    const made = makeCurrent(ctx, b.root);
+    return host.oneDriveOf(b.root, { platform: platformOf(ctx), env: envOf(ctx) })
+      ? { ...made, warning: 'This project lies in a folder synced by OneDrive. If git reports odd changes or locked files, move it to a folder outside OneDrive.' }
+      : made;
   },
 
   init: async (b, ctx) => {
@@ -134,6 +152,8 @@ const routes = {
     const badName = nameRefusal(b);
     if (badName) return invalid(badName, 'name');
     const root = path.join(b.parent, b.folder);
+    const od = oneDriveRefusal(ctx, root);
+    if (od) return od;
     if (fs.existsSync(root) && fs.readdirSync(root).length > 0) return { ok: false, code: 'exists', error: `${root} already exists and is not empty.` };
     fs.mkdirSync(root, { recursive: true });
     const args = ['init', '--project', b.folder, '--mode', b.mode];
@@ -149,6 +169,10 @@ const routes = {
   },
 
   clone: async (b, ctx) => {
+    if (typeof b.parent === 'string' && typeof b.folder === 'string') {
+      const od = oneDriveRefusal(ctx, path.join(b.parent, b.folder));
+      if (od) return od;
+    }
     const r = await appGit.clone({ url: b.url, parent: b.parent, folder: b.folder });
     if (!r.ok) return r;
     if (!isProject(r.root)) return { ok: false, code: 'not-project', error: 'The cloned folder has no research canvas (research/canvas.md).', root: r.root };
@@ -297,5 +321,17 @@ const routes = {
     return invalid('Unknown session action.');
   }),
 };
+
+// A path pasted from File Explorer's "Copy as path" arrives in quotes, and one
+// typed by hand may carry spaces; both reach the same checks as a clean path.
+const PATH_KEYS = ['root', 'parent', 'out', 'keyFile'];
+for (const name of Object.keys(routes)) {
+  const handler = routes[name];
+  routes[name] = (b, ctx) => {
+    const body = { ...(b || {}) };
+    for (const k of PATH_KEYS) if (k in body) body[k] = host.normalizePath(body[k]);
+    return handler(body, ctx);
+  };
+}
 
 module.exports = { routes, isProject, appRefusal };

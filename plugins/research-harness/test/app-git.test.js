@@ -349,3 +349,21 @@ test('a local command has no deadline: it is not a network step', { skip: proces
     delete process.env.RESEARCH_HARNESS_GIT_TIMEOUT_MS;
   }
 });
+
+// SQ-313: the Windows hint rides on the same sentence; elsewhere it is unchanged.
+test('the git-missing sentence ends with the platform hint, and is whole without one', async () => {
+  const host = require('../hooks/lib/host');
+  process.env.RESEARCH_HARNESS_GIT = '/nonexistent/git';
+  try {
+    const r = await appGit.pull(tmp(), 'x');
+    assert.equal(r.code, 'git-missing');
+    assert.ok(r.error.endsWith(host.gitMissingHint(process.platform)), r.error);
+    if (process.platform !== 'win32') {
+      assert.equal(r.error, 'The program git was not found (/nonexistent/git), and this step needs it. The desktop app brings its own; in a browser, install git first.');
+    } else {
+      assert.match(r.error, /git-scm\.com\/download\/win/);
+    }
+  } finally {
+    delete process.env.RESEARCH_HARNESS_GIT;
+  }
+});

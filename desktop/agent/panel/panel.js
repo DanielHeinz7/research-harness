@@ -110,7 +110,7 @@
         else {
           setGuard(false, 'Guard off'); $('h-state').textContent = 'Stopped';
           const again = el('button', null, 'Try again'); again.type = 'button'; again.addEventListener('click', () => begin(false));
-          add(problemItem(ev.cause === 'sandbox' ? 'The agent’s sandbox could not start, so the agent stays off.' : `The guard did not start, so the agent stays off. ${ev.cause}`, again));
+          add(problemItem(agentRender.guardLine(ev.cause), again));
           setWorking(false); $('send').disabled = true; $('h-state').textContent = 'Stopped';
         }
         break;

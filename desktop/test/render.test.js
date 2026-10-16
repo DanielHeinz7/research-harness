@@ -2,7 +2,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 global.statementLinks = require('../agent/statement-links');
-const { renderBlocks } = require('../agent/panel/render');
+const { renderBlocks, guardLine } = require('../agent/panel/render');
+
+test('the guard-off line: a cause that says what happened stands alone, a hook that did not run gets the sentence before it', () => {
+  const noPaper = 'The research-harness guard started but found no paper project here. Open a folder made with New project… or Clone…';
+  assert.equal(guardLine(noPaper), noPaper);                              // no "did not start" in front of "started"
+  assert.equal(guardLine('The research-harness plugin did not load.'), 'The research-harness plugin did not load.');
+  assert.equal(guardLine('The agent did not start within 30 seconds.'), 'The agent did not start within 30 seconds.');
+  assert.equal(guardLine('The research-harness start hook failed.'), 'The guard did not start, so the agent stays off. The research-harness start hook failed.');
+  assert.match(guardLine('The guard’s start hook did not run. Settings installed on this Mac by your organisation may turn hooks off.'), /^The guard did not start, so the agent stays off\. The guard’s start hook did not run\./);
+  assert.equal(guardLine('sandbox'), 'The agent’s sandbox could not start, so the agent stays off.');
+});
 
 test('paragraphs, lists, emphasis and code', () => {
   assert.deepEqual(renderBlocks('One **two** *three* `four`\n\n- a\n- b\n\n1. c'), [

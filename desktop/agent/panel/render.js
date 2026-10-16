@@ -50,7 +50,16 @@
     return blocks;
   }
 
-  const api = { renderBlocks };
+  // The line shown when the guard did not come on. A cause says what happened
+  // on its own ("started but found no paper project" must not follow "did not
+  // start"); only a start hook that did not run needs the sentence before it.
+  function guardLine(cause) {
+    if (cause === 'sandbox') return 'The agent’s sandbox could not start, so the agent stays off.';
+    if (/start hook/i.test(cause)) return `The guard did not start, so the agent stays off. ${cause}`;
+    return String(cause);
+  }
+
+  const api = { renderBlocks, guardLine };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.agentRender = api;
 })(typeof self !== 'undefined' ? self : this);

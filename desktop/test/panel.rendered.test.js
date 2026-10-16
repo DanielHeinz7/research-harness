@@ -302,6 +302,15 @@ both('errors are told in the column with the next step, never as a toast', async
     await page.getByRole('button', { name: 'Try again' }).waitFor();
     assert.equal(await page.locator('#h-guard-text').textContent(), 'Guard off');
     assert.equal(await page.locator('#send').isDisabled(), true);
+    assert.equal(await page.locator('#thread li.problem').last().locator('span').textContent(), 'The agent did not start within 30 seconds.');
+    // A guard that started but found no paper project does not say it did not start.
+    const noPaper = 'The research-harness guard started but found no paper project here. Open a folder made with New project… or Clone…';
+    await emit(page, { kind: 'guard', state: 'off', cause: noPaper });
+    await page.waitForFunction((t) => [...document.querySelectorAll('#thread li.problem span')].some((s) => s.textContent === t), noPaper);
+    assert.equal(await page.locator('#thread li.problem').last().locator('span').textContent(), noPaper);
+    // A start hook that did not run keeps the sentence before it.
+    await emit(page, { kind: 'guard', state: 'off', cause: 'The research-harness start hook failed.' });
+    await page.waitForFunction(() => [...document.querySelectorAll('#thread li.problem span')].some((s) => s.textContent === 'The guard did not start, so the agent stays off. The research-harness start hook failed.'));
   } finally { await closeAll(page); }
 });
 

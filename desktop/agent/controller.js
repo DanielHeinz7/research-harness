@@ -36,6 +36,10 @@ function createController(deps) {
 
   async function refresh() {
     if (!state.project) return set({ phase: 'no-project' });
+    // With the SDK way chosen, Claude Code stays off: nothing is checked,
+    // installed or started, and this column's first run is skipped. The SDK
+    // way's own controller owns the column then.
+    if (readAgentStore(deps.dataDir).way === 'sdk') return;
     if (proc && (state.phase === 'running' || state.phase === 'step-running')) return;
     set({ phase: 'checking' });
     found = await deps.locate();

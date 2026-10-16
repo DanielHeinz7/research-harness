@@ -11,6 +11,7 @@ const canvasLib = require('../hooks/lib/canvas');
 const glossaryLib = require('../hooks/lib/glossary');
 const decisions = require('../hooks/lib/decisions');
 const identity = require('../hooks/lib/identity');
+const host = require('../hooks/lib/host');
 const profileLib = require('../hooks/lib/profile');
 const seal = require('../hooks/lib/seal');
 const stateLib = require('../hooks/lib/state');
@@ -942,6 +943,13 @@ function serve(flags) {
   const root = project.projectDir({});
   const appMode = flags.app === true;
   if (!appMode && !fs.existsSync(project.canvasPath(root))) return fail('This is not a paper project: no research/canvas.md. Run research-harness init first.');
+  let startLines = [];
+  if (appMode) {
+    const probe = childProcess.spawnSync(require('../hooks/lib/app-git').gitBinary(), ['--version'], { encoding: 'utf8' });
+    const notes = host.startNotes({ platform: process.platform, nodeVersion: process.versions.node, gitFound: !probe.error });
+    if (notes.refuse) return fail(notes.refuse);
+    startLines = notes.lines;
+  }
   const canvasServe = require('./canvas-serve');
   const options = appMode
     ? {
@@ -952,6 +960,7 @@ function serve(flags) {
   canvasServe.start({ ...options, pluginRoot: pluginRoot(), log: say }).then((running) => {
     const url = appMode ? running.appUrl : running.url;
     say(url);
+    for (const line of startLines) say(line);
     if (flags['no-open'] !== true) canvasServe.openInBrowser(url);
     process.once('SIGINT', () => {
       running.close().then(() => process.exit(0));
@@ -1260,6 +1269,8 @@ function shimText() {
 }
 
 function installCli(flags) {
+  const refusal = host.installCliRefusal(process.platform);
+  if (refusal) return fail(refusal, 2);
   if (flags.dir !== undefined && typeof flags.dir !== 'string') return fail(`--dir needs a path.\n${USAGE}`, 2);
   const dir = path.resolve(typeof flags.dir === 'string' ? flags.dir : defaultBinDir());
   const target = path.join(dir, SHIM_NAME);

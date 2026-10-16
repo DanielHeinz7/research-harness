@@ -537,3 +537,50 @@ test('appRefusal: a ledger refusal without a key and a missing name become the a
   const invalid = { ok: false, code: 'invalid', error: 'The body may not contain a line that starts like an entry heading (`## [#`).' };
   assert.equal(appRefusal(invalid, root), invalid);
 });
+
+// SQ-313 (Windows in the browser): paths, host, OneDrive.
+async function newProject() {
+  const r = await routes.init({ parent: tmp(), folder: 'paper', mode: 'brainstorming' }, context(tmp()));
+  assert.equal(r.ok, true, r.error);
+  return r.current;
+}
+
+test('a quoted, padded path reaches the same check as a clean one', async () => {
+  const root = await newProject();
+  const ctx = context(tmp());
+  assert.equal((await routes.open({ root: `  "${root}"  ` }, ctx)).ok, true);
+  assert.equal(ctx.getRoot(), root, 'the project that opens is the clean path');
+});
+
+test('projects carries the host: platform, home and separator', async () => {
+  const res = await routes.projects({}, { ...context(tmp()), platform: 'win32' });
+  assert.equal(res.host.platform, 'win32');
+  assert.equal(res.host.sep, '\\');
+  assert.equal(typeof res.host.home, 'string');
+  const here = await routes.projects({}, context(tmp()));
+  assert.equal(here.host.platform, process.platform);
+});
+
+test('on Windows, init and clone refuse a folder inside OneDrive; open warns', async () => {
+  const parent = tmp();
+  const ctx = { ...context(tmp()), platform: 'win32', env: { OneDrive: parent } };
+  const made = await routes.init({ parent, folder: 'paper', mode: 'brainstorming' }, ctx);
+  assert.equal(made.code, 'onedrive');
+  assert.match(made.error, /synced by OneDrive/);
+  assert.equal(fs.existsSync(path.join(parent, 'paper')), false);
+  const cloned = await routes.clone({ url: 'https://example.invalid/a.git', parent, folder: 'p2' }, ctx);
+  assert.equal(cloned.code, 'onedrive');
+  const root = await newProject();
+  const opened = await routes.open({ root }, { ...context(tmp()), platform: 'win32', env: { OneDrive: path.dirname(root) } });
+  assert.equal(opened.ok, true);
+  assert.match(opened.warning, /OneDrive/);
+});
+
+test('off Windows, OneDrive in the environment changes nothing', async () => {
+  const parent = tmp();
+  const ctx = { ...context(tmp()), platform: 'darwin', env: { OneDrive: parent } };
+  const made = await routes.init({ parent, folder: 'paper', mode: 'brainstorming' }, ctx);
+  assert.equal(made.ok, true, made.error);
+  assert.equal(made.warning, undefined);
+  assert.equal((await routes.open({ root: made.current }, ctx)).warning, undefined);
+});

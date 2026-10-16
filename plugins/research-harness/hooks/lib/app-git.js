@@ -9,6 +9,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const host = require('./host');
 
 const LINK_RE = /^(?:https:\/\/|ssh:\/\/|[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.-]*:)[^\s]+$/;
 // A user or host that starts with a dash would reach ssh as an option.
@@ -61,7 +62,7 @@ function git(cwd, args, { network = false } = {}) {
         if (err && err.code === 'ENOENT') {
           // Node reports a missing working folder the same way as a missing program.
           finish(typeof cwd === 'string' && fs.existsSync(cwd)
-            ? { ok: false, code: 'git-missing', error: `The program git was not found (${gitBinary()}), and this step needs it. The desktop app brings its own; in a browser, install git first.` }
+            ? { ok: false, code: 'git-missing', error: `The program git was not found (${gitBinary()}), and this step needs it. The desktop app brings its own; in a browser, install git first.${host.gitMissingHint(process.platform)}` }
             : { ok: false, code: 'git', error: `The folder ${cwd} does not exist.` });
           return;
         }

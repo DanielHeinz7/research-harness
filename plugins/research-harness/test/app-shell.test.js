@@ -414,6 +414,32 @@ test('the agent column appears beside the session view when the app shows it, an
   assert.equal(await page.evaluate(() => window.__agent.setups), 1);
 });
 
+test('while a dialog is open the agent column gives up its room, and gets it back on close', { skip, timeout: 120000 }, async (t) => {
+  // The app's column is a native view over #agent-slot and paints over any
+  // part of the dialog that reaches into the slot.
+  const root = copyFixture('voice-uptake');
+  const page = await openPage(t, await startApp(t), { host: true });
+  await page.setViewportSize({ width: 1000, height: 650 });
+  await openFixture(page, root);
+  await page.evaluate(() => window.__agent.shown(true));
+  await page.locator('#agent-slot').waitFor();
+  const lastBounds = () => page.evaluate(() => window.__agent.bounds[window.__agent.bounds.length - 1]);
+  assert.notEqual(await lastBounds(), null);
+  for (const [opener, close] of [['Start session…', 'Cancel'], ['Share with co-authors…', 'Escape']]) {
+    await page.getByRole('button', { name: opener }).click();
+    await page.locator('#dlg[open]').waitFor();
+    assert.equal(await lastBounds(), null, `${opener} hides the column while it is open`);
+    assert.equal(await page.evaluate(() => document.scrollingElement.scrollLeft), 0, `${opener} does not scroll the shell sideways`);
+    if (close === 'Escape') await page.keyboard.press('Escape');
+    else await page.locator('#dlg').getByRole('button', { name: close }).click();
+    // The dialog's close event comes a task after the open attribute goes.
+    await page.waitForFunction(() => window.__agent.bounds[window.__agent.bounds.length - 1] !== null);
+    const back = await lastBounds();
+    const box = await page.locator('#agent-slot').boundingBox();
+    assert.deepEqual(back, { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) }, `the column is back after ${opener} closes`);
+  }
+});
+
 test('the shell answers number lookups from the session view and reveals the statement', { skip, timeout: 120000 }, async (t) => {
   const root = copyFixture('voice-uptake');
   const page = await openPage(t, await startApp(t), { host: true });

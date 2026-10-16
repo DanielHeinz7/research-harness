@@ -562,9 +562,11 @@
   var lookups = {};
   var lookupSeq = 0;
 
+  // A native view paints over the page, so while the dialog is open the
+  // column gives up its room; the dialog is modal anyway.
   function agentRect() {
     var slot = $('agent-slot');
-    if (!agentShown || slot.hidden) return null;
+    if (!agentShown || slot.hidden || dlg.open) return null;
     var r = slot.getBoundingClientRect();
     return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
   }
@@ -852,7 +854,7 @@
     dlgBusy = false;
     if (setup) setup(form);
     prepareBrowserFields(form);
-    if (!dlg.open) dlg.showModal();
+    if (!dlg.open) { dlg.showModal(); reportAgent(); }
     var first = form.querySelector('input:not([type="radio"])') || form.querySelector('input') || form.querySelector('button[type="submit"]');
     if (first) first.focus();
     // A starting path is selected, so pasting a path replaces it.
@@ -1190,6 +1192,7 @@
       if (t.getAttribute && t.getAttribute('aria-invalid')) { t.removeAttribute('aria-invalid'); t.removeAttribute('aria-describedby'); }
     });
     dlg.addEventListener('close', function () {
+      reportAgent();
       // Closing a dialog by Escape or Cancel hands focus back to its control.
       if (returnTo && returnTo.getClientRects().length) returnTo.focus();
     });

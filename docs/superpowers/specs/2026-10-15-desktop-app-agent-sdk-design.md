@@ -49,9 +49,9 @@ main process over the area the shell reserves, with no write token and no route 
 `hooks/lib/numbers.js`; `desktop/agent/shims/` puts the app's own Node and git first on `PATH`.
 "Sub-project 3 adds the choice between the two ways and the switch" (its §6).
 
-## 3. What the sources say (checked 2026-10-15)
+## 3. What the sources say (checked 2026-10-15 and 2026-10-16)
 
-**Checked by running it.** Package `@anthropic-ai/claude-agent-sdk` 0.3.300, installed in a scratch
+**Checked by running it, first probe (2026-10-15).** Package `@anthropic-ai/claude-agent-sdk` 0.3.300, installed in a scratch
 folder; the plugin copied from `main` at `73bb23a` (version 0.5.0); the fixture project
 `test/fixtures/voice-uptake`; the model `claude-kit-deepseek-v4-flash` through the local kit-gateway
 sidecar (`ANTHROPIC_BASE_URL=http://127.0.0.1:18763`, `ANTHROPIC_AUTH_TOKEN`, a fresh
@@ -89,12 +89,30 @@ true, so a missing sandbox ends the query instead of running commands unsandboxe
 is "intended for embedding applications (e.g. desktop apps)"; `resume`, `includePartialMessages`,
 `stderr` and an `interrupt()` on the query exist.
 
-**Assumed, not checked** (the plan's first task checks each and quotes the result): that the
-sandbox lets `research-harness` and the guard run through the node shim; that a sandboxed `env`
-shows no secret; that `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` stops the telemetry plugin's
-traffic; that the bundled binary runs when unpacked from the asar archive of an unsigned app; that
-`security -i` stores a Keychain item from a command read on stdin; that Bedrock accepts an API key in
-`AWS_BEARER_TOKEN_BEDROCK` with the bundled binary.
+**Checked on 2026-10-16** with the SDK pinned at 0.3.295 (binary "2.1.295 (Claude Code)"), on an
+Apple silicon Mac, against a fake model that speaks the Messages API. The plan's "Task 1 results" quote
+each line; the letters below are its check numbers.
+
+- The sandbox lets `research-harness` and the guard run through the node shim, and a denied accept or
+  promotion comes back as a tool result without `canUseTool` being called, in a subagent's Bash call as
+  well (C3, C4, C9).
+- A sandboxed `env` lists no secret, and no file under the config folder or the project holds it
+  (C5, C6).
+- With `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` a plain turn reached no host other than the model
+  endpoint (C7).
+- The bundled binary runs when unpacked from the asar archive of an unsigned arm64 app; the builder
+  re-signs it ad hoc (C16). The x64 build was not made.
+- `security -i` stores a Keychain item from a command on stdin; double quotes, backslashes, a single
+  quote, `#`, spaces and non-ASCII letters come back byte for byte (C10). Reads and the size limit are
+  in 5.4.
+- Bedrock: `AWS_BEARER_TOKEN_BEDROCK` with `CLAUDE_CODE_USE_BEDROCK=1` reaches the endpoint as
+  `authorization: Bearer …` (C11). This was seen only against the fake; real Bedrock stays untested
+  (10).
+
+Also found while checking, and used below: the SessionStart hook runs when the binary starts but
+`system/init` arrives only after the first user message (C2, 5.6); a rejected key and a refused
+connection retry ten times by default (C13, 5.4); a resume of a missing session ends with
+"No conversation found" (C12); `usage` of a result is per turn and `total_cost_usd` is cumulative (C14).
 
 ## 4. Approaches
 
@@ -153,9 +171,10 @@ ends the conversation and leaves the window running.
 
 ### 5.3 Query options
 
-`options.js` returns exactly this, and its tests pin it. The SDK version is pinned exactly, the
-newest release older than 14 days when the plan runs (the shell plan's rule), and its bundled binary
-must be Claude Code 2.1.295 or later, the first with `onFailure`.
+`options.js` returns exactly this, and its tests pin it. The SDK version is pinned exactly at 0.3.295. Its bundled binary, Claude Code 2.1.295, is the first
+with `onFailure`, and the guard needs that, so 2.1.295 is the floor. 0.3.295 was 7 days old when it
+was pinned, an exception to the shell plan's 14-day rule; it meets the rule from 2026-10-22, and no
+release with sub-project 3 goes out before then.
 
 - `pathToClaudeCodeExecutable`: the bundled binary, unpacked outside the asar archive.
 - `plugins: [{ type: 'local', path: <bundled plugin> }]`, `settingSources: []`, `cwd`: the current
@@ -199,16 +218,24 @@ needs Google's own tools.
 
 `keychain.js` keeps one generic-password item per connection kind under the service
 `research-harness-desktop`. It writes with `security -i`, the command on stdin, because an argument
-list is visible to every process on the Mac; it reads with `find-generic-password -w`, whose output
-goes to the app only. Removing a connection deletes its item.
+list is visible to every process on the Mac; it reads with `find-generic-password -g`, not `-w`, and decodes
+the `password:` line on stderr, which goes to the app only. `-w` prints a key with a non-ASCII byte as
+bare hex, which cannot be told from a key that is hex. `security -i` reads at most 4095 bytes of a
+line, newline included, and runs the rest as a command of its own, so a key that makes the line longer
+is refused (about 4,000 bytes of key). The errors of saving and reading carry fixed text, never
+`security`'s output. Removing or replacing a connection deletes the items of every kind.
 
 Models: for an API key or a gateway, the app reads `GET /v1/models` with the credential and offers
 the list; a gateway without that route gets a text field. Bedrock and Vertex get a text field with
 the provider's model ID.
 
 Test connection runs one turn with `tools: []` and no plugin ("Reply with the word ready."). It costs
-a few tokens and checks the whole chain, model name included (see the "Model not found" in 3). The
-secret is saved only after the test passes.
+a few tokens and checks the whole chain, model name included (see the "Model not found" in 3). It sets
+`CLAUDE_CODE_MAX_RETRIES=1`: by default the binary retries a rejected key or a refused connection ten
+times and was still going after two minutes. With one retry a rejected key ends in about a second as
+`authentication_failed`, a refused connection as `server_error`, and a missing model at once as
+`model_not_found` (C13). The binary's text for a rejected key ("Not logged in · Please run /login")
+says nothing about keys, so the app words it itself. The secret is saved only after the test passes.
 
 ### 5.5 Sessions
 
@@ -220,12 +247,26 @@ app interrupts and closes the query. Conversations are stored by the binary unde
 
 ### 5.6 The guard must be seen to start
 
-Before the person's first message is sent, the host waits for the init message and the SessionStart
-hook result. It goes on only if the init message lists `research-harness` from the bundled path and
-the hook reported success. Otherwise it ends the session and the column says "The guard did not
-start, so the agent stays off", with the cause it can name (the organisation's settings turned hooks
-off, or the plugin failed to load). Unlike way 2, the app starts this session itself, so it can
-refuse to run it. The header then shows "Guard on · research-harness <version>".
+`system/init` arrives only after the person's first message (C2), so the host cannot wait for it before
+that message goes out. The SessionStart hook runs when the binary starts, and the host waits for two
+things instead: a SessionStart `hook_response` with outcome success from research-harness, whose
+`stdout` holds the hook's JSON with a context that starts `research-harness · `, and
+`initializationResult()` listing research-harness commands. Only research-harness's own hook counts;
+other plugins' or organisations' hooks neither start the guard nor stop it. The guard counts as started
+when both have arrived, and the first message goes out only then. If they do not arrive within 30
+seconds, or the hook fails, the host ends the session.
+
+Once `init` comes, it must list research-harness from the bundled path. An `init` without it is a guard
+failure, and "off" is final for a conversation: nothing that follows turns the guard on again, and the
+host stops the turn.
+
+On failure the column says "The guard did not start, so the agent stays off", with the cause it can
+name: the organisation's settings turned hooks off, the plugin failed to load, or "The research-harness
+start hook failed." When the guard started but found no paper project, the column says instead "The
+research-harness guard started but found no paper project here. Open a folder made with New project…
+or Clone…", without the first sentence, which would contradict it. Unlike way 2, the app starts this
+session itself, so it can refuse to run it. The header shows "Guard on · research-harness <version>",
+with the version from the bundled plugin's manifest.
 
 ## 6. The column
 
@@ -321,8 +362,8 @@ In plain words in the column, with the next step, never as a toast:
   holding `<img src=x onerror=…>` renders as text.
 - Electron smoke test against the fake model: the header shows "Guard on", 3.4 in a reply becomes a
   link that reveals the statement, the column page exposes no API call.
-- The plan's first task, with the real binary, before anything is built on it: each item under
-  "Assumed, not checked" in 3, with the result quoted in the plan.
+- The plan's first task, with the real binary, before anything was built on it: the checks listed in 3,
+  with the results quoted in the plan.
 - Owner check, last: success items 1 to 5 of section 1.
 
 ## 10. Limits stated plainly
@@ -331,8 +372,13 @@ In plain words in the column, with the next step, never as a toast:
   app shows tokens, not a bill; only for an Anthropic key does it add a list-price estimate.
 - **Models that are not Claude.** Through a gateway, the guard and the skills work the same, but the
   quality of proposals depends on the model; the header names it.
-- **Size.** The bundled binary adds about 240 MB per processor architecture. How builds are split is
-  for sub-project 4.
+- **Size.** Expected: the bundled binary adds about 240 MB per processor architecture. Measured on
+  2026-10-16 with unsigned arm64 builds on one machine: `Placet.app` grew from 485 MB to 718 MB (+233
+  MiB) and the DMG from 196,376,877 to 300,544,135 bytes (about 104 MB). Each build carries only its own
+  processor's binary, and `verify-app` reports a binary for the wrong processor. The x64 build was not
+  made. How builds are signed and notarised is for sub-project 4.
+- **Bedrock and Vertex.** Bedrock was checked only against a fake endpoint, and Vertex not at all; both
+  stay untested until the owner has such an account (1).
 - **Managed settings.** An organisation's managed settings on the Mac still reach this session. If
   they turn hooks off, the agent stays off (5.6).
 - **Secrets inside the session.** The binary needs the key in its environment. Sandboxed commands

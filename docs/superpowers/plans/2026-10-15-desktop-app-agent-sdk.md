@@ -2353,13 +2353,13 @@ git commit -m "Agent SDK way: Electron smoke test against the fake model"
 
 ## Task 1 results
 
-Run on 2026-10-16 on an Apple silicon Mac, Node 24.16, with the fake model only (no key, gateway or account). Still to add: C10 at the end of Task 3 and the app size from Task 10.
+Run on 2026-10-16 on an Apple silicon Mac, Node 24.16, with the fake model only (no key, gateway or account). C10 was run at the end of Task 3; still to add: the app size from Task 10.
 
 SDK 0.3.295 pinned on 2026-10-16 at 7 days old, an exception to the 14-day rule because 2.1.295 is the guard's floor (`onFailure`). It meets the rule from 2026-10-22; no release with sub-project 3 before then.
 
 **Stop rule: C2 FAILS as written.** C1, C3, C4, C5, C6 and C9 pass. The owner decides what C2 means for spec 5.6 before Task 5 starts; see "What C2 shows" below.
 
-SDK `@anthropic-ai/claude-agent-sdk` 0.3.295, bundled binary "2.1.295 (Claude Code)". The lines are the script's output, unchanged, except that the C16 lines come from a second run after `node scripts/dist.js --arch arm64` (C16 needs the built app; the first run's "no built app" line is left out):
+SDK `@anthropic-ai/claude-agent-sdk` 0.3.295, bundled binary "2.1.295 (Claude Code)". The lines are the script's output, unchanged, except that the C16 lines come from a second run after `node scripts/dist.js --arch arm64` (C16 needs the built app; the first run's "no built app" line is left out), and the C10 line comes from `node scripts/check-agent-sdk.js --only C10` at the end of Task 3 (the first run's "not run" line is left out):
 
 ```text
 INFO C0 SDK 0.3.295; node v24.16.0; darwin-arm64; 2026-10-15
@@ -2380,7 +2380,7 @@ INFO C8 Skill: canUseTool not called; the model was shown "Launching skill: rese
 INFO C8 Task: canUseTool not called; the model was shown "Async agent launched successfully. (This tool result is internal metadata — never quote or..."
 INFO C8 canUseTool saw, in order: WebFetch,Read; tool calls the model made: WebFetch, Read, Write, Skill, Agent; result success, 7 turns
 PASS C9 the subagent's Bash result: "PreToolUse:Bash hook error: Accepting a statement is the researcher's act, so `research-harness accept` cannot..." (subagent tool "Task")
-INFO C10 not run: agent/sdk/keychain.js does not exist yet; this check runs at the end of Task 3
+PASS C10 read equals what was written; after remove, read is null
 PASS C11 16 requests reached the fake; 16 carried "authorization: Bearer fake-bedrock-..."; paths: /inference-profiles, /model/<id>/invoke, /model/<id>/invoke-with-response-stream; real Bedrock stays untested; query ended with: Claude Code returned an error result: There's an issue with the selected model (fake-model). It may not exist or you may not have access to it.
 INFO C12 resume of a session that does not exist: messages result/error_during_execution (error); result error_during_execution errors=["No conversation found with session ID: 347fe209-70cd-40d6-9201-80ed5031a110"]; the query threw "Claude Code returned an error result: No conversation found with session ID: 347fe209-70cd-40d6-9201-80ed5031a110"; stderr "No conversation found with session ID: 347fe209-70cd-40d6-9201-80ed5031a110"; 929 ms
 INFO C13 401 authentication_error: assistant error "none"; result subtype "none"; api retry messages 9 (first: attempt 1 of 10, status 401, error authentication_failed, wait 545 ms); ended after 122007 ms (cut off by the script, still running)
@@ -2412,6 +2412,7 @@ Information only: the same script on SDK 0.3.287 (the newest release that met th
 - **Resume of a missing session** (C12): a result with subtype `error_during_execution` and `errors: ["No conversation found with session ID: <id>"]`, then the iterator throws the same text, in under a second. Task 7 can show "The last conversation could not be found; started a new one." on that text.
 - **Usage** (C14): `usage` of a result is per turn; `total_cost_usd` is cumulative over the query, so a per-turn figure is the difference of two results.
 - **Skill as the message** (C15): sending `/research-harness:canvas` puts the skill's text into the model's request.
+- **Keychain** (C10, Task 3): C10 and the probes behind the points below used the real login Keychain under the service `research-harness-desktop-check`, with made-up values, and deleted every item again. `security -i` parses `quote()` as written: double quotes, backslashes, a single quote, `#`, spaces, non-ASCII letters and an attempt to close the quote and add options were all stored byte for byte. `keychain.js` differs from the code in Step 3 in two places. `find-generic-password -w` prints a key with a non-ASCII byte as bare hex (the C10 key comes back as `61206222635c6420c3bc`), which cannot be told from a key that is hex, so `readSecret` reads with `-g`, whose stderr line marks the hex form with `0x`. And `security -i` reads at most 4095 bytes of a line, newline included: the rest runs as a command of its own, whose error repeats it (`unknown command "..."`, exit 1), so a key that makes the line longer is refused as `bad-secret` (4024 bytes inside the quotes with the default service and `anthropic`). The errors of `saveSecret` and `readSecret` carry fixed text, never `security`'s output, so Task 8 can show `err.message`; `bad-secret` also covers C1 control characters and the Unicode line and paragraph separators. Spec 5.4 still says reads use `-w`.
 - **Bedrock** (C11): `AWS_BEARER_TOKEN_BEDROCK` with `CLAUDE_CODE_USE_BEDROCK=1` is sent as `authorization: Bearer ...` to `ANTHROPIC_BEDROCK_BASE_URL`; the binary also asks `/inference-profiles`. Real Bedrock stays untested.
 - **No traffic to other hosts** (C7): a plain turn with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and a refusing proxy reached no host other than the fake model, so nothing goes into spec 10 for C7.
 - **Packaging** (C16): the builder configuration is `BASE` in `desktop/lib/distribution.js` (there is no `electron-builder.yml`), and `asarUnpack` there now names `node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**`. In the arm64 build the unpacked binary runs from `Placet.app/Contents/Resources/app.asar.unpacked/...` and was re-signed ad hoc by the builder. `npm run dist` builds both processors, but only the `darwin-arm64` package is installed, so an x64 build would carry the arm64 binary: the release build has to install the other processor's package first, as `dist.js` does for dugite's git. The unsigned arm64 app is 719 MB (dmg 288 MB); the SDK adds about 224 MB for its binary and 83 packages.

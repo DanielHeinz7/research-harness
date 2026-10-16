@@ -1,0 +1,2 @@
+# The Windows zip stores these files with LF; scripts/windows-zip.js writes the CRLF copies.
+windows/** text eol=lf

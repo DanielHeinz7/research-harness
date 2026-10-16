@@ -167,6 +167,9 @@
   }
   .outcome[data-kind="problem"]:not(:empty) { border-color: var(--red); background: var(--red-tint); }
   .outcome svg.i { margin-top: 0.2em; }
+  /* The button is full width, so it goes under the path and a narrow sidebar keeps the path readable. */
+  .outcome:has(.copy-path) { flex-wrap: wrap; }
+  .outcome:has(.copy-path) > span:not(.sr-only) { flex: 1 1 0; min-width: 0; }
 
   /* -- Centre ----------------------------------------------------------------- */
   #main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
@@ -328,7 +331,7 @@
   <form data-kind="new" novalidate>
     <h2 id="dlg-title">New project</h2>
     <p class="dlg-sub">Creates a new paper project, with a research canvas and a decision log, inside the folder you choose. It turns the folder into a git repository and saves the first version of the research files in it, so the project can be shared later. It also creates the key that seals your entries; the key stays on this computer, outside the folder.</p>
-    <label for="f-parent">Folder to create it in<span class="hint">The new folder goes inside this one.</span></label>
+    <label for="f-parent">Folder to create it in<span class="hint">The new folder goes inside this one.</span><span class="hint" data-plain>Type the full path of the folder.</span></label>
     <div class="pathrow"><input type="text" id="f-parent" name="parent" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="parent" hidden>Choose…</button></div>
     <label for="f-folder">Name of the new folder</label>
     <input type="text" id="f-folder" name="folder" autocomplete="off" spellcheck="false">
@@ -365,7 +368,7 @@
     <p class="dlg-sub">Downloads the shared paper from the link into a new folder inside the folder you choose. Nothing is sent to anyone. If the link asks for a login, the app asks you for it.</p>
     <label for="f-url">Link<span class="hint">The https link your co-author sent you. Links that start with ssh:// or look like git@host:path work too.</span></label>
     <input type="text" id="f-url" name="url" autocomplete="off" spellcheck="false">
-    <label for="f-parent">Folder to download it into<span class="hint">The new folder goes inside this one.</span></label>
+    <label for="f-parent">Folder to download it into<span class="hint">The new folder goes inside this one.</span><span class="hint" data-plain>Type the full path of the folder.</span></label>
     <div class="pathrow"><input type="text" id="f-parent" name="parent" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-pick="parent" hidden>Choose…</button></div>
     <label for="f-folder">Name of the new folder<span class="hint">It must not exist yet.</span></label>
     <input type="text" id="f-folder" name="folder" autocomplete="off" spellcheck="false">
@@ -469,6 +472,7 @@
 
   // Null in a browser tab: the dialogs then show path fields instead of pickers.
   var host = window.harnessHost || null;
+  var hostInfo = null;     // what /api/app/projects says about the computer the app runs on: platform, home, sep
 
   var current = null;      // folder of the open project
   var lastState = null;    // what /api/state said last
@@ -481,13 +485,20 @@
   var dlg = $('dlg');
 
   var UNREACHABLE = 'The app could not be reached. Close this window and start the app again.';
-  var LINK_USED = 'This window was already opened elsewhere. Close it and start the app again.';
+  // The sentence names the way this person started the app: a start file on
+  // Windows, a terminal elsewhere. The desktop app keeps its own.
+  function linkUsed() {
+    if (host) return 'This window was already opened elsewhere. Close it and start the app again.';
+    return 'This page was already opened elsewhere. ' + (/Windows/.test(navigator.userAgent)
+      ? 'Close the research-harness window and double-click Start research-harness again.'
+      : 'Stop research-harness serve --app with Ctrl+C and start it again.');
+  }
 
   async function redeem() {
     if (!code) throw new Error('This page needs the link the app prints when it starts. Start the app again.');
     var res = await fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
     var body = await res.json();
-    if (!body.ok) throw new Error(LINK_USED);
+    if (!body.ok) throw new Error(linkUsed());
     token = body.token;
   }
 
@@ -624,6 +635,23 @@
       box.appendChild(lead);
     }
     box.appendChild(words);
+  }
+
+  // Without a desktop app there is no Show in folder; the path in the outcome
+  // line gets a button that copies it.
+  function addCopyPath(id, text) {
+    if (host) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn side-btn copy-path';
+    btn.textContent = 'Copy path';
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(text).then(
+        function () { btn.textContent = 'Copied'; },
+        function () { btn.textContent = 'Copy did not work; select the path and copy it'; }
+      );
+    });
+    $(id).appendChild(btn);
   }
 
   function clearSay(id) {
@@ -792,6 +820,30 @@
     });
   }
 
+  // In a browser tab there is no folder picker. The path fields start in the
+  // home folder, and their hints say how to copy a path on this system.
+  function pathTip() {
+    return hostInfo.platform === 'win32'
+      ? 'In File Explorer, right-click the folder (Shift+right-click on Windows 10) and choose Copy as path, then paste it here.'
+      : 'In Finder, select it and press Option+Command+C, then paste it here.';
+  }
+
+  function prepareBrowserFields(form) {
+    if (host || !hostInfo) return;
+    var tip = pathTip();
+    form.querySelectorAll('[data-plain]').forEach(function (n) { n.textContent += ' ' + tip; });
+    var home = hostInfo.home;
+    var start = {
+      parent: home,
+      root: home,
+      out: home + hostInfo.sep + saveName() + (form.dataset.kind === 'invite' ? '.seal.key' : '-minutes.md'),
+    };
+    Object.keys(start).forEach(function (name) {
+      var field = fieldOf(form, name);
+      if (field && !field.value) field.value = start[name];
+    });
+  }
+
   function openDialog(templateId, invoker, setup) {
     returnTo = invoker || null;
     dlg.textContent = '';
@@ -799,9 +851,12 @@
     var form = dlg.querySelector('form');
     dlgBusy = false;
     if (setup) setup(form);
+    prepareBrowserFields(form);
     if (!dlg.open) dlg.showModal();
     var first = form.querySelector('input:not([type="radio"])') || form.querySelector('input') || form.querySelector('button[type="submit"]');
     if (first) first.focus();
+    // A starting path is selected, so pasting a path replaces it.
+    if (!host && first && first.type === 'text' && first.value) first.select();
     return form;
   }
 
@@ -885,6 +940,8 @@
         : kind === 'clone' ? 'Downloaded the project to ' + made + '.' : 'Opened ' + made + '.';
       clearAll();
       say('out-project', 'ok', out);
+      // The project is open and usable; the line asks the person to act.
+      if (res.warning) say('out-project', 'problem', res.warning);
       $('proj-name').focus();
       return;
     }
@@ -907,12 +964,14 @@
     } else if (kind === 'minutes') {
       var path = val(form, 'out');
       say('out-meeting', 'ok', 'Saved the minutes to ' + path + '.');
+      addCopyPath('out-meeting', path);
       if (host && host.reveal) host.reveal(path).catch(function () {});
       restoreFocus($('btn-minutes'));
     } else if (kind === 'invite') {
       var keyPath = val(form, 'out');
       var link = facts && facts.origin;
       say('out-people', 'ok', 'Saved the key file to ' + keyPath + '. Your co-author needs two things, and you give them both yourself: ' + (link ? 'the project’s link (' + link + ') and this key file.' : 'this key file and the project’s link. The project has no link yet; use Share with co-authors… first.'));
+      addCopyPath('out-people', keyPath);
       if (host && host.reveal) host.reveal(keyPath).catch(function () {});
       restoreFocus($('btn-invite'));
     } else if (kind === 'join') {
@@ -1006,6 +1065,7 @@
     var typed = false;
     var folderField = fieldOf(form, 'folder');
     var urlField = fieldOf(form, 'url');
+    if (!host && hostInfo && hostInfo.platform === 'win32') form.querySelector('label[for="f-url"] .hint').textContent += ' Use the https link; an ssh link needs a key set up in a terminal.';
     folderField.addEventListener('input', function () { typed = true; });
     urlField.addEventListener('input', function () {
       if (typed) return;
@@ -1116,6 +1176,7 @@
       var res = await api('open', { root: b.dataset.root });
       if (!res.ok) { say('out-start', 'problem', res.error); return; }
       await enterProject(res.current, true);
+      if (res.warning) say('out-project', 'problem', res.warning);
       $('proj-name').focus();
     });
 
@@ -1140,6 +1201,7 @@
     .then(function () { return api('projects'); })
     .then(async function (res) {
       if (!res.ok) throw new Error(res.error || UNREACHABLE);
+      hostInfo = res.host || null;
       renderRecent(res.recent || []);
       if (res.current) await enterProject(res.current, false);
       else show('start');

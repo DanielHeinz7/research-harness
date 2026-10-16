@@ -82,10 +82,10 @@ async function startApp(t, { open = null } = {}) {
   return srv;
 }
 
-async function openPage(t, srv, { viewport = { width: 1440, height: 900 }, colorScheme = 'light', host = false } = {}) {
+async function openPage(t, srv, { viewport = { width: 1440, height: 900 }, colorScheme = 'light', host = false, userAgent, before } = {}) {
   const browser = await launchChromium();
   t.after(() => browser.close());
-  const page = await browser.newPage({ viewport, colorScheme });
+  const page = await browser.newPage({ viewport, colorScheme, userAgent });
   page.on('pageerror', (err) => t.diagnostic(`pageerror: ${err.message}`));
   if (host) {
     await page.addInitScript(() => {
@@ -108,6 +108,7 @@ async function openPage(t, srv, { viewport = { width: 1440, height: 900 }, color
       };
     });
   }
+  if (before) await before(page);
   await page.goto(srv.appUrl);
   return page;
 }
@@ -342,6 +343,7 @@ test('in a plain browser, Open project… shows a labelled path field and no pic
   assert.equal(await page.locator('#dlg button[data-pick]').isVisible(), false, 'and it is not shown without a host bridge');
   assert.equal(await field.evaluate((n) => document.activeElement === n), true, 'the dialog opens on its field');
 
+  await field.fill(''); // the field starts in the home folder; an emptied one is still named
   await page.locator('#dlg').getByRole('button', { name: 'Open project' }).click();
   assert.equal(await field.getAttribute('aria-invalid'), 'true', 'an empty field is named, not skipped');
   assert.match(await page.locator('#dlg-error').textContent(), /Enter the folder/);
@@ -862,3 +864,163 @@ test('in a browser tab there is no update line at all', { skip, timeout: 120000 
   assert.equal(await page.locator('#app-group').isVisible(), false);
   assert.equal(await page.locator('#out-app-start').textContent(), '');
 });
+
+const WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+
+// The server of this run is on macOS or Linux. To see the page as a Windows
+// server presents it, the answer of /api/app/projects is rewritten in flight.
+async function asWindowsServer(page, home) {
+  await page.route('**/api/app/projects', async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    await route.fulfill({ response: res, json: { ...body, host: { platform: 'win32', home, sep: '\\' } } });
+  });
+}
+
+test('browser mode: a path pasted with quotes opens the project', { skip, timeout: 120000 }, async (t) => {
+  const root = await makeProject();
+  const srv = await startApp(t);
+  const page = await openPage(t, srv);
+  await page.getByRole('button', { name: 'Open project…' }).first().click();
+  await page.getByLabel(/Project folder/).fill(`  "${root}"  `);
+  await page.locator('#dlg').getByRole('button', { name: 'Open project' }).click();
+  await page.locator('#proj-name').waitFor();
+  assert.equal(await page.locator('#proj-name').isVisible(), true, 'the quoted, padded path reached the same check as a clean one');
+});
+
+test('browser mode: path fields start in the home folder and say how to copy a path', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t);
+  const page = await openPage(t, srv);
+  await page.getByRole('button', { name: 'New project…' }).first().click();
+  assert.equal(await page.getByLabel(/Folder to create it in/).inputValue(), os.homedir(), 'the folder to create it in starts at the home folder');
+  await page.getByText(/Option\+Command\+C/).first().waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Open project…' }).first().click();
+  assert.equal(await page.getByLabel(/Project folder/).inputValue(), os.homedir());
+  await page.getByText(/Option\+Command\+C/).first().waitFor();
+});
+
+test('with a host bridge, path fields stay empty and the plain hints stay hidden', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t);
+  const page = await openPage(t, srv, { host: true });
+  await page.getByRole('button', { name: 'New project…' }).first().click();
+  assert.equal(await page.locator('#dlg #f-parent').inputValue(), '');
+  assert.equal(await page.locator('#dlg [data-plain]:visible').count(), 0);
+});
+
+test('browser mode: after Export minutes, the path and a Copy path button', { skip, timeout: 120000 }, async (t) => {
+  const root = await makeProject();
+  const srv = await startApp(t, { open: root });
+  const page = await openPage(t, srv);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const out = path.join(tmp(), 'minutes.md');
+  await page.getByRole('button', { name: 'Start session…' }).click();
+  await page.getByLabel('What is the occasion?').fill('Supervision');
+  if (await page.locator('#dlg #f-name').count()) await page.locator('#dlg #f-name').fill('A. Author');
+  await page.locator('#dlg').getByRole('button', { name: 'Start session' }).click();
+  await page.locator('#live').waitFor();
+  await page.getByRole('button', { name: 'Export minutes…' }).click();
+  await page.getByLabel('Save the minutes as').fill(out);
+  await page.locator('#dlg').getByRole('button', { name: 'Export minutes' }).click();
+  await page.locator('#out-meeting').getByText(out).waitFor();
+  const copy = page.locator('#out-meeting').getByRole('button', { name: 'Copy path' });
+  await copy.waitFor();
+  await copy.click();
+  await page.locator('#out-meeting').getByRole('button', { name: 'Copied' }).waitFor();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), out, 'the button copied the path');
+  if (process.env.APP_SHELL_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.APP_SHELL_CAPTURE_DIR, 'light-copy-path-1440.png') });
+  const copyRatio =(await focusContrastRatios(page)).find((item) => item.label === 'Copied');
+  assert.ok(copyRatio && copyRatio.ratio >= 3, `Copy path: focus contrast >= 3:1 (${copyRatio && copyRatio.ratio.toFixed(2)})`);
+});
+
+test('with a host bridge, the outcome after Export minutes has no Copy path button', { skip, timeout: 120000 }, async (t) => {
+  const root = await makeProject();
+  const srv = await startApp(t, { open: root });
+  const page = await openPage(t, srv, { host: true });
+  const out = path.join(tmp(), 'minutes.md');
+  await page.evaluate((p) => { window.__picked = p; }, out);
+  await page.getByRole('button', { name: 'Start session…' }).click();
+  await page.getByLabel('What is the occasion?').fill('Supervision');
+  if (await page.locator('#dlg #f-name').count()) await page.locator('#dlg #f-name').fill('A. Author');
+  await page.locator('#dlg').getByRole('button', { name: 'Start session' }).click();
+  await page.locator('#live').waitFor();
+  await page.getByRole('button', { name: 'Export minutes…' }).click();
+  await page.getByRole('button', { name: 'Choose…' }).click();
+  await page.locator('#dlg').getByRole('button', { name: 'Export minutes' }).click();
+  await page.locator('#out-meeting').getByText(/Saved the minutes/).waitFor();
+  assert.equal(await page.locator('#out-meeting button').count(), 0);
+});
+
+test('browser mode: an open that warns about OneDrive opens the project and says what to do', { skip, timeout: 120000 }, async (t) => {
+  const root = await makeProject();
+  const srv = await startApp(t);
+  const page = await openPage(t, srv);
+  const warning = 'This project lies in a folder synced by OneDrive. If git reports odd changes or locked files, move it to a folder outside OneDrive.';
+  await page.route('**/api/app/open', async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), warning } });
+  });
+  await page.getByRole('button', { name: 'Open project…' }).first().click();
+  await page.getByLabel(/Project folder/).fill(root);
+  await page.locator('#dlg').getByRole('button', { name: 'Open project' }).click();
+  await page.locator('#out-project[data-kind="problem"]').waitFor();
+  assert.equal(await page.locator('#out-project').innerText().then((s) => s.includes(warning)), true);
+  assert.equal(await page.locator('#proj-name').isVisible(), true, 'the project is open anyway');
+});
+
+test('browser mode: the onedrive refusal of New project shows next to the button, in plain words', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t);
+  const page = await openPage(t, srv);
+  const error = 'This folder is synced by OneDrive (C:\\Users\\x\\OneDrive). Choose a folder outside OneDrive, for example C:\\Users\\x\\research.';
+  await page.route('**/api/app/init', (route) => route.fulfill({ json: { ok: false, code: 'onedrive', error } }));
+  await page.getByRole('button', { name: 'New project…' }).first().click();
+  await page.getByLabel(/Name of the new folder/).fill('paper');
+  await page.getByLabel('Your name').fill('A. Author');
+  await page.locator('#dlg').getByRole('button', { name: 'Create project' }).click();
+  await page.waitForFunction(() => /synced by OneDrive/.test(document.getElementById('dlg-error').textContent));
+  assert.equal(await page.locator('#dlg-error').textContent(), error);
+  assert.equal(await page.locator('[role="status"]').count(), 0, 'no toast');
+});
+
+test('a used link in a Windows browser names the start file', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t);
+  const first = await openPage(t, srv);
+  await first.getByRole('heading', { name: 'Start with a paper project' }).waitFor();
+  const again = await openPage(t, srv, { userAgent: WINDOWS_UA });
+  await again.getByRole('alert').waitFor();
+  assert.match(await again.getByRole('alert').textContent(), /double-click Start research-harness again/);
+  assert.doesNotMatch(await again.getByRole('alert').textContent(), /Ctrl\+C/);
+  if (process.env.APP_SHELL_CAPTURE_DIR) await again.screenshot({ path: path.join(process.env.APP_SHELL_CAPTURE_DIR, 'light-windows-used-link-1440.png') });
+});
+
+test('a used link in another browser names the terminal', { skip, timeout: 120000 }, async (t) => {
+  const srv = await startApp(t);
+  const first = await openPage(t, srv);
+  await first.getByRole('heading', { name: 'Start with a paper project' }).waitFor();
+  const again = await openPage(t, srv, { userAgent: MAC_UA });
+  await again.getByRole('alert').waitFor();
+  assert.match(await again.getByRole('alert').textContent(), /Ctrl\+C/);
+});
+
+for (const colorScheme of ['light', 'dark']) {
+  test(`browser mode on Windows: dialogs name File Explorer and fit the page (${colorScheme})`, { skip, timeout: 120000 }, async (t) => {
+    const srv = await startApp(t);
+    const home = 'C:\\Users\\researcher';
+    const page = await openPage(t, srv, { userAgent: WINDOWS_UA, colorScheme, before: (p) => asWindowsServer(p, home) });
+    await page.getByRole('button', { name: 'Clone from link…' }).first().waitFor();
+    await page.getByRole('button', { name: 'Clone from link…' }).first().click();
+    const urlHint = await page.locator('#dlg label[for="f-url"] .hint').textContent();
+    assert.match(urlHint, /^The https link your co-author sent you\./, 'the first sentence is unchanged');
+    assert.match(urlHint, /an ssh link needs a key set up in a terminal/);
+    assert.match(await page.locator('#dlg').innerText(), /right-click the folder \(Shift\+right-click on Windows 10\) and choose Copy as path/);
+    assert.equal(await page.getByLabel(/Folder to download it into/).inputValue(), home);
+    if (process.env.APP_SHELL_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.APP_SHELL_CAPTURE_DIR, colorScheme + '-windows-clone-1440.png') });
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open project…' }).first().click();
+    assert.equal(await page.getByLabel(/Project folder/).inputValue(), home);
+    if (process.env.APP_SHELL_CAPTURE_DIR) await page.screenshot({ path: path.join(process.env.APP_SHELL_CAPTURE_DIR, colorScheme + '-windows-open-1440.png') });
+    await page.setViewportSize({ width: 320, height: 720 });
+    assert.deepEqual(await documentWidths(page), { document: 320, viewport: 320 }, 'the dialog reflows to 320 px');
+  });
+}

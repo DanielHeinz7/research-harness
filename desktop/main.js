@@ -129,7 +129,9 @@ ipcMain.handle('host:restart-to-update', () => { if (updater) updater.restart();
 function setUpAgentSdk(win) {
   const dataDir = app.getPath('userData');
   column.useGitEnv(gitEnv);
-  const agentSdk = registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir, pluginRoot });
+  // A test may name another `security`, but only together with its own data folder; a normal start always uses /usr/bin/security.
+  const keychainOpts = process.env.RESEARCH_HARNESS_TEST_USER_DATA && process.env.RESEARCH_HARNESS_TEST_SECURITY ? { security: process.env.RESEARCH_HARNESS_TEST_SECURITY } : {};
+  const agentSdk = registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir, pluginRoot, keychainOpts });
   // Unless the person chose the terminal way, the panel is the column's page.
   // The shell page has to be listening before the column is announced to it.
   const showPanel = () => { if (readAgentStore(dataDir).way !== 'claude-code') column.showPage(agentSdk.panelPage); };

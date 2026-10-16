@@ -374,7 +374,7 @@ both('the quick actions send their command and are off while working', async (sc
   try {
     await page.getByRole('button', { name: 'Continue canvas' }).click();
     assert.deepEqual((await calls(page, 'send')).at(-1), ['send', '/research-harness:canvas']);
-    await page.getByRole('button', { name: 'Review canvas' }).click();
+    assert.equal(await page.getByRole('button', { name: 'Review canvas' }).isDisabled(), true);
     assert.equal((await calls(page, 'send')).length, 1);
     await emit(page, { kind: 'turn-end' });
     await page.getByRole('button', { name: 'Literature note…' }).click();
@@ -423,6 +423,7 @@ both('settings: opens from the hash, asks before ending a conversation, and Back
     await page.locator('#s-change').click();
     await page.locator('#dlg').waitFor();
     assert.match(await page.locator('#dlg-text').textContent(), /ends the current conversation/);
+    assert.equal(await page.locator('#dlg-title').textContent(), 'End the conversation?');
     assert.equal(await page.locator('#dlg-ok').textContent(), 'End conversation');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.getElementById('dlg').open);
@@ -437,6 +438,8 @@ both('settings: opens from the hash, asks before ending a conversation, and Back
     await page.locator('#s-remove').click();
     await page.locator('#dlg').waitFor();
     assert.match(await page.locator('#dlg-text').textContent(), /deletes the saved key from the Keychain/);
+    assert.equal(await page.locator('#dlg-title').textContent(), 'Remove the saved key?');
+    assert.equal(await page.locator('#dlg-ok').textContent(), 'Remove key');
     await page.locator('#dlg-ok').click();
     await page.locator('#connect-h').waitFor();
     assert.equal((await calls(page, 'removeConnection')).length, 1);
@@ -504,4 +507,170 @@ test('the page stays inside its policy: no remote address, no inline handler, no
     assert.doesNotMatch(text, /@import|url\(\s*['"]?https?:/, f);
   }
   assert.doesNotMatch(fs.readFileSync(path.join(dir, 'panel.html'), 'utf8'), /\son[a-z]+=|<style|<script>[^<]/i);
+  // Fonts come from the page's own files and nowhere else.
+  const csp = /Content-Security-Policy" content="([^"]+)"/.exec(fs.readFileSync(path.join(dir, 'panel.html'), 'utf8'))[1];
+  assert.deepEqual(csp.split(';').map((d) => d.trim()).filter((d) => d.startsWith('font-src')), ["font-src 'self'"]);
+});
+
+// -- The six fixes from the finish review (SQ-319), at the two widths the review used. --
+
+const WIDTHS = [280, 480];
+function bothWidths(name, fn) {
+  both(name, async (scheme) => { for (const width of WIDTHS) await fn(scheme, width); });
+}
+const box = (page, selector) => page.locator(selector).first().evaluate((n) => { const r = n.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height }; });
+// How many lines the text inside a control is set on.
+const lines = (locator) => locator.evaluate((n) => { const r = document.createRange(); r.selectNodeContents(n); return new Set([...r.getClientRects()].map((q) => Math.round(q.top))).size; });
+
+bothWidths('fix 1: "Try again" and "Agent settings" stay whole words on one line', async (scheme, width) => {
+  const page = await thread(scheme, { width, height: 800 });
+  try {
+    await emit(page, { kind: 'guard', state: 'off', cause: 'The research-harness start hook failed.' });
+    const again = page.getByRole('button', { name: 'Try again' });
+    await again.waitFor();
+    assert.equal(await lines(again), 1, `Try again on ${await lines(again)} lines at ${width}px`);
+    assert.ok((await box(page, '#thread li.problem button')).height < 60, 'Try again is one button-high');
+    await emit(page, { kind: 'error', code: 'authentication_failed' });
+    const settings = page.locator('#thread').getByRole('button', { name: 'Agent settings' });
+    await settings.waitFor();
+    assert.equal(await lines(settings), 1, `Agent settings on ${await lines(settings)} lines at ${width}px`);
+    assert.deepEqual(page.problems, []);
+  } finally { await closeAll(page); }
+});
+
+bothWidths('fix 2: one-line header, quick buttons in two columns, Send inside the first viewport', async (scheme, width) => {
+  const page = await thread(scheme, { width, height: 800 });
+  try {
+    // Name, model and state sit on one line.
+    await page.waitForFunction(() => document.getElementById('h-model').textContent);
+    const tops = [];
+    for (const s of ['.head h1', '#h-model', '#h-state']) { const b = await box(page, s); tops.push(Math.round((b.top + b.bottom) / 2)); }
+    assert.ok(Math.max(...tops) - Math.min(...tops) <= 8, `header is not one line at ${width}px: ${tops}`);
+    assert.ok((await box(page, '.head')).height < 70, 'header is one line high');
+    // The guard line is still shown, and still says what it said.
+    assert.equal(await page.locator('#h-guard').isVisible(), true);
+    // Two columns of quick buttons.
+    const [a, b] = [await box(page, '.quick button:nth-child(1)'), await box(page, '.quick button:nth-child(2)')];
+    assert.equal(Math.round(a.top), Math.round(b.top), `first two quick buttons are not side by side at ${width}px`);
+    assert.ok(b.left > a.right - 1);
+    // Send, and the usage line under it, are on the first screen with an empty thread.
+    const viewport = await page.evaluate(() => innerHeight);
+    assert.ok((await box(page, '#send')).bottom <= viewport, `Send ends at ${(await box(page, '#send')).bottom} of ${viewport} at ${width}px`);
+    assert.ok((await box(page, '#msg')).top < viewport);
+    // And a small window still shows Send without scrolling past the log.
+    await page.setViewportSize({ width, height: 600 });
+    assert.ok((await box(page, '#send')).bottom <= 600, `Send ends at ${(await box(page, '#send')).bottom} of 600 at ${width}px`);
+    assert.deepEqual(page.problems, []);
+  } finally { await closeAll(page); }
+});
+
+bothWidths('fix 3: the dialog names the act: removing the key, not ending the conversation', async (scheme, width) => {
+  const page = await open({ scheme, width, height: 800, state: sdkState() });
+  try {
+    await page.locator('#v-thread').waitFor();
+    await emit(page, { kind: 'guard', state: 'on', version: '0.9.0' });
+    await emit(page, { kind: 'you', text: 'hello' });
+    await page.locator('#thread li.you').waitFor();
+    await page.evaluate(() => { location.hash = '#settings'; });
+    await page.locator('#s-remove').click();
+    await page.locator('#dlg').waitFor();
+    assert.equal(await page.locator('#dlg-title').textContent(), 'Remove the saved key?');
+    assert.equal(await page.locator('#dlg-ok').textContent(), 'Remove key');
+    const body = await page.locator('#dlg-text').textContent();
+    assert.match(body, /deletes the saved key from the Keychain/);
+    assert.match(body, /conversation ends/);
+    // The whole question is on screen, both buttons reachable.
+    const viewport = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+    for (const s of ['#dlg', '#dlg-ok', '#dlg-cancel']) { const b = await box(page, s); assert.ok(b.left >= 0 && b.right <= viewport.w && b.bottom <= viewport.h, `${s} leaves the screen at ${width}px`); }
+    await page.locator('#dlg-cancel').click();
+    // Changing the connection still names the end of the conversation, and the title returns with it.
+    await page.locator('#s-change').click();
+    await page.locator('#dlg').waitFor();
+    assert.equal(await page.locator('#dlg-title').textContent(), 'End the conversation?');
+    assert.equal(await page.locator('#dlg-ok').textContent(), 'End conversation');
+    assert.deepEqual(page.problems, []);
+  } finally { await closeAll(page); }
+});
+
+bothWidths('fix 4: the quick buttons are disabled with Send, and look and announce it', async (scheme, width) => {
+  const page = await thread(scheme, { width, height: 800, file: '/tmp/note-source.pdf' });
+  try {
+    const names = ['Continue canvas', 'Review canvas', 'Literature note…'];
+    const state = async () => Promise.all(names.map((n) => page.getByRole('button', { name: n }).isDisabled()));
+    const look = (n) => page.getByRole('button', { name: n }).evaluate((b) => { const s = getComputedStyle(b); return [s.color, s.backgroundColor, s.borderTopColor, s.cursor].join('|'); });
+    assert.deepEqual(await state(), [false, false, false]);
+    const enabledLook = await look(names[0]);
+    // Working: off with Send.
+    await page.locator('#msg').fill('hello');
+    await page.locator('#send').click();
+    assert.deepEqual(await state(), [true, true, true]);
+    assert.notEqual(await look(names[0]), enabledLook, 'a disabled quick button looks like an enabled one');
+    assert.equal(await page.getByRole('button', { name: names[0] }).evaluate((b) => getComputedStyle(b).cursor), 'not-allowed');
+    await emit(page, { kind: 'turn-end' });
+    assert.deepEqual(await state(), [false, false, false]);
+    // Guard off: off, and they stay off until a guard comes on.
+    await emit(page, { kind: 'guard', state: 'off', cause: 'The agent did not start within 30 seconds.' });
+    await page.getByRole('button', { name: 'Try again' }).waitFor();
+    assert.deepEqual(await state(), [true, true, true]);
+    assert.equal(await page.locator('#send').isDisabled(), true);
+    // Trying again restarts: still off until the guard says on.
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'start').length === 2);
+    assert.deepEqual(await state(), [true, true, true]);
+    await emit(page, { kind: 'guard', state: 'on', version: '0.9.0' });
+    assert.deepEqual(await state(), [false, false, false]);
+    assert.deepEqual(page.problems, []);
+  } finally { await closeAll(page); }
+});
+
+bothWidths('fix 5: Source Serif 4 and Hanken Grotesk load from the files that ship with the plugin', async (scheme, width) => {
+  const page = await thread(scheme, { width, height: 800 });
+  try {
+    await emit(page, { kind: 'text', text: 'An answer with *emphasis* and **weight**.' });
+    await page.locator('#thread li.agent').waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForFunction(() => {
+      const ok = new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family.replace(/"/g, '')} ${f.style}`));
+      return ok.has('Hanken Grotesk normal') && ok.has('Source Serif 4 normal') && ok.has('Source Serif 4 italic');
+    }, null, { timeout: 10000 });
+    const failed = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'error').map((f) => f.family));
+    assert.deepEqual(failed, []);
+    // The agent's text is set in the serif, the chrome in the sans.
+    const family = (selector) => page.locator(selector).first().evaluate((n) => getComputedStyle(n).fontFamily.split(',')[0].replace(/"/g, ''));
+    assert.equal(await family('#thread li.agent p'), 'Source Serif 4');
+    assert.equal(await family('.head h1'), 'Hanken Grotesk');
+    assert.deepEqual(page.problems, []);
+  } finally { await closeAll(page); }
+});
+
+bothWidths('fix 6: the connect error sits under the field it names; an earlier "Try again" is spent', async (scheme, width) => {
+  const bad = await open({ scheme, width, height: 800, state: sdkState(null), connect: { ok: false, field: 'url', error: 'The address must start with https://.' } });
+  try {
+    await bad.locator('input[name=kind][value=gateway]').check();
+    await bad.locator('#connect-go').click();
+    await bad.locator('#connect-error').waitFor();
+    const field = await box(bad, '#f-url');
+    const error = await box(bad, '#connect-error');
+    assert.ok(error.top >= field.bottom && error.top - field.bottom < 24, `the error is ${error.top - field.bottom}px below the field at ${width}px`);
+    assert.equal(await bad.evaluate(() => document.getElementById('f-url').closest('label').nextElementSibling.id), 'connect-error');
+    assert.equal(await active(bad), 'f-url');
+    assert.equal(await bad.locator('#f-url').getAttribute('aria-describedby'), 'connect-error');
+    // Another refusal, naming no field, is told above the button; the old place is left.
+    await bad.locator('#f-url').fill('https://gateway.example');
+    await bad.evaluate(() => { window.agentPanel.connect = () => Promise.resolve({ ok: false, error: 'The token was refused.' }); });
+    await bad.locator('#connect-go').click();
+    await bad.waitForFunction(() => document.getElementById('connect-error-text').textContent === 'The token was refused.');
+    assert.equal(await bad.evaluate(() => document.getElementById('connect-error').nextElementSibling.id), 'connect-go');
+    assert.equal(await bad.locator('#f-url').getAttribute('aria-invalid'), null);
+    assert.deepEqual(bad.problems, []);
+  } finally { await closeAll(bad); }
+
+  const page = await thread(scheme, { width, height: 800 });
+  try {
+    await emit(page, { kind: 'guard', state: 'off', cause: 'The agent did not start within 30 seconds.' });
+    await emit(page, { kind: 'guard', state: 'off', cause: 'The research-harness plugin did not load.' });
+    await page.waitForFunction(() => document.querySelectorAll('#thread li.problem button').length === 2);
+    const again = page.locator('#thread li.problem button');
+    assert.deepEqual([await again.nth(0).isDisabled(), await again.nth(1).isDisabled()], [true, false]);
+  } finally { await closeAll(page); }
 });

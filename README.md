@@ -127,7 +127,23 @@ another machine. A test runs its commands and holds them to the output shown.
 
 ## Windows
 
-research-harness runs on Windows in a browser tab; see "Install on Windows" below once it ships.
+research-harness runs on Windows in a browser tab, started from a zip on the release page.
+
+### Install on Windows
+
+1. Install [Git for Windows](https://git-scm.com/download/win) and the LTS version of
+   [Node.js](https://nodejs.org) (22 or newer), each with its installer's defaults.
+2. Download
+   [research-harness-windows.zip](https://github.com/DanielHeinz7/research-harness/releases/latest/download/research-harness-windows.zip)
+   and unzip it.
+3. Double-click `Start research-harness.cmd`. A black window opens, then your browser. Keep the
+   black window open while you work; closing it stops research-harness.
+
+Keep your projects outside OneDrive. To update, download the new zip and replace the folder; your
+projects and your list of recent projects are stored elsewhere and stay. The same steps are in the
+zip as `README.txt`.
+
+Nothing in the Windows package has been tested on Windows yet: it is built and checked on a Mac only.
 
 ### Windows line endings
 

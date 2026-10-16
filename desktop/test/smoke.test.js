@@ -48,6 +48,8 @@ test('the agent column starts claude with the bundled plugin, the shims and a co
   const project = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-proj-')), 'voice-uptake');
   fs.cpSync(path.join(__dirname, '..', '..', 'plugins', 'research-harness', 'test', 'fixtures', 'voice-uptake'), project, { recursive: true });
   require(path.join(__dirname, '..', '..', 'plugins', 'research-harness', 'hooks', 'lib', 'app-store.js')).remember(userData, project);
+  // A person who has chosen Claude Code. With no way chosen, the column shows the SDK way's page instead.
+  fs.writeFileSync(path.join(userData, 'agent.json'), JSON.stringify({ way: 'claude-code' }));
 
   const app = await electron.launch({
     executablePath: require('electron'), args: [path.join(__dirname, '..')],

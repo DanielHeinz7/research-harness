@@ -1,8 +1,11 @@
 'use strict';
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, MenuItem, shell, utilityProcess } = require('electron');
 const path = require('node:path');
 const { gitPath } = require('./git-path');
 const { setUpAgent } = require('./agent');
+const column = require('./agent/sdk/column');
+const { registerAgentSdk } = require('./agent/sdk/controller');
+const { readAgentStore } = require('./agent/store');
 
 if (process.env.RESEARCH_HARNESS_TEST_USER_DATA) app.setPath('userData', process.env.RESEARCH_HARNESS_TEST_USER_DATA);
 
@@ -121,6 +124,28 @@ ipcMain.handle('host:open-external', (e, url) => { if (typeof url === 'string' &
 ipcMain.handle('host:update-state', () => (updater ? updater.last() : null));
 ipcMain.handle('host:restart-to-update', () => { if (updater) updater.restart(); });
 
+// The SDK way (sub-project 3) shows its own page in sub-project 2's column.
+// Called once setUpAgent has built the column.
+function setUpAgentSdk(win) {
+  const dataDir = app.getPath('userData');
+  column.useGitEnv(gitEnv);
+  const agentSdk = registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir, pluginRoot });
+  // Unless the person chose the terminal way, the panel is the column's page.
+  // The shell page has to be listening before the column is announced to it.
+  const showPanel = () => { if (readAgentStore(dataDir).way !== 'claude-code') column.showPage(agentSdk.panelPage); };
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', showPanel); else showPanel();
+  // With no way chosen, "Set up the agent…" in the sidebar opens the panel, where the choice is made.
+  ipcMain.on('agent:setup', (e) => { if (e.sender === win.webContents && readAgentStore(dataDir).way === null) column.showPage(agentSdk.panelPage); });
+  // setUpAgent built the app menu; the settings entry goes in after "About".
+  const menu = Menu.getApplicationMenu();
+  const appSubmenu = menu && menu.items[0] && menu.items[0].submenu;
+  if (appSubmenu) {
+    appSubmenu.insert(1, new MenuItem({ label: 'Agent Settings…', click: () => column.showPage(`${agentSdk.panelPage}#settings`) }));
+    Menu.setApplicationMenu(menu);
+  }
+  app.on('before-quit', () => { agentSdk.shutdown(); });
+}
+
 app.whenReady().then(async () => {
   try {
     const { child, url } = await startServer();
@@ -133,6 +158,7 @@ app.whenReady().then(async () => {
       updater.start();
     }
     setUpAgent({ win, pluginRoot, pluginVersion: pluginVersion(), gitEnv, dataDir: app.getPath('userData'), shimsDir });
+    setUpAgentSdk(win);
     app.on('before-quit', () => child.kill());
   } catch (err) {
     dialog.showErrorBox('Placet could not start', err.message);

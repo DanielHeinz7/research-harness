@@ -183,11 +183,15 @@
     return undefined;
   }
 
+  function enterChoose() { show('v-choose'); $('way-cc').focus(); }
+
   async function enterThread(note) {
+    const s = await api.state();
+    // No way chosen yet: the choice comes first, whatever brought the person here.
+    if (!s.way) return enterChoose();
     show('v-thread');
     resetThread(); started = false;
     if (note) add(el('li', 'meta', note));
-    const s = await api.state();
     $('h-model').textContent = s.connection ? `${s.connection.model} · ${s.kindName}` : '';
     connKind = s.connection && s.connection.kind;
     if (s.canResume) { $('resume').hidden = false; $('h-state').textContent = ''; $('resume-go').focus(); } else begin(false);
@@ -304,7 +308,7 @@
   (async () => {
     const s = await api.state();
     if (location.hash === '#settings' && s.connection) return enterSettings();
-    if (!s.way) { show('v-choose'); $('way-cc').focus(); return undefined; }
+    if (!s.way) return enterChoose();
     if (!s.connection) return enterConnect();
     return enterThread();
   })();

@@ -42,18 +42,10 @@ test('the SDK way: connect through the Keychain, a guarded turn, links, and no t
   });
   try {
     const win = await shellPage(app);
-    // The column's page offers the choice of way until the person picks one. This comes
-    // first: opening a project makes a page with no way chosen go on to the connect form.
+    // The column's page offers the choice of way until the person picks one.
     const column = await findPage(app, (p) => p.url().endsWith('panel.html'));
     await column.getByRole('button', { name: /Pay per use/ }).click();
-
-    await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, project);
-    await win.locator('#start-open').click();
-    await win.getByRole('button', { name: 'Choose…' }).click();
-    await win.getByRole('button', { name: 'Open project', exact: true }).click();
-    await win.getByText(/^Opened .*voice-uptake\.$/).waitFor({ timeout: 60000 });
-    // The conversation needs the project; wait until the app has passed it on to the column.
-    for (let i = 0; i < 100 && !(await column.evaluate(() => window.agentPanel.state())).project; i++) await new Promise((r) => setTimeout(r, 100));
+    await openProject(app, win, column, project);
 
     // 4. The column: the institute gateway at the fake's address, the token, the model.
     await column.getByLabel('Institute gateway').check();
@@ -100,6 +92,44 @@ test('the SDK way: connect through the Keychain, a guarded turn, links, and no t
   }
   assert.ok(scanned > 0, 'the scan found files to look through');
 });
+
+test('the SDK way: a project opened before a way is chosen keeps the choice of way', { skip, timeout: 120000 }, async () => {
+  const sec = fakeSecurity();
+  const userData = trackDir(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-desktop-')));
+  const home = trackDir(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-home-')));
+  const project = path.join(trackDir(fs.mkdtempSync(path.join(os.tmpdir(), 'rh-proj-'))), 'voice-uptake');
+  fs.cpSync(path.join(pluginRoot, 'test', 'fixtures', 'voice-uptake'), project, { recursive: true });
+
+  const app = await electron.launch({
+    executablePath: require('electron'), args: [path.join(__dirname, '..')],
+    env: { ...process.env, HOME: home, RESEARCH_HARNESS_TEST_USER_DATA: userData, RESEARCH_HARNESS_TEST_SECURITY: sec.bin },
+  });
+  try {
+    const win = await shellPage(app);
+    const column = await findPage(app, (p) => p.url().endsWith('panel.html'));
+    await column.locator('#choose-h').waitFor();
+    await openProject(app, win, column, project);
+    // The project came first: the column still asks, and has not gone on to the connect form.
+    await new Promise((r) => setTimeout(r, 1000)); // room for the column to act on the project change
+    await column.locator('#choose-h').waitFor({ state: 'visible' });
+    assert.equal(await column.locator('#v-connect').isVisible(), false);
+    assert.equal(await column.locator('#v-thread').isVisible(), false);
+    await column.getByRole('button', { name: /Pay per use/ }).click();
+    await column.locator('#connect-h').waitFor({ state: 'visible' });
+  } finally {
+    await app.close();
+  }
+});
+
+// Opens the project through the shell's own dialog and waits until the app has passed it on to the column.
+async function openProject(app, win, column, project) {
+  await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, project);
+  await win.locator('#start-open').click();
+  await win.getByRole('button', { name: 'Choose…' }).click();
+  await win.getByRole('button', { name: 'Open project', exact: true }).click();
+  await win.getByText(/^Opened .*voice-uptake\.$/).waitFor({ timeout: 60000 });
+  for (let i = 0; i < 100 && !(await column.evaluate(() => window.agentPanel.state())).project; i++) await new Promise((r) => setTimeout(r, 100));
+}
 
 // The column's page is a WebContentsView; app.windows() lists it (see smoke.test.js).
 async function findPage(app, match) {

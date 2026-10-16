@@ -114,6 +114,24 @@ both('first start: the choices go to the app', async (scheme) => {
   } finally { await closeAll(page); }
 });
 
+both('first start: a project opened before a way is chosen keeps the choice', async (scheme) => {
+  const page = await open({ scheme, state: { way: null, connection: null, kindName: null, project: null, canResume: false } });
+  try {
+    await page.locator('#choose-h').waitFor();
+    await emit(page, { kind: 'project-changed' });
+    await page.waitForFunction(() => window.__calls.filter((c) => c[0] === 'state').length >= 2);
+    assert.equal(await page.locator('#v-choose').isVisible(), true);
+    assert.equal(await page.locator('#v-connect').isVisible(), false);
+    assert.equal(await page.locator('#v-thread').isVisible(), false);
+    assert.equal((await calls(page, 'start')).length, 0);
+    // Only the choice of Pay per use goes on to the connect form.
+    await page.locator('#way-sdk').click();
+    await page.locator('#connect-h').waitFor();
+    assert.deepEqual((await calls(page, 'chooseWay')).at(-1), ['chooseWay', 'sdk']);
+    assert.deepEqual(page.problems, []);
+  } finally { await closeAll(page); }
+});
+
 both('connect: kind decides the fields, a refusal is told next to the button and keeps the secret', async (scheme) => {
   const page = await open({ scheme, state: sdkState(null), connect: { ok: false, error: 'The token was refused.' } });
   try {

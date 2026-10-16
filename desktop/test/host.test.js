@@ -312,6 +312,40 @@ test('removing the connection deletes the key and the stored connection', async 
   assert.equal(readSettings(c.dataDir).connection, null);
 });
 
+test('removing or replacing a connection leaves no key of another kind in the Keychain', async () => {
+  const kinds = ['anthropic', 'gateway', 'bedrock'];
+  const stored = async (c) => (await Promise.all(kinds.map(async (k) => [k, await readSecret(k, c.keychainOpts)]))).filter(([, v]) => v !== null).map(([k]) => k);
+  const stale = async (c) => { for (const k of kinds) await saveSecret(k, hexSecret(), c.keychainOpts); };
+
+  // Remove: every kind goes, also the kinds an earlier connection stored.
+  const removing = controller();
+  await stale(removing);
+  writeSettings(removing.dataDir, { connection: gatewayDraft });
+  assert.deepEqual(await removing.invoke('sdk:remove-connection'), { ok: true });
+  assert.deepEqual(await stored(removing), []);
+  assert.equal(readSettings(removing.dataDir).connection, null);
+
+  // Remove with no connection stored, but a key left behind.
+  const left = controller();
+  await saveSecret('anthropic', hexSecret(), left.keychainOpts);
+  assert.deepEqual(await left.invoke('sdk:remove-connection'), { ok: true });
+  assert.deepEqual(await stored(left), []);
+
+  // Replace: the new kind's key stays, the others go.
+  const replacing = controller();
+  await stale(replacing);
+  const fresh = hexSecret();
+  assert.deepEqual(await replacing.invoke('sdk:connect', gatewayDraft, fresh), { ok: true });
+  assert.deepEqual(await stored(replacing), ['gateway']);
+  assert.equal(await readSecret('gateway', replacing.keychainOpts), fresh);
+
+  // A kind that keeps no secret leaves none at all.
+  const vertex = controller();
+  await stale(vertex);
+  assert.deepEqual(await vertex.invoke('sdk:connect', { kind: 'vertex', projectId: 'my-lab-123456', region: 'europe-west1', model: 'm-1' }), { ok: true });
+  assert.deepEqual(await stored(vertex), []);
+});
+
 test('only a statement number is looked up or revealed, and only a known way is stored', async () => {
   const c = controller();
   assert.equal(await c.invoke('sdk:lookup', '3.4'), 'first words');

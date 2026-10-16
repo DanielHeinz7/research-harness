@@ -35,9 +35,15 @@ function setUpAgent({ win, pluginRoot, pluginVersion, gitEnv, dataDir, shimsDir 
     screenReaderMode: () => app.accessibilitySupportEnabled,
   });
 
+  // The column keeps its own session, so the SDK way's bridge (agent/panel/
+  // preload.js) can be registered on it alone and the shell page never gets
+  // it. That preload runs for every page the column shows and exposes
+  // window.agentPanel to the panel page only; sub-project 2's preload and its
+  // page are unchanged.
   const view = new WebContentsView({
-    webPreferences: { preload: path.join(__dirname, 'column', 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    webPreferences: { partition: 'agent-column', preload: path.join(__dirname, 'column', 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  view.webContents.session.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'panel', 'preload.js') });
   view.webContents.on('will-navigate', (event) => event.preventDefault());
   view.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) shell.openExternal(url);

@@ -57,6 +57,14 @@ function registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir, plugi
     h.once('exit', () => clearTimeout(timer));
   }
 
+  // Switching kind leaves the old kind's Keychain item behind, so a removed or
+  // replaced connection takes every kind's item with it (all but `keep`). A
+  // kind that was never stored is not an error. Failures are shown in the
+  // fixed words, never what security printed.
+  async function removeSecrets(keep) {
+    for (const kind of keychain.KINDS) if (kind !== keep) await keychain.removeSecret(kind, keychainOpts);
+  }
+
   async function secretFor(conn) {
     return connection.needsSecret(conn) ? keychain.readSecret(connection.secretKind(conn), keychainOpts) : null;
   }
@@ -105,17 +113,16 @@ function registerAgentSdk({ app, ipcMain, utilityProcess, column, dataDir, plugi
     try { if (kept) await keychain.saveSecret(connection.secretKind(v.conn), key, keychainOpts); } catch (err) {
       return { ok: false, ...(err && err.code === 'bad-secret' ? { field: 'secret' } : {}), error: keychainWords(err) };
     }
+    // The new key is stored; the old kind's key goes before the connection is switched.
+    try { await removeSecrets(kept ? connection.secretKind(v.conn) : null); } catch { return { ok: false, error: REMOVE_FAILED }; }
     writeSettings(dataDir, { connection: v.conn });
     return { ok: true };
   });
 
   handle('sdk:remove-connection', async () => {
     endConversation();
-    const { connection: conn } = readSettings(dataDir);
     // removeSecret passes security's own error on; none of it is shown.
-    if (conn && connection.needsSecret(conn)) {
-      try { await keychain.removeSecret(connection.secretKind(conn), keychainOpts); } catch { return { ok: false, error: REMOVE_FAILED }; }
-    }
+    try { await removeSecrets(null); } catch { return { ok: false, error: REMOVE_FAILED }; }
     writeSettings(dataDir, { connection: null });
     return { ok: true };
   });

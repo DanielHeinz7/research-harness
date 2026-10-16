@@ -629,10 +629,11 @@ bothWidths('fix 5: Source Serif 4 and Hanken Grotesk load from the files that sh
     await emit(page, { kind: 'text', text: 'An answer with *emphasis* and **weight**.' });
     await page.locator('#thread li.agent').waitFor();
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForFunction(() => {
+    const loaded = await page.waitForFunction(() => {
       const ok = new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family.replace(/"/g, '')} ${f.style}`));
       return ok.has('Hanken Grotesk normal') && ok.has('Source Serif 4 normal') && ok.has('Source Serif 4 italic');
-    }, null, { timeout: 10000 });
+    }, null, { timeout: 5000 }).then(() => true, () => false);
+    assert.equal(loaded, true, `the three faces did not load at ${width}px`);
     const failed = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'error').map((f) => f.family));
     assert.deepEqual(failed, []);
     // The agent's text is set in the serif, the chrome in the sans.

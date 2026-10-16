@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { appIn, notaryHint } = require('../scripts/dist');
+const { builderSettings } = require('../lib/distribution');
 
 const DIST = path.join(__dirname, '..', 'scripts', 'dist.js');
 
@@ -41,6 +42,13 @@ test('a rejected notarization names the command that shows Apple\'s log', () => 
   assert.match(notaryHint(msg, signed), /xcrun notarytool log 2efe2717-52ef-43a5-96dc-0797e4ca1041 --keychain-profile research-harness-notary$/);
   assert.equal(notaryHint(msg, { signing: 'none' }), msg);
   assert.equal(notaryHint('ENOSPC: no space left on device', signed), 'ENOSPC: no space left on device');
+});
+
+test('a build carries the agent binary for its own processor only', () => {
+  const filesFor = (arch) => builderSettings({ signing: 'none' }, { version: '0.6.0', keep: [], outDir: '/nowhere', arch }).config.files;
+  const agent = (files) => files.filter((f) => f.includes('claude-agent-sdk'));
+  assert.deepEqual(agent(filesFor('x64')), ['!node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/**']);
+  assert.deepEqual(agent(filesFor('arm64')), ['!node_modules/@anthropic-ai/claude-agent-sdk-darwin-x64/**']);
 });
 
 test('appIn finds the app in mac-arm64/ and in mac/', (t) => {

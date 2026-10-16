@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent</title>
 <link rel="stylesheet" href="panel.css">
@@ -17,7 +17,6 @@
 <header class="head">
   <h1>Agent</h1>
   <p id="h-model" class="meta"></p>
-  <p id="h-guard" class="meta guard" hidden><svg class="i" aria-hidden="true"><use id="h-guard-icon" href="#i-guard"/></svg><span id="h-guard-text"></span></p>
   <p id="h-state" class="meta" aria-live="polite"></p>
 </header>
 
@@ -64,6 +63,7 @@
     <ol id="thread" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation with the agent"></ol>
     <p id="pending" class="pending" aria-hidden="true"></p>
   </div>
+  <p id="h-guard" class="guard" hidden><svg class="i" aria-hidden="true"><use id="h-guard-icon" href="#i-guard"/></svg><span id="h-guard-text"></span></p>
   <p class="rule"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg><span>The agent proposes. Accepting, choosing a framing, starting a session and handing over the project key stay with you.</span></p>
   <div class="quick">
     <button data-cmd="/research-harness:canvas">Continue canvas</button>

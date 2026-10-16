@@ -72,10 +72,20 @@
 
   function add(node) { $('thread').append(node); node.scrollIntoView({ block: 'end' }); return node; }
 
+  // Send and the quick actions go together: each is native-disabled whenever
+  // the agent cannot take a message (working, guard off, starting).
+  function canSend(yes) {
+    $('send').disabled = !yes;
+    document.querySelectorAll('.quick button').forEach((b) => { b.disabled = !yes; });
+  }
+
   function setWorking(on) {
-    $('send').disabled = on; $('stop').hidden = !on; $('msg').readOnly = on;
+    canSend(!on); $('stop').hidden = !on; $('msg').readOnly = on;
     $('h-state').textContent = on ? 'Working' : 'Ready';
   }
+
+  // The header is one line, so a long model name is cut; the whole is its title.
+  function setModel(text) { $('h-model').textContent = text; $('h-model').title = text; }
 
   function setGuard(on, text) {
     $('h-guard').hidden = false;
@@ -109,9 +119,11 @@
         if (ev.state === 'on') { setGuard(true, `Guard on · research-harness ${ev.version}`); setWorking(false); }
         else {
           setGuard(false, 'Guard off'); $('h-state').textContent = 'Stopped';
-          const again = el('button', null, 'Try again'); again.type = 'button'; again.addEventListener('click', () => begin(false));
+          // Only the latest way back is live; an earlier one is spent.
+          document.querySelectorAll('#thread .retry').forEach((b) => { b.disabled = true; });
+          const again = el('button', 'retry', 'Try again'); again.type = 'button'; again.addEventListener('click', () => begin(false));
           add(problemItem(agentRender.guardLine(ev.cause), again));
-          setWorking(false); $('send').disabled = true; $('h-state').textContent = 'Stopped';
+          setWorking(false); canSend(false); $('h-state').textContent = 'Stopped';
         }
         break;
       case 'you': { const li = el('li', 'you'); li.append(el('span', 'who', 'You'), el('p', null, ev.text)); add(li); break; }
@@ -146,7 +158,7 @@
       case 'stopped':
         setWorking(false); $('h-state').textContent = 'Stopped';
         add(el('li', 'meta', ev.reason === 'by-person' ? 'Stopped.' : `The agent stopped (${ev.reason}). Start it again to go on.`));
-        if (ev.reason !== 'by-person') { const again = el('button', null, 'Start again'); again.type = 'button'; again.addEventListener('click', () => begin(false)); add(el('li', 'again')).append(again); }
+        if (ev.reason !== 'by-person') { const again = el('button', 'retry', 'Start again'); again.type = 'button'; again.addEventListener('click', () => begin(false)); add(el('li', 'again')).append(again); }
         break;
       case 'resume-failed': begin(false, 'The last conversation could not be found; started a new one.'); break;
       case 'project-changed': enterThread('The conversation ended because another project was opened.'); break;
@@ -170,7 +182,7 @@
     if (note) add(el('li', 'meta', note));
     setGuard(false, ''); $('h-guard').hidden = true;
     $('h-state').textContent = 'Starting';
-    $('send').disabled = true;
+    canSend(false);
     const r = await api.start({ resume });
     if (!r.ok) {
       $('h-state').textContent = '';
@@ -179,7 +191,7 @@
       return undefined;
     }
     started = true;
-    $('h-model').textContent = `${r.model} · ${r.kindName}`;
+    setModel(`${r.model} · ${r.kindName}`);
     return undefined;
   }
 
@@ -192,7 +204,7 @@
     show('v-thread');
     resetThread(); started = false;
     if (note) add(el('li', 'meta', note));
-    $('h-model').textContent = s.connection ? `${s.connection.model} · ${s.kindName}` : '';
+    setModel(s.connection ? `${s.connection.model} · ${s.kindName}` : '');
     connKind = s.connection && s.connection.kind;
     if (s.canResume) { $('resume').hidden = false; $('h-state').textContent = ''; $('resume-go').focus(); } else begin(false);
   }
@@ -217,12 +229,16 @@
     $('get-key').parentElement.hidden = d.kind !== 'anthropic';
   }
 
+  // The message sits right under the field it names; with no field (or one that
+  // is not shown) it stays above the button that was pressed.
   function showConnectError(message, field) {
     for (const id of Object.values(FIELDS)) { $(id).removeAttribute('aria-invalid'); $(id).removeAttribute('aria-describedby'); }
+    const input = field && FIELDS[field] && $(FIELDS[field]);
+    const named = message && input && !input.closest('[hidden]') ? input : null;
+    if (named) named.closest('label').after($('connect-error')); else $('connect-go').before($('connect-error'));
     $('connect-error').hidden = !message; $('connect-error-text').textContent = message || '';
     if (message) $('connect-error').scrollIntoView({ block: 'nearest' });
-    const input = field && FIELDS[field] && $(FIELDS[field]);
-    if (message && input && !input.closest('[hidden]')) { input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', 'connect-error'); input.focus(); }
+    if (named) { named.setAttribute('aria-invalid', 'true'); named.setAttribute('aria-describedby', 'connect-error'); named.focus(); }
   }
 
   function enterConnect(message) {
@@ -249,9 +265,12 @@
   // Ending a running conversation is asked first (spec 5.5, 7). The question is
   // a dialog in the page, as in the shell: it says what will happen, and focus
   // goes back to the control that opened it when the person cancels.
-  function confirmEnd(text, opener) {
+  // The title and the act name what happens: ending the conversation by default,
+  // removing the key where that is what the button does.
+  function confirmEnd(text, opener, act = { title: 'End the conversation?', ok: 'End conversation' }) {
     if ($('stop').hidden && !$('thread').children.length) return Promise.resolve(true);
     const dlg = $('dlg');
+    $('dlg-title').textContent = act.title; $('dlg-ok').textContent = act.ok;
     $('dlg-text').textContent = text;
     dlg.returnValue = '';
     return new Promise((resolve) => {
@@ -286,13 +305,13 @@
   });
   $('msg').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('compose').requestSubmit(); });
   $('stop').addEventListener('click', () => api.stop());
-  document.querySelectorAll('.quick [data-cmd]').forEach((b) => b.addEventListener('click', () => { if ($('send').disabled) return; setWorking(true); api.send(b.dataset.cmd); }));
-  $('q-note').addEventListener('click', async () => { if ($('send').disabled) return; const f = await api.pickFile(); if (f) { setWorking(true); api.send(`/research-harness:literature-note ${f}`); } });
+  document.querySelectorAll('.quick [data-cmd]').forEach((b) => b.addEventListener('click', () => { setWorking(true); api.send(b.dataset.cmd); }));
+  $('q-note').addEventListener('click', async () => { const f = await api.pickFile(); if (f) { setWorking(true); api.send(`/research-harness:literature-note ${f}`); } });
   $('s-change').addEventListener('click', async () => {
     if (await confirmEnd('Changing the connection ends the current conversation. What the agent already wrote to the project stays.', $('s-change'))) enterConnect();
   });
   $('s-remove').addEventListener('click', async () => {
-    if (!await confirmEnd('Removing the connection ends the current conversation and deletes the saved key from the Keychain.', $('s-remove'))) return;
+    if (!await confirmEnd('Removing the connection deletes the saved key from the Keychain. The current conversation ends too.', $('s-remove'), { title: 'Remove the saved key?', ok: 'Remove key' })) return;
     const r = await api.removeConnection();
     if (r && r.ok === false) { $('s-error-text').textContent = r.error; $('s-error').hidden = false; $('s-remove').focus(); return; }
     started = false; resetThread();

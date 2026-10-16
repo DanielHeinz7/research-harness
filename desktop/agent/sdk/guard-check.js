@@ -1,10 +1,17 @@
 'use strict';
-// Has the guard been seen to start (spec 5.6)? Fed the SDK messages in order.
-// The decision of 2026-10-15: the guard counts as started once a SessionStart
-// hook_response with outcome success arrives whose context comes from
-// research-harness, and query.initializationResult() lists at least one
-// research-harness: command. `init` is not required before the first message;
-// if it arrives later without the plugin, that is a guard failure.
+// Has the guard been seen to start (spec 5.6)? Fed every SDK message in order;
+// after each it answers null (not known yet), { state: 'on', version } or
+// { state: 'off', cause }. "Off" is final: once given, it is the answer to
+// every later message, so nothing turns the guard back on.
+// The decision of 2026-10-15: the guard counts as started once research-harness's
+// own SessionStart hook reports success with its context, and
+// query.initializationResult() lists at least one research-harness: command.
+// `init` is not required before the first message; if it arrives later
+// without research-harness from the bundled path, that is a guard failure.
+// SessionStart hooks from other sources (managed settings, another plugin)
+// neither turn the guard on nor off. A hook_response does not say whose hook
+// it was, so an answer that does not carry our context counts as ours only by
+// elimination: once no SessionStart hook that started is still running.
 // The version for the header line comes from the bundled manifest, not from
 // reloadPlugins().
 const fs = require('node:fs');
@@ -12,9 +19,25 @@ const path = require('node:path');
 
 const PLUGIN_CAUSE = 'The research-harness plugin did not load.';
 const HOOK_CAUSE = 'The guard’s start hook did not run. Settings installed on this Mac by your organisation may turn hooks off.';
+const HOOK_FAILED_CAUSE = 'The research-harness start hook failed.';
+const NO_PROJECT_CAUSE = 'The research-harness guard started but found no paper project here. Open a folder made with New project… or Clone…';
 
-function fromOurHook(output) {
-  try { return /^research-harness\b/.test(JSON.parse(output).hookSpecificOutput.additionalContext); } catch { return false; }
+// The first line our SessionStart hook writes (hooks/inject-state.js).
+const OUR_CONTEXT = /^research-harness · /;
+
+// What one SessionStart answer says: 'ours', 'foreign' (something else was
+// printed), 'silent' (success, nothing printed) or 'failed'. The hook's JSON
+// is in stdout; `output` is stdout and stderr together.
+function kindOf(msg) {
+  if (msg.outcome !== 'success') return 'failed';
+  const stdout = typeof msg.stdout === 'string' ? msg.stdout.trim() : '';
+  if (!stdout) return 'silent';
+  try { if (OUR_CONTEXT.test(JSON.parse(stdout).hookSpecificOutput.additionalContext)) return 'ours'; } catch { /* not our JSON */ }
+  return 'foreign';
+}
+
+function realPath(p) {
+  try { return fs.realpathSync(p); } catch { return path.resolve(p); }
 }
 
 function manifestVersion(pluginRoot) {
@@ -34,28 +57,48 @@ function hasOurCommands(commands) {
 function createGuardCheck({ pluginRoot, commands = [] }) {
   const ourCommands = hasOurCommands(commands);
   const version = manifestVersion(pluginRoot);
-  let hookRan = false;
-  let hookFailed = false;
+  const bundled = realPath(pluginRoot);
+  const running = new Set();   // SessionStart hooks that started and have not answered
+  let answers = new Set();     // kinds answered since our hook was last settled
+  let hook = null;             // our hook, last settled: 'ours' | 'failed' | 'silent'
   let initSeen = false;
   let initLists = false;
+  let final = null;
 
   function decide() {
-    if (initSeen && !initLists) return { state: 'off', cause: PLUGIN_CAUSE };
-    if (hookFailed) return { state: 'off', cause: HOOK_CAUSE };
-    if (hookRan) return ourCommands && version ? { state: 'on', version } : { state: 'off', cause: PLUGIN_CAUSE };
-    if (initSeen) return { state: 'off', cause: HOOK_CAUSE };
-    return null;
+    if (final) return final;
+    let d = null;
+    if (initSeen && !initLists) d = { state: 'off', cause: PLUGIN_CAUSE };
+    else if (hook === 'ours') d = ourCommands && version ? { state: 'on', version } : { state: 'off', cause: PLUGIN_CAUSE };
+    else if (hook === 'failed') d = { state: 'off', cause: HOOK_FAILED_CAUSE };
+    else if (hook === 'silent') d = { state: 'off', cause: NO_PROJECT_CAUSE };
+    else if (initSeen) d = { state: 'off', cause: HOOK_CAUSE };
+    if (d && d.state === 'off') final = d;
+    return d;
+  }
+
+  function answered(msg) {
+    const awaited = running.delete(msg.hook_id);
+    const kind = kindOf(msg);
+    answers.add(kind);
+    if (kind === 'ours') hook = 'ours';
+    // Once nothing is still running, a failed or silent answer was ours unless
+    // one of the answers carried our context. Answers from other sources alone
+    // change nothing, and one nobody waited for does not end the round.
+    if (running.size || (!awaited && kind === 'foreign')) return;
+    if (!answers.has('ours') && answers.has('failed')) hook = 'failed';
+    else if (!answers.has('ours') && answers.has('silent')) hook = 'silent';
+    answers = new Set();
   }
 
   return function feed(msg) {
-    if (msg.type === 'system') {
-      if (msg.subtype === 'hook_response' && msg.hook_event === 'SessionStart') {
-        if (msg.outcome === 'success' && fromOurHook(msg.output)) hookRan = true;
-        else hookFailed = true;
-      }
+    if (msg && msg.type === 'system') {
+      if (msg.hook_event === 'SessionStart' && msg.subtype === 'hook_started') running.add(msg.hook_id);
+      if (msg.hook_event === 'SessionStart' && msg.subtype === 'hook_response') answered(msg);
       if (msg.subtype === 'init') {
         initSeen = true;
-        initLists = (msg.plugins || []).some((plugin) => plugin && plugin.name === 'research-harness');
+        initLists = (msg.plugins || []).some((plugin) => plugin && plugin.name === 'research-harness'
+          && typeof plugin.path === 'string' && realPath(plugin.path) === bundled);
       }
     }
     return decide();

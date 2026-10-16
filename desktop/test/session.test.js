@@ -19,16 +19,18 @@ const unitPluginRoot = (() => {
   return dir;
 })();
 
-// A query stand-in: yields the given messages, then waits for input.
-// initializationResult() is the second half of the guard's start signals
-// (Task 1's C2): it lists the research-harness commands before any message.
-function fakeQuery(messages) {
+const RESULT = { type: 'result', subtype: 'success', usage: {}, total_cost_usd: 0 };
+
+// A query stand-in: yields the given messages, then answers each input with
+// `reply`. initializationResult() is the second half of the guard's start
+// signals (Task 1's C2): it lists the research-harness commands before any message.
+function fakeQuery(messages, reply = [RESULT]) {
   const calls = { interrupted: 0, closed: 0, prompts: [] };
   const query = ({ prompt, options }) => {
     calls.options = options;
     const it = (async function* () {
       for (const m of messages) yield m;
-      for await (const user of prompt) { calls.prompts.push(user.message.content); yield { type: 'result', subtype: 'success', usage: {}, total_cost_usd: 0 }; }
+      for await (const user of prompt) { calls.prompts.push(user.message.content); for (const m of reply) yield m; }
     })();
     return Object.assign(it, {
       interrupt: async () => { calls.interrupted += 1; },
@@ -38,7 +40,9 @@ function fakeQuery(messages) {
   };
   return { query, calls };
 }
-const hook = { type: 'system', subtype: 'hook_response', hook_event: 'SessionStart', outcome: 'success', output: JSON.stringify({ hookSpecificOutput: { additionalContext: 'research-harness · paper project' } }) };
+// As in the recording: the hook's JSON is in stdout; output adds stderr to it.
+const hookJson = JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'research-harness · paper project' } });
+const hook = { type: 'system', subtype: 'hook_response', hook_event: 'SessionStart', outcome: 'success', output: hookJson, stdout: hookJson, stderr: '' };
 const init = (root) => ({ type: 'system', subtype: 'init', session_id: 's-1', model: 'm', plugins: [{ name: 'research-harness', path: root, version: '0.5.0' }] });
 
 test('nothing is sent before the guard is on', async () => {
@@ -62,6 +66,25 @@ test('guard on, then a message goes out and Send is blocked until the turn ends'
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(calls.prompts, ['first']);
   assert.equal(s.send('third'), true);
+  s.close();
+  await running;
+});
+
+test('a later init without the plugin from the bundled path stops the turn', async () => {
+  const events = [];
+  const { query, calls } = fakeQuery([hook], [init('/elsewhere'), { type: 'assistant', message: { content: [{ type: 'text', text: 'after init' }] } }, RESULT]);
+  const s = createSession({ query, options: (canUseTool) => ({ canUseTool }), pluginRoot: unitPluginRoot, cwd: '/p', onEvent: (e) => events.push(e) });
+  const running = s.start();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(s.send('first'), true);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(events.filter((e) => e.kind === 'guard'), [
+    { kind: 'guard', state: 'on', version: '0.5.0' },
+    { kind: 'guard', state: 'off', cause: 'The research-harness plugin did not load.' },
+  ]);
+  assert.equal(calls.closed, 1);
+  assert.deepEqual(events.slice(events.findIndex((e) => e.kind === 'guard' && e.state === 'off') + 1), []);
+  assert.equal(s.send('second'), false);
   s.close();
   await running;
 });

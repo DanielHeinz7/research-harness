@@ -66,8 +66,11 @@ function createSession({ query, options, pluginRoot, cwd, onEvent, startTimeoutM
     });
   };
 
+  // The guard goes on once. A later "off" (an init without the plugin from the
+  // bundled path, or our start hook failing) stops the turn and ends the
+  // conversation; nothing turns it back on.
   function decide(d) {
-    if (guard) return;
+    if (guard === 'off' || guard === d.state) return;
     guard = d.state;
     onEvent({ kind: 'guard', ...d });
     if (d.state === 'off') close();
@@ -89,7 +92,12 @@ function createSession({ query, options, pluginRoot, cwd, onEvent, startTimeoutM
     try {
       for await (const msg of q) {
         if (msg.type === 'system' && msg.subtype === 'init') sawInit = true;
-        if (!guard) { const d = check(msg); if (d) { clearTimeout(timer); decide(d); } }
+        // Every message goes to the check, also after "on": init comes only
+        // with the first message, just before the first model request. Once
+        // the guard is off, nothing more from this query reaches the thread.
+        const d = check(msg);
+        if (d) { clearTimeout(timer); decide(d); }
+        if (guard === 'off') break;
         for (const ev of map(msg)) {
           if (ev.kind === 'turn-end') busy = false;
           onEvent(ev);

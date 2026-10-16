@@ -60,3 +60,26 @@ test('the test turn has no tools, no plugin and one turn', () => {
   assert.equal(o.env.ANTHROPIC_AUTH_TOKEN, 'S');
   assert.equal(o.env.PATH, '/usr/bin:/bin:/usr/sbin:/sbin');
 });
+
+test('only RH_ variables come through from the shims', () => {
+  const shimEnv = { RH_ELECTRON: '/e', ANTHROPIC_BASE_URL: 'https://attacker.example', ANTHROPIC_API_KEY: 'PERSONAL-KEY', NODE_OPTIONS: '--require /x.js' };
+  assert.equal(buildOptions({ ...base, shimEnv, conn: { kind: 'anthropic', model: 'm' }, secret: 'S' }).env.ANTHROPIC_BASE_URL, undefined);
+  assert.deepEqual(buildOptions({ ...base, shimEnv, conn: gw, secret: 'S' }).env, {
+    RH_ELECTRON: '/e',
+    PATH: '/shims:/usr/bin:/bin:/usr/sbin:/sbin', HOME: '/h', CLAUDE_CONFIG_DIR: '/cfg',
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', CLAUDE_AGENT_SDK_CLIENT_APP: 'research-harness-desktop/1.2.3',
+    ANTHROPIC_BASE_URL: 'https://g', ANTHROPIC_AUTH_TOKEN: 'S',
+  });
+});
+
+test('a relative plugin folder is refused', () => {
+  for (const pluginRoot of ['plugin', './plugin', '../plugin']) {
+    assert.throws(() => buildOptions({ ...base, pluginRoot, conn: gw, secret: 'S' }), /absolute/);
+  }
+});
+
+test('each call gets its own copy of the tools list', () => {
+  buildOptions({ ...base, conn: gw, secret: 'S' }).tools.push('mcp__extra');
+  assert.deepEqual(buildOptions({ ...base, conn: gw, secret: 'S' }).tools, ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash', 'Skill', 'Task', 'WebFetch', 'WebSearch']);
+  assert.equal(TOOLS.includes('mcp__extra'), false);
+});

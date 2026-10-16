@@ -2307,7 +2307,7 @@ In `main.js`, pass `keychainOpts: process.env.RESEARCH_HARNESS_TEST_USER_DATA &&
 
 Same frame as `desktop/test/smoke.test.js` (Playwright's Electron launcher, `RESEARCH_HARNESS_TEST_USER_DATA` in a temp folder, skipped without Playwright), plus:
 
-1. Start the fake model with the script `[[{ type: 'text', text: 'Statement 1.1 holds; 9.999 does not exist.' }]]`.
+1. Start the fake model with the script `[[{ type: 'text', text: 'ready' }], [{ type: 'text', text: 'Statement 1.1 holds; 9.999 does not exist.' }]]` (the first turn answers "Test connection", see "Smoke test" in "Task 1 results").
 2. Write the fake `security` from `desktop/test/keychain.test.js` (move `fakeSecurity()` into `desktop/test/support/fake-security.js` and require it from both tests) and set `RESEARCH_HARNESS_TEST_SECURITY` to it.
 3. Copy `plugins/research-harness/test/fixtures/voice-uptake` to a temp folder. Stub the folder dialog in the main process: `await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, fixture)`, then click "Open project…" in the shell.
 4. In the column: "Pay per use", then "Institute gateway", the fake's URL, the token `fake-secret-<hex>`, the model `fake-model`, "Test connection and continue".
@@ -2321,7 +2321,7 @@ Same frame as `desktop/test/smoke.test.js` (Playwright's Electron launcher, `RES
 - [ ] **Step 4: Build check**
 
 ```bash
-cd desktop && npm run dist
+cd desktop && node scripts/dist.js --arch arm64      # npm run dist also builds x64
 ls dist/arm64/mac-arm64/Placet.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude
 du -sh dist/arm64/mac-arm64/Placet.app
 ```
@@ -2353,7 +2353,7 @@ git commit -m "Agent SDK way: Electron smoke test against the fake model"
 
 ## Task 1 results
 
-Run on 2026-10-16 on an Apple silicon Mac, Node 24.16, with the fake model only (no key, gateway or account). C10 was run at the end of Task 3; still to add: the app size from Task 10.
+Run on 2026-10-16 on an Apple silicon Mac, Node 24.16, with the fake model only (no key, gateway or account). C10 was run at the end of Task 3; the app size from Task 10 is under "App size" below.
 
 SDK 0.3.295 pinned on 2026-10-16 at 7 days old, an exception to the 14-day rule because 2.1.295 is the guard's floor (`onFailure`). It meets the rule from 2026-10-22; no release with sub-project 3 before then.
 
@@ -2416,4 +2416,6 @@ Information only: the same script on SDK 0.3.287 (the newest release that met th
 - **Bedrock** (C11): `AWS_BEARER_TOKEN_BEDROCK` with `CLAUDE_CODE_USE_BEDROCK=1` is sent as `authorization: Bearer ...` to `ANTHROPIC_BEDROCK_BASE_URL`; the binary also asks `/inference-profiles`. Real Bedrock stays untested.
 - **No traffic to other hosts** (C7): a plain turn with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and a refusing proxy reached no host other than the fake model, so nothing goes into spec 10 for C7.
 - **Packaging** (C16): the builder configuration is `BASE` in `desktop/lib/distribution.js` (there is no `electron-builder.yml`), and `asarUnpack` there now names `node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**`. In the arm64 build the unpacked binary runs from `Placet.app/Contents/Resources/app.asar.unpacked/...` and was re-signed ad hoc by the builder. `npm run dist` builds both processors, but only the `darwin-arm64` package is installed, so an x64 build would carry the arm64 binary: the release build has to install the other processor's package first, as `dist.js` does for dugite's git. The unsigned arm64 app is 719 MB (dmg 288 MB); the SDK adds about 224 MB for its binary and 83 packages.
+- **App size** (Task 10, 2026-10-16, `node scripts/dist.js --arch arm64`, unsigned, both builds on the same machine): before this sub-project, built from 88bb609 (the commit before the SDK package, SQ-296, landed): `Placet.app` 485 MB (496,500 KiB by `du -sk`), dmg 196,376,877 bytes (the board's figure for e93b0fe, 196,376,667 bytes, differs by 210 bytes). After, built from the SDK way as of Task 10: `Placet.app` 718 MB (735,360 KiB), dmg 300,544,135 bytes. The app grew by 238,860 KiB (about 233 MiB, 245 MB), the dmg by about 104 MB; spec §10 expected about +240 MB for the app. The unpacked binary at `Placet.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude` is there and prints "2.1.295 (Claude Code)". The x64 build was not made.
+- **Smoke test** (Task 10): `test/smoke-sdk.test.js` needs two scripted turns, not the one in Step 2: the connection test is a first request to the model and takes the first turn. The column page starts on the choice of way, but a project opened while no way is chosen moves it on to the connect form (`project-changed` runs `enterThread`, whose `begin()` sees no connection), so the test picks "Pay per use" first and then opens the project.
 - **Run time**: `npm run check-agent-sdk` takes about six minutes; more than four of them are the two C13 cases that run into the script's cut-off. The arm64 build was made with `node scripts/dist.js --arch arm64` instead of `npm run dist`, to skip the x64 build.

@@ -46,7 +46,7 @@ test('failures in plain words', () => {
   assert.match(c.describeFailure({ code: 'rate_limit', conn: gw }), /Try again/);
 });
 
-test('test connection: ready, refused, unknown model, unreachable', { todo: 'after Task 5' }, async () => {
+test('test connection: ready, refused, unknown model, unreachable, server error', async () => {
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
   const { binaryPath } = require('../agent/sdk/binary');
   const { buildTestOptions } = require('../agent/sdk/options');
@@ -67,4 +67,8 @@ test('test connection: ready, refused, unknown model, unreachable', { todo: 'aft
   await missing.close();
 
   assert.match((await run({ kind: 'gateway', url: 'http://127.0.0.1:9', model: 'fake-model' }, 'tok')).error, /Could not reach 127\.0\.0\.1/);
+
+  const broken = await startFakeModel({ status: { code: 500, type: 'api_error', message: 'Internal server error' } });
+  assert.match((await run({ kind: 'gateway', url: broken.url, model: 'fake-model' }, 'tok')).error, /reported a server error\. Try again in a few minutes\./);
+  await broken.close();
 });

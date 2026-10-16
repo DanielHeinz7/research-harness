@@ -4,6 +4,11 @@
 const KIND_NAMES = { anthropic: 'Anthropic API key', gateway: 'Institute gateway', bedrock: 'Amazon Bedrock', vertex: 'Google Vertex' };
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const ANTHROPIC = 'https://api.anthropic.com';
+// A refused connection and a genuine server-side error both arrive as
+// `server_error`; only the words tell them apart.
+const UNREACHABLE_TEXT = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|timed out|timeout/i;
+
+const textOf = (msg) => (msg.message?.content || []).filter((block) => block && block.type === 'text').map((block) => block.text || '').join(' ');
 
 const bad = (field, error) => ({ ok: false, field, error });
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -75,6 +80,7 @@ function describeFailure({ code, conn }) {
     case 'authentication_failed': return conn.kind === 'gateway' ? 'The token was refused.' : 'The key was refused.';
     case 'model_not_found': return `${host} does not offer ${conn.model}.`;
     case 'unreachable': return `Could not reach ${host}.`;
+    case 'server_error': return `${host} reported a server error. Try again in a few minutes.`;
     case 'rate_limit':
     case 'overloaded': return 'The model is busy or the usage limit is reached. Try again in a minute.';
     case 'billing_error': return 'The account behind the key has no credit left.';
@@ -92,10 +98,11 @@ async function testConnection({ query, options, conn, timeoutMs = 20000 }) {
   // after 122 s; one retry ends it in about a second.
   const env = { ...options.env, CLAUDE_CODE_MAX_RETRIES: '1' };
   let code = null;
+  let said = '';
   let answered = false;
   try {
     for await (const msg of query({ prompt: 'Reply with the word ready.', options: { ...options, abortController, env } })) {
-      if (msg.type === 'assistant' && msg.error) code = code || msg.error;
+      if (msg.type === 'assistant' && msg.error) { code = code || msg.error; said = said || textOf(msg); }
       if (msg.type === 'assistant' && !msg.error) answered = true;
       if (msg.type === 'result' && msg.subtype !== 'success') code = code || 'unknown';
     }
@@ -103,8 +110,9 @@ async function testConnection({ query, options, conn, timeoutMs = 20000 }) {
     code = code || (abortController.signal.aborted ? 'unreachable' : 'unknown');
   } finally { clearTimeout(timer); }
   // C13: a refused connection arrives as the assistant error `server_error`
-  // ("Connection refused ... ECONNREFUSED"), not as `unreachable`.
-  if (code === 'server_error') code = 'unreachable';
+  // ("Connection refused ... ECONNREFUSED"), not as `unreachable`. A genuine
+  // 500 reports `server_error` too, so the message text tells them apart.
+  if (code === 'server_error' && UNREACHABLE_TEXT.test(said)) code = 'unreachable';
   if (!code && answered) return { ok: true };
   return { ok: false, error: describeFailure({ code: code || 'unreachable', conn }) };
 }
